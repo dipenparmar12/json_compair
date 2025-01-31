@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="theme-color" content="#08C988" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Online Text Compare" />
+    <title>Compare JSON files online</title>
+    <meta name="Description"
+        content="FREE two-way JSON format, diff and merge tool. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser" />
+    <meta name="keywords" content="Online JSON Compare - Format and find differences between two JSON files" />
+    <link rel="canonical" href="https://4U5yLYe7Hryx.com/json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+    <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
+    <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <link rel="stylesheet" type="text/css" href="./css/codemirror.css" />
+    <link rel="stylesheet" type="text/css" href="./css/merge.css" />
+    <script src="./js/codemirror.js"></script>
+    <script src="./js/diff_match_patch.js"></script>
+    <script src="./js/merge.js"></script>
+    <script src="./js/javascript.js"></script>
+    <style>
+        /* Existing styles */
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        .contentPage {
+            max-width: 100% !important;
+            padding: 0 !important;
+        }
+
+        #container {
+            background-color: white;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #view {
+            width: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        .CodeMirror-merge {
+            width: 100%;
+        }
+
+        .CodeMirror-merge-pane {
+            width: 47%;
+        }
+
+        .CodeMirror-merge-gap {
+            width: 6%;
+        }
+
+        #container:fullscreen #view {
+            width: 100%;
+        }
+
+        #container:fullscreen .CodeMirror-merge,
+        #container:fullscreen .CodeMirror-merge .CodeMirror {
+            height: 100vh;
+        }
+
+        #viewHeader {
+            padding: 10px;
+            margin: 8px auto 16px auto;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .toggle-button {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .toggle-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        /* New styles for enhanced diff viewer */
+        .context-line {
+            background-color: #f8f9fa !important;
+            color: #666 !important;
+            opacity: 0.8;
+            transition: opacity 0.2s ease;
+        }
+
+        .context-line:hover {
+            opacity: 1;
+        }
+
+        .diff-line {
+            background-color: #fff !important;
+        }
+
+        .diff-add {
+            background-color: #e6ffe6 !important;
+        }
+
+        .diff-remove {
+            background-color: #ffe6e6 !important;
+        }
+
+        .collapse-marker {
+            text-align: center;
+            padding: 4px;
+            background: #eee;
+            color: #666;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            margin: 4px 0;
+            border-radius: 4px;
+            font-size: 12px;
+            transition: background-color 0.2s ease;
+        }
+
+        .collapse-marker:hover {
+            background: #e0e0e0;
+        }
+
+        .diff-controls {
+            padding: 8px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .context-size-control {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 10px;
+        }
+
+        .context-size-control select {
+            padding: 4px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: none;
+            z-index: 1000;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        @media (max-width: 1250px) {
+            #fs {
+                visibility: hidden;
+            }
+
+            #viewHeader {
+                margin: auto;
+                text-align: center;
+                height: 40px;
+            }
+
+            .context-size-control {
+                flex-direction: row;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <article id="ArticlePage" class="contentPage cover">
+        <div class="intro" style="max-width: 100%; margin: 0; padding: 10px 0; text-align: center; background-color: #f8f9fa;">
+            <div class="controls">
+                <button id="btn-format" class="write1">Format &amp; Compare JSON</button>
+                <div class="context-size-control">
+                    <label for="contextSize">Context lines:</label>
+                    <select id="contextSize">
+                        <option value="0">0</option>
+                        <option value="3" selected>3</option>
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </article>
+    <div id="container">
+        <div id="view"></div>
+        <div class="loading">Processing...</div>
+    </div>
+    <script type="text/javascript">
+        var leftContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json29.org/?8"}`;
+        var rightContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json5.org/?8"}`;
+
+        var target = document.getElementById("view");
+        var mv = CodeMirror.MergeView(target, {
+            value: leftContent,
+            origLeft: null,
+            orig: rightContent,
+            lineNumbers: true,
+            mode: "application/json",
+            showDifferences: true,
+            connect: "align",
+            collapseIdentical: false,
+            revertButtons: true,
+            allowEditingOriginals: true,
+            chunkClassLocation: ["background", "wrap", "gutter"],
+        });
+
+        // Enhanced diff viewer functionality
+        function initEnhancedDiffViewer(mv) {
+            const contextSelect = document.getElementById('contextSize');
+            const loadingIndicator = document.querySelector('.loading');
+            let debounceTimeout;
+
+            function updateDiffView(contextLines) {
+                loadingIndicator.classList.add('active');
+                
+                clearTimeout(debounceTimeout);
+                debounceTimeout = setTimeout(() => {
+                    try {
+                        const leftEditor = mv.editor();
+                        const rightEditor = mv.rightOriginal();
+                        
+                        // Clear existing classes
+                        for (let i = 0; i < leftEditor.lineCount(); i++) {
+                            leftEditor.removeLineClass(i, 'background');
+                            rightEditor.removeLineClass(i, 'background');
+                        }
+                        
+                        const viewport = leftEditor.getViewport();
+                        const visibleDiffs = findVisibleDiffs(leftEditor, rightEditor, viewport);
+
+                        visibleDiffs.forEach(diff => {
+                            const startLine = Math.max(0, diff.from - contextLines);
+                            const endLine = Math.min(leftEditor.lineCount(), diff.to + contextLines);
+
+                            // Context before
+                            for(let i = startLine; i < diff.from; i++) {
+                                leftEditor.addLineClass(i, 'background', 'context-line');
+                                rightEditor.addLineClass(i, 'background', 'context-line');
+                            }
+                            
+                            // Diff lines
+                            for(let i = diff.from; i < diff.to; i++) {
+                                leftEditor.addLineClass(i, 'background', 'diff-line');
+                                leftEditor.addLineClass(i, 'background', diff.type === 'add' ? 'diff-add' : 'diff-remove');
+                                rightEditor.addLineClass(i, 'background', 'diff-line');
+                                rightEditor.addLineClass(i, 'background', diff.type === 'add' ? 'diff-add' : 'diff-remove');
+                            }
+
+                            // Context after
+                            for(let i = diff.to; i < endLine; i++) {
+                                leftEditor.addLineClass(i, 'background', 'context-line');
+                                rightEditor.addLineClass(i, 'background', 'context-line');
+                            }
+                        });
+
+                        addCollapseMarkers(leftEditor, rightEditor, visibleDiffs, contextLines);
+                        
+                    } finally {
+                        loadingIndicator.classList.remove('active');
+                    }
+                }, 150);
+            }
+
+            function findVisibleDiffs(leftEditor, rightEditor, viewport) {
+                const diffs = [];
+                let current = null;
+
+                for(let i = viewport.from; i < viewport.to; i++) {
+                    const leftLine = leftEditor.getLine(i);
+                    const rightLine = rightEditor.getLine(i);
+
+                    if(leftLine !== rightLine) {
+                        if(!current) {
+                            current = {from: i, to: i + 1, type: leftLine ? 'remove' : 'add'};
+                            diffs.push(current);
+                        } else {
+                            current.to = i + 1;
+                        }
+                    } else if(current) {
+                        current = null;
+                    }
+                }
+
+                return diffs;
+            }
+
+            function addCollapseMarkers(leftEditor, rightEditor, visibleDiffs, contextLines) {
+                // Clear existing widgets
+                leftEditor.getAllMarks().forEach(mark => mark.clear());
+                rightEditor.getAllMarks().forEach(mark => mark.clear());
+
+                const markers = [];
+                let lastVisible = 0;
+
+                visibleDiffs.forEach(diff => {
+                    const hiddenLines = diff.from - contextLines - lastVisible;
+                    if(hiddenLines > 1) {
+                        markers.push({
+                            from: lastVisible,
+                            to: diff.from - contextLines,
+                            count: hiddenLines
+                        });
+                    }
+                    lastVisible = diff.to + contextLines;
+                });
+
+                markers.forEach(marker => {
+                    const element = document.createElement('div');
+                    element.className = 'collapse-marker';
+                    element.textContent = `${marker.count} lines collapsed`;
+                    
+                    leftEditor.addLineWidget(marker.from, element.cloneNode(true));
+                    rightEditor.addLineWidget(marker.from, element.cloneNode(true));
+                });
+            }
+
+            // Event listeners
+            contextSelect.addEventListener('change', (e) => {
+                updateDiffView(parseInt(e.target.value, 10));
+            });
+
+            mv.editor().on('scroll', () => {
+                updateDiffView(parseInt(contextSelect.value, 10));
+            });
+
+            mv.editor().on('change', () => {
+                updateDiffView(parseInt(contextSelect.value, 10));
+            });
+
+            mv.rightOriginal().on('change', () => {
+                updateDiffView(parseInt(contextSelect.value, 10));
+            });
+
+            // Initial update
+            updateDiffView(parseInt(contextSelect.value, 10));
+        }
+
+        document.getElementById("btn-format").onclick = function () {
+            mv.editor().setValue(JSON.stringify(JSON.parse(mv.editor().getValue()), undefined, 3));
+            mv.rightOriginal().setValue(JSON.stringify(JSON.parse(mv.rightOriginal().getValue()), undefined, 3));
+        };
+
+        // Auto-format on paste
+        mv.editor().on("change", function (instance, changeObj) {
+            if (changeObj.origin === "paste") {
+                try {
+                    var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
+                    instance.setValue(formatted);
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        });
+
+        mv.rightOriginal().on("change", function (instance, changeObj) {
+            if (changeObj.origin === "paste") {
+                try {
+                    var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
+                    instance.setValue(formatted);
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        });
+
+        // Initialize enhanced diff viewer
+        initEnhancedDiffViewer(mv);
+    </script>
+    <script src="./js/button-events.js"></script>
+</body>
+
+</html>
