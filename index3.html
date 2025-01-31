@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="theme-color" content="#08C988" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Online Text Compare" />
+    <title>Compare JSON files online</title>
+    <meta name="Description"
+        content="FREE two-way JSON format, diff and merge tool. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser" />
+    <meta name="keywords" content="Online JSON Compare - Format and find differences between two JSON files" />
+    <link rel="canonical" href="https://4U5yLYe7Hryx.com/json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+    <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
+    <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <link rel="stylesheet" type="text/css" href="./css/codemirror.css" />
+    <link rel="stylesheet" type="text/css" href="./css/merge.css" />
+    <script src="./js/codemirror.js"></script>
+    <script src="./js/diff_match_patch.js"></script>
+    <script src="./js/merge.js"></script>
+    <script src="./js/javascript.js"></script>
+    <!--Analytics-->
+    <style>
+        #view {
+            width: 90%;
+        }
+
+        #container:fullscreen #view {
+            width: 100%;
+        }
+
+        #container:fullscreen .CodeMirror-merge,
+        #container:fullscreen .CodeMirror-merge .CodeMirror {
+            height: 100vh;
+        }
+
+        #viewHeader {
+            padding: 10px;
+            margin: 8px auto 16px auto;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .toggle-button {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .toggle-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .CodeMirror-merge-collapsed-line {
+            display: none !important;
+        }
+
+        .CodeMirror-merge-spacer {
+            display: none;
+        }
+
+        @media (max-width: 1250px) {
+            #fs {
+                visibility: hidden;
+            }
+
+            #viewHeader {
+                margin: auto;
+                text-align: center;
+                height: 40px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <article id="ArticlePage" class="contentPage cover">
+        <div class="intro" style="max-width: 47.625rem; margin: 0 auto; text-align: center;">
+            <br />
+            <br />
+            <div class="controls">
+                <button id="btn-format" class="write1">Format &amp; Compare JSON</button>
+                <button id="btn-diff-only" class="toggle-button">Show Differences Only</button>
+            </div>
+            <br />
+            <br />
+        </div>
+    </article>
+    <div id="container" style="background-color: white;">
+        <div id="view" style="padding: 10px; margin: auto;"></div>
+    </div>
+    <script type="text/javascript">
+        var leftContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json29.org/?8"}`;
+        var rightContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json5.org/?8"}`;
+
+        var target = document.getElementById("view");
+        var mv = CodeMirror.MergeView(target, {
+            value: leftContent,
+            origLeft: null,
+            orig: rightContent,
+            lineNumbers: true,
+            mode: "application/json",
+            showDifferences: true,
+            connect: "align",
+            collapseIdentical: true,
+            revertButtons: true,
+            allowEditingOriginals: true,
+            chunkClassLocation: ["background", "wrap", "gutter"],
+        });
+
+        document.getElementById("btn-format").onclick = function () {
+            mv.editor().setValue(JSON.stringify(JSON.parse(mv.editor().getValue()), undefined, 3));
+            mv.rightOriginal().setValue(JSON.stringify(JSON.parse(mv.rightOriginal().getValue()), undefined, 3));
+        };
+
+        // Handle diff-only toggle
+        var diffOnlyBtn = document.getElementById("btn-diff-only");
+        var diffOnly = false;
+
+        function updateDiffOnlyView() {
+            // Force a recompute of the diff
+            mv.right.forceUpdate();
+
+            var editor = mv.editor();
+            var right = mv.rightOriginal();
+            var chunks = mv.rightChunks();
+
+            if (diffOnly) {
+                // Create a map of lines that contain differences
+                var diffLines = new Set();
+                if (chunks) {
+                    chunks.forEach(function(chunk) {
+                        // Add lines from the chunk and a line before/after for context
+                        for (var i = Math.max(0, chunk.editFrom - 1); i < Math.min(editor.lineCount(), chunk.editTo + 1); i++) {
+                            diffLines.add(i);
+                        }
+                        for (var i = Math.max(0, chunk.origFrom - 1); i < Math.min(right.lineCount(), chunk.origTo + 1); i++) {
+                            diffLines.add(i);
+                        }
+                    });
+                }
+
+                // Hide lines that don't contain differences
+                editor.operation(() => {
+                    for (var i = 0; i < editor.lineCount(); i++) {
+                        if (!diffLines.has(i)) {
+                            editor.addLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
+                        }
+                    }
+                });
+
+                right.operation(() => {
+                    for (var i = 0; i < right.lineCount(); i++) {
+                        if (!diffLines.has(i)) {
+                            right.addLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
+                        }
+                    }
+                });
+            } else {
+                // Show all lines
+                editor.operation(() => {
+                    for (var i = 0; i < editor.lineCount(); i++) {
+                        editor.removeLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
+                    }
+                });
+
+                right.operation(() => {
+                    for (var i = 0; i < right.lineCount(); i++) {
+                        right.removeLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
+                    }
+                });
+            }
+
+            // Refresh to ensure proper rendering
+            editor.refresh();
+            right.refresh();
+        }
+
+        diffOnlyBtn.onclick = function() {
+            diffOnly = !diffOnly;
+            this.classList.toggle('active');
+            updateDiffOnlyView();
+        };
+
+        // When user paste json on view, it should auto format everytime
+        mv.editor().on("change", function (instance, changeObj) {
+            if (changeObj.origin === "paste") {
+                try {
+                    var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
+                    instance.setValue(formatted);
+                    if (diffOnly) {
+                        updateDiffOnlyView();
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        });
+        mv.rightOriginal().on("change", function (instance, changeObj) {
+            if (changeObj.origin === "paste") {
+                try {
+                    var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
+                    instance.setValue(formatted);
+                    if (diffOnly) {
+                        updateDiffOnlyView();
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        });
+    </script>
+    <script src="./js/button-events.js"></script>
+</body>
+
+</html>
