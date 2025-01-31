@@ -23,8 +23,39 @@
     <script src="./js/javascript.js"></script>
     <!--Analytics-->
     <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        .contentPage {
+            max-width: 100% !important;
+            padding: 0 !important;
+        }
+
+        #container {
+            background-color: white;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
         #view {
-            width: 90%;
+            width: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        .CodeMirror-merge {
+            width: 100%;
+        }
+
+        .CodeMirror-merge-pane {
+            width: 47%;
+        }
+
+        .CodeMirror-merge-gap {
+            width: 6%;
         }
 
         #container:fullscreen #view {
@@ -86,19 +117,15 @@
 
 <body>
     <article id="ArticlePage" class="contentPage cover">
-        <div class="intro" style="max-width: 47.625rem; margin: 0 auto; text-align: center;">
-            <br />
-            <br />
+        <div class="intro" style="max-width: 100%; margin: 0; padding: 10px 0; text-align: center; background-color: #f8f9fa;">
             <div class="controls">
                 <button id="btn-format" class="write1">Format &amp; Compare JSON</button>
                 <button id="btn-diff-only" class="toggle-button">Show Differences Only</button>
             </div>
-            <br />
-            <br />
         </div>
     </article>
-    <div id="container" style="background-color: white;">
-        <div id="view" style="padding: 10px; margin: auto;"></div>
+    <div id="container">
+        <div id="view"></div>
     </div>
     <script type="text/javascript">
         var leftContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json29.org/?8"}`;
@@ -124,12 +151,10 @@
             mv.rightOriginal().setValue(JSON.stringify(JSON.parse(mv.rightOriginal().getValue()), undefined, 3));
         };
 
-        // Handle diff-only toggle
         var diffOnlyBtn = document.getElementById("btn-diff-only");
         var diffOnly = false;
 
         function updateDiffOnlyView() {
-            // Force a recompute of the diff
             mv.right.forceUpdate();
 
             var editor = mv.editor();
@@ -137,11 +162,9 @@
             var chunks = mv.rightChunks();
 
             if (diffOnly) {
-                // Create a map of lines that contain differences
                 var diffLines = new Set();
                 if (chunks) {
                     chunks.forEach(function(chunk) {
-                        // Add lines from the chunk and a line before/after for context
                         for (var i = Math.max(0, chunk.editFrom - 1); i < Math.min(editor.lineCount(), chunk.editTo + 1); i++) {
                             diffLines.add(i);
                         }
@@ -151,7 +174,6 @@
                     });
                 }
 
-                // Hide lines that don't contain differences
                 editor.operation(() => {
                     for (var i = 0; i < editor.lineCount(); i++) {
                         if (!diffLines.has(i)) {
@@ -168,7 +190,6 @@
                     }
                 });
             } else {
-                // Show all lines
                 editor.operation(() => {
                     for (var i = 0; i < editor.lineCount(); i++) {
                         editor.removeLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
@@ -182,7 +203,6 @@
                 });
             }
 
-            // Refresh to ensure proper rendering
             editor.refresh();
             right.refresh();
         }
@@ -193,7 +213,6 @@
             updateDiffOnlyView();
         };
 
-        // When user paste json on view, it should auto format everytime
         mv.editor().on("change", function (instance, changeObj) {
             if (changeObj.origin === "paste") {
                 try {
@@ -207,6 +226,7 @@
                 }
             }
         });
+        
         mv.rightOriginal().on("change", function (instance, changeObj) {
             if (changeObj.origin === "paste") {
                 try {
