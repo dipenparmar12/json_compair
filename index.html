@@ -21,7 +21,6 @@
     <script src="./js/diff_match_patch.js"></script>
     <script src="./js/merge.js"></script>
     <script src="./js/javascript.js"></script>
-    <!--Analytics-->
     <style>
         body {
             margin: 0;
@@ -78,6 +77,7 @@
             justify-content: center;
             gap: 10px;
             margin: 10px 0;
+            flex-wrap: wrap;
         }
 
         .toggle-button {
@@ -86,6 +86,8 @@
             padding: 5px 10px;
             cursor: pointer;
             border-radius: 4px;
+            margin: 0 5px;
+            font-size: 14px;
         }
 
         .toggle-button.active {
@@ -101,6 +103,10 @@
             display: none;
         }
 
+        select.toggle-button {
+            height: 30px;
+        }
+
         @media (max-width: 1250px) {
             #fs {
                 visibility: hidden;
@@ -111,6 +117,11 @@
                 text-align: center;
                 height: 40px;
             }
+
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
         }
     </style>
 </head>
@@ -119,60 +130,218 @@
     <article id="ArticlePage" class="contentPage cover">
         <div class="intro" style="max-width: 100%; margin: 0; padding: 10px 0; text-align: center; background-color: #f8f9fa;">
             <div class="controls">
-            <button id="btn-format" class="write1">Format &amp; Compare JSON</button>
+                <button id="btn-format" class="toggle-button">Format &amp; Compare JSON</button>
+                <!-- Additional controls will be added by JavaScript -->
             </div>
         </div>
     </article>
     <div id="container">
         <div id="view"></div>
     </div>
+
     <script type="text/javascript">
-        var leftContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json29.org/?8"}`;
-        var rightContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json5.org/?8"}`;
+        // Storage Manager Implementation
+        const StorageManager = {
+            STORAGE_KEY: 'json_compare_data',
+            EXPIRY_DAYS: 30,
 
-        var target = document.getElementById("view");
-        var mv = CodeMirror.MergeView(target, {
-            value: leftContent,
-            origLeft: null,
-            orig: rightContent,
-            lineNumbers: true,
-            mode: "application/json",
-            showDifferences: true,
-            connect: "align",
-            collapseIdentical: false,
-            revertButtons: true,
-            allowEditingOriginals: true,
-            chunkClassLocation: ["background", "wrap", "gutter"],
-        });
+            saveToStorage: function(leftContent, rightContent) {
+                const data = {
+                    left: leftContent,
+                    right: rightContent,
+                    timestamp: new Date().getTime()
+                };
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+            },
 
-        document.getElementById("btn-format").onclick = function () {
-            mv.editor().setValue(JSON.stringify(JSON.parse(mv.editor().getValue()), undefined, 3));
-            mv.rightOriginal().setValue(JSON.stringify(JSON.parse(mv.rightOriginal().getValue()), undefined, 3));
+            loadFromStorage: function() {
+                const storedData = localStorage.getItem(this.STORAGE_KEY);
+                if (!storedData) return null;
+
+                const data = JSON.parse(storedData);
+                const now = new Date().getTime();
+                const age = now - data.timestamp;
+                const expiryTime = this.EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+
+                if (age > expiryTime) {
+                    localStorage.removeItem(this.STORAGE_KEY);
+                    return null;
+                }
+
+                return {
+                    left: data.left,
+                    right: data.right
+                };
+            }
         };
 
-        // When user paste json on view, it should auto format everytime
-        mv.editor().on("change", function (instance, changeObj) {
-            if (changeObj.origin === "paste") {
-                try {
-                    var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
-                    instance.setValue(formatted);
-                } catch (e) {
-                    // Ignore parse errors
-                }
+        // Default templates
+        const DefaultTemplates = {
+            simple: {
+                left: JSON.stringify({
+                    name: "John",
+                    age: 30,
+                    city: "New York"
+                }, null, 3),
+                right: JSON.stringify({
+                    name: "John",
+                    age: 31,
+                    city: "Boston"
+                }, null, 3)
+            },
+            complex: {
+                left: JSON.stringify({
+                    users: [{
+                        id: 1,
+                        name: "Alice",
+                        active: true
+                    }, {
+                        id: 2,
+                        name: "Bob",
+                        active: false
+                    }],
+                    settings: {
+                        theme: "dark",
+                        notifications: true
+                    }
+                }, null, 3),
+                right: JSON.stringify({
+                    users: [{
+                        id: 1,
+                        name: "Alice",
+                        active: false
+                    }, {
+                        id: 3,
+                        name: "Charlie",
+                        active: true
+                    }],
+                    settings: {
+                        theme: "light",
+                        notifications: true
+                    }
+                }, null, 3)
             }
-        });
-        mv.rightOriginal().on("change", function (instance, changeObj) {
-            if (changeObj.origin === "paste") {
-                try {
-                    var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
-                    instance.setValue(formatted);
-                } catch (e) {
-                    // Ignore parse errors
-                }
+        };
+
+        // Initialize enhanced merge view
+        function initializeMergeView(target) {
+            // Load saved content or use defaults
+            const savedContent = StorageManager.loadFromStorage();
+            const initialContent = savedContent || DefaultTemplates.simple;
+
+            // Create merge view with enhanced options
+            const mv = CodeMirror.MergeView(target, {
+                value: initialContent.left,
+                origLeft: null,
+                orig: initialContent.right,
+                lineNumbers: true,
+                mode: "application/json",
+                showDifferences: true,
+                connect: "align",
+                collapseIdentical: false,
+                revertButtons: true,
+                allowEditingOriginals: true,
+                highlightDifferences: true,
+                lineWrapping: true,
+                styleActiveLine: true,
+                chunkClassLocation: ["background", "wrap", "gutter"]
+            });
+
+            // Add scroll synchronization with toggle
+            let scrollLocked = true;
+            const leftEditor = mv.editor();
+            const rightEditor = mv.rightOriginal();
+
+            function syncScroll(sourceEditor, targetEditor) {
+                if (!scrollLocked) return;
+                const info = sourceEditor.getScrollInfo();
+                targetEditor.scrollTo(info.left, info.top);
             }
+
+            leftEditor.on("scroll", () => syncScroll(leftEditor, rightEditor));
+            rightEditor.on("scroll", () => syncScroll(rightEditor, leftEditor));
+
+            // Add UI controls
+            const controls = document.querySelector('.controls');
+
+            // Add scroll lock toggle
+            const scrollLockBtn = document.createElement('button');
+            scrollLockBtn.className = 'toggle-button active';
+            scrollLockBtn.textContent = 'Scroll Lock';
+            scrollLockBtn.onclick = () => {
+                scrollLocked = !scrollLocked;
+                scrollLockBtn.classList.toggle('active');
+            };
+            controls.appendChild(scrollLockBtn);
+
+            // Add template selector
+            const templateSelect = document.createElement('select');
+            templateSelect.className = 'toggle-button';
+            templateSelect.innerHTML = `
+                <option value="simple">Simple Template</option>
+                <option value="complex">Complex Template</option>
+            `;
+            templateSelect.onchange = () => {
+                const template = DefaultTemplates[templateSelect.value];
+                leftEditor.setValue(template.left);
+                rightEditor.setValue(template.right);
+            };
+            controls.appendChild(templateSelect);
+
+            // Auto-save content changes
+            const saveContent = () => {
+                StorageManager.saveToStorage(
+                    leftEditor.getValue(),
+                    rightEditor.getValue()
+                );
+            };
+
+            leftEditor.on("change", (instance, changeObj) => {
+                if (changeObj.origin === "paste") {
+                    try {
+                        var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
+                        instance.setValue(formatted);
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
+                }
+                saveContent();
+            });
+
+            rightEditor.on("change", (instance, changeObj) => {
+                if (changeObj.origin === "paste") {
+                    try {
+                        var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
+                        instance.setValue(formatted);
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
+                }
+                saveContent();
+            });
+
+            // Enhance format button
+            document.getElementById("btn-format").onclick = function() {
+                try {
+                    leftEditor.setValue(JSON.stringify(JSON.parse(leftEditor.getValue()), null, 3));
+                    rightEditor.setValue(JSON.stringify(JSON.parse(rightEditor.getValue()), null, 3));
+                    mv.right.operation(() => {
+                        mv.alignChunks();
+                    });
+                } catch (e) {
+                    // alert("Invalid JSON detected. Please check your input.");
+                }
+            };
+
+            return mv;
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            const target = document.getElementById("view");
+            const mv = initializeMergeView(target);
         });
     </script>
-    <script src="./js/button-events.js"></script>
 </body>
 
 </html>
