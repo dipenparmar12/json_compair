@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="theme-color" content="#08C988" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Online Text Compare" />
+    <title>Compare JSON files online</title>
+    <meta name="Description"
+        content="FREE two-way JSON format, diff and merge tool. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser" />
+    <meta name="keywords" content="Online JSON Compare - Format and find differences between two JSON files" />
+    <link rel="canonical" href="https://4U5yLYe7Hryx.com/json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+    <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
+    <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <link rel="stylesheet" type="text/css" href="./css/codemirror.css" />
+    <link rel="stylesheet" type="text/css" href="./css/merge.css" />
+    <script src="./js/codemirror.js"></script>
+    <script src="./js/diff_match_patch.js"></script>
+    <script src="./js/merge.js"></script>
+    <script src="./js/javascript.js"></script>
+    <!--Analytics-->
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        .contentPage {
+            max-width: 100% !important;
+            padding: 0 !important;
+        }
+
+        #container {
+            background-color: white;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #view {
+            width: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        .CodeMirror-merge {
+            width: 100%;
+        }
+
+        .CodeMirror-merge-pane {
+            width: 47%;
+        }
+
+        .CodeMirror-merge-gap {
+            width: 6%;
+        }
+
+        #container:fullscreen #view {
+            width: 100%;
+        }
+
+        #container:fullscreen .CodeMirror-merge,
+        #container:fullscreen .CodeMirror-merge .CodeMirror {
+            height: 100vh;
+        }
+
+        #viewHeader {
+            padding: 10px;
+            margin: 8px auto 16px auto;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .toggle-button {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .toggle-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .CodeMirror-merge-collapsed-line {
+            display: none !important;
+        }
+
+        .CodeMirror-merge-spacer {
+            display: none;
+        }
+
+        @media (max-width: 1250px) {
+            #fs {
+                visibility: hidden;
+            }
+
+            #viewHeader {
+                margin: auto;
+                text-align: center;
+                height: 40px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <article id="ArticlePage" class="contentPage cover">
+        <div class="intro" style="max-width: 100%; margin: 0; padding: 10px 0; text-align: center; background-color: #f8f9fa;">
+            <div class="controls">
+                <button id="btn-format" class="write1">Format & Compare JSON</button>
+                <button id="btn-clear" class="write1">Clear Storage</button>
+            </div>
+        </div>
+        </div>
+    </article>
+    <div id="container">
+        <div id="view"></div>
+    </div>
+    <script src="./js/button-events.js"></script>
+    <script type="text/javascript">
+        const DEFAULT_LEFT = {
+            "message": "Put some JSON in the text box.",
+            "error": null,
+            "year": 2021,
+            "ios": false,
+            "space": "🪐🚀✨",
+            "fancy": "https://json29.org/?8"
+        };
+
+        const DEFAULT_RIGHT = {
+            "message": "Put some JSON in the text box.",
+            "error": null,
+            "year": 2021,
+            "ios": false,
+            "space": "🪐🚀✨",
+            "fancy": "https://json5.org/?8"
+        };
+
+        // Function to save content with expiration
+        function saveToLocalStorage() {
+            const expirationDate = new Date();
+            expirationDate.setDate(expirationDate.getDate() + 30); // 30 days from now
+
+            const storageData = {
+                leftContent: mv.editor().getValue(),
+                rightContent: mv.rightOriginal().getValue(),
+                expiration: expirationDate.getTime()
+            };
+
+            localStorage.setItem('jsonCompareData', JSON.stringify(storageData));
+        }
+
+        // Function to load content from localStorage
+        function loadFromLocalStorage() {
+            const savedData = localStorage.getItem('jsonCompareData');
+            
+            if (savedData) {
+                const parsedData = JSON.parse(savedData);
+                const now = new Date().getTime();
+
+                // Check if data has expired
+                if (now > parsedData.expiration) {
+                    localStorage.removeItem('jsonCompareData');
+                    return {
+                        left: JSON.stringify(DEFAULT_LEFT, null, 3),
+                        right: JSON.stringify(DEFAULT_RIGHT, null, 3)
+                    };
+                }
+
+                return {
+                    left: parsedData.leftContent,
+                    right: parsedData.rightContent
+                };
+            }
+
+            // Return defaults if no saved data
+            return {
+                left: JSON.stringify(DEFAULT_LEFT, null, 3),
+                right: JSON.stringify(DEFAULT_RIGHT, null, 3)
+            };
+        }
+    </script>
+</head>
+<body>
+    <article id="ArticlePage" class="contentPage cover">
+        <div class="intro" style="max-width: 100%; margin: 0; padding: 10px 0; text-align: center; background-color: #f8f9fa;">
+            <div class="controls">
+                <button id="btn-format" class="write1">Format & Compare JSON</button>
+                <button id="btn-clear" class="write1">Reset to Default</button>
+            </div>
+        </div>
+    </article>
+    <div id="container">
+        <div id="view"></div>
+    </div>
+    <script type="text/javascript">
+        // Load saved content
+        const savedContent = loadFromLocalStorage();
+        
+        var target = document.getElementById("view");
+        var mv = CodeMirror.MergeView(target, {
+            value: savedContent.left,
+            origLeft: null,
+            orig: savedContent.right,
+            lineNumbers: true,
+            mode: "application/json",
+            showDifferences: true,
+            connect: "align",
+            collapseIdentical: false,
+            revertButtons: true,
+            allowEditingOriginals: true,
+            chunkClassLocation: ["background", "wrap", "gutter"],
+        });
+
+        // Format button handler
+        document.getElementById("btn-format").onclick = function () {
+            try {
+                mv.editor().setValue(JSON.stringify(JSON.parse(mv.editor().getValue()), undefined, 3));
+                mv.rightOriginal().setValue(JSON.stringify(JSON.parse(mv.rightOriginal().getValue()), undefined, 3));
+                saveToLocalStorage();
+            } catch (e) {
+                console.error('JSON parsing error:', e);
+            }
+        };
+
+        // Reset to default button handler
+        document.getElementById("btn-clear").onclick = function () {
+            mv.editor().setValue(JSON.stringify(DEFAULT_LEFT, null, 3));
+            mv.rightOriginal().setValue(JSON.stringify(DEFAULT_RIGHT, null, 3));
+            saveToLocalStorage();
+        };
+
+        // Save on any content change with debouncing
+        let saveTimeout;
+        function debouncedSave() {
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(saveToLocalStorage, 1000); // Save 1 second after last change
+        }
+
+        mv.editor().on("change", function (instance, changeObj) {
+            if (changeObj.origin === "paste") {
+                try {
+                    var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
+                    instance.setValue(formatted);
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+            debouncedSave();
+        });
+
+        mv.rightOriginal().on("change", function (instance, changeObj) {
+            if (changeObj.origin === "paste") {
+                try {
+                    var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
+                    instance.setValue(formatted);
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+            debouncedSave();
+        });
+    </script>
+</body>
+
+</html>
