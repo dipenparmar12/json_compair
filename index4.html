@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="theme-color" content="#08C988" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Online Text Compare" />
+    <title>Compare JSON files online</title>
+    <meta name="Description"
+        content="FREE two-way JSON format, diff and merge tool. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser" />
+    <meta name="keywords" content="Online JSON Compare - Format and find differences between two JSON files" />
+    <link rel="canonical" href="https://4U5yLYe7Hryx.com/json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+    <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
+    <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <link rel="stylesheet" type="text/css" href="./css/codemirror.css" />
+    <link rel="stylesheet" type="text/css" href="./css/merge.css" />
+    <script src="./js/codemirror.js"></script>
+    <script src="./js/diff_match_patch.js"></script>
+    <script src="./js/merge.js"></script>
+    <script src="./js/javascript.js"></script>
+    <!--Analytics-->
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        .contentPage {
+            max-width: 100% !important;
+            padding: 0 !important;
+        }
+
+        #container {
+            background-color: white;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #view {
+            width: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        .CodeMirror-merge {
+            width: 100%;
+        }
+
+        .CodeMirror-merge-pane {
+            width: 47%;
+        }
+
+        .CodeMirror-merge-gap {
+            width: 6%;
+        }
+
+        #container:fullscreen #view {
+            width: 100%;
+        }
+
+        #container:fullscreen .CodeMirror-merge,
+        #container:fullscreen .CodeMirror-merge .CodeMirror {
+            height: 100vh;
+        }
+
+        #viewHeader {
+            padding: 10px;
+            margin: 8px auto 16px auto;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .toggle-button {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .toggle-button:hover {
+            background-color: #e0e0e0;
+        }
+
+        .toggle-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        /* Improved collapsed line styling */
+        .CodeMirror-merge-collapsed-line {
+            height: 0 !important;
+            opacity: 0;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        /* Collapsed section indicator */
+        .collapsed-section-indicator {
+            text-align: center;
+            color: #666;
+            background: #f5f5f5;
+            padding: 4px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 4px 0;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .collapsed-section-indicator:hover {
+            background: #e5e5e5;
+        }
+
+        /* Context menu styling */
+        .diff-context-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+            padding: 8px 0;
+            z-index: 1000;
+        }
+
+        .diff-context-menu-item {
+            padding: 4px 16px;
+            cursor: pointer;
+        }
+
+        .diff-context-menu-item:hover {
+            background-color: #f0f0f0;
+        }
+
+        /* Loading indicator */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 1250px) {
+            #fs {
+                visibility: hidden;
+            }
+
+            #viewHeader {
+                margin: auto;
+                text-align: center;
+                height: 40px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <article id="ArticlePage" class="contentPage cover">
+        <div class="intro" style="max-width: 100%; margin: 0; padding: 10px 0; text-align: center; background-color: #f8f9fa;">
+            <div class="controls">
+                <button id="btn-format" class="write1">Format &amp; Compare JSON</button>
+                <button id="btn-diff-only" class="toggle-button">Show Differences Only</button>
+                <button id="btn-context-lines" class="toggle-button">±3 Context Lines</button>
+            </div>
+        </div>
+    </article>
+    <div id="container">
+        <div id="view"></div>
+    </div>
+    <script type="text/javascript">
+        var leftContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json29.org/?8"}`;
+        var rightContent = `{"message":"Put some JSON in the text box.","error":null,"year":2021,"ios":false,"space":"🪐🚀✨","fancy":"https://json5.org/?8"}`;
+
+        var target = document.getElementById("view");
+        var mv = CodeMirror.MergeView(target, {
+            value: leftContent,
+            origLeft: null,
+            orig: rightContent,
+            lineNumbers: true,
+            mode: "application/json",
+            showDifferences: true,
+            connect: "align",
+            collapseIdentical: true,
+            revertButtons: true,
+            allowEditingOriginals: true,
+            chunkClassLocation: ["background", "wrap", "gutter"],
+        });
+
+        // Global state
+        var diffOnly = false;
+        var contextLines = 3;
+        var loadingTimeout;
+
+        function showLoading() {
+            const overlay = document.createElement('div');
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = '<div class="spinner"></div>';
+            document.getElementById('container').appendChild(overlay);
+            return overlay;
+        }
+
+        function hideLoading(overlay) {
+            if (overlay && overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
+        }
+
+        function createCollapsedIndicator(count) {
+            const indicator = document.createElement('div');
+            indicator.className = 'collapsed-section-indicator';
+            indicator.textContent = `${count} identical lines collapsed`;
+            return indicator;
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function getDiffLines(editor, chunks) {
+            const diffLines = new Set();
+            if (chunks) {
+                chunks.forEach(chunk => {
+                    // Add diff lines and context
+                    for (let i = Math.max(0, chunk.editFrom - contextLines); 
+                         i < Math.min(editor.lineCount(), chunk.editTo + contextLines); i++) {
+                        diffLines.add(i);
+                    }
+                });
+            }
+            return diffLines;
+        }
+
+        const updateDiffOnlyView = debounce(function() {
+            const loadingOverlay = showLoading();
+            
+            // Use requestAnimationFrame for smoother UI updates
+            requestAnimationFrame(() => {
+                const editor = mv.editor();
+                const right = mv.rightOriginal();
+                const chunks = mv.rightChunks();
+
+                if (diffOnly) {
+                    const leftDiffLines = getDiffLines(editor, chunks);
+                    const rightDiffLines = getDiffLines(right, chunks);
+
+                    // Handle left editor
+                    editor.operation(() => {
+                        let collapsedCount = 0;
+                        for (let i = 0; i < editor.lineCount(); i++) {
+                            if (!leftDiffLines.has(i)) {
+                                editor.addLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
+                                collapsedCount++;
+                            } else if (collapsedCount > 0) {
+                                const widget = createCollapsedIndicator(collapsedCount);
+                                editor.addLineWidget(i - 1, widget);
+                                collapsedCount = 0;
+                            }
+                        }
+                    });
+
+                    // Handle right editor
+                    right.operation(() => {
+                        let collapsedCount = 0;
+                        for (let i = 0; i < right.lineCount(); i++) {
+                            if (!rightDiffLines.has(i)) {
+                                right.addLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
+                                collapsedCount++;
+                            } else if (collapsedCount > 0) {
+                                const widget = createCollapsedIndicator(collapsedCount);
+                                right.addLineWidget(i - 1, widget);
+                                collapsedCount = 0;
+                            }
+                        }
+                    });
+                } else {
+                    // Show all lines
+                    editor.operation(() => {
+                        for (let i = 0; i < editor.lineCount(); i++) {
+                            editor.removeLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
+                        }
+                        // Clear widgets
+                        editor.clearGutter();
+                    });
+
+                    right.operation(() => {
+                        for (let i = 0; i < right.lineCount(); i++) {
+                            right.removeLineClass(i, 'wrap', 'CodeMirror-merge-collapsed-line');
+                        }
+                        right.clearGutter();
+                    });
+                }
+
+                // Refresh the view
+                editor.refresh();
+                right.refresh();
+                
+                hideLoading(loadingOverlay);
+            });
+        }, 150);
+
+        // Event Listeners
+        document.getElementById("btn-format").onclick = function() {
+            try {
+                mv.editor().setValue(JSON.stringify(JSON.parse(mv.editor().getValue()), undefined, 3));
+                mv.rightOriginal().setValue(JSON.stringify(JSON.parse(mv.rightOriginal().getValue()), undefined, 3));
+                updateDiffOnlyView();
+            } catch (e) {
+                alert("Invalid JSON format");
+            }
+        };
+
+        document.getElementById("btn-diff-only").onclick = function() {
+            diffOnly = !diffOnly;
+            this.classList.toggle('active');
+            updateDiffOnlyView();
+        };
+
+        document.getElementById("btn-context-lines").onclick = function() {
+            contextLines = contextLines === 3 ? 0 : 3;
+            this.textContent = contextLines === 0 ? "No Context" : `±${contextLines} Context Lines`;
+            this.classList.toggle('active');
+            if (diffOnly) {
+                updateDiffOnlyView();
+            }
+        };
+
+        // Handle paste events
+        function handlePaste(instance) {
+            return function(cm, e) {
+                if (e.clipboardData) {
+                    e.preventDefault();
+                    const text = e.clipboardData.getData('text/plain');
+                    try {
+                        const formatted = JSON.stringify(JSON.parse(text), null, 3);
+                        cm.replaceSelection(formatted);
+                        if (diffOnly) {
+                            updateDiffOnlyView();
+                        }
+                    } catch (err) {
+                        cm.replaceSelection(text);
+                    }
+                }
+            };
+        }
+
+        mv.editor().on("paste", handlePaste("left"));
+        mv.rightOriginal().on("paste", handlePaste("right"));
+
+        // Initialize the view
+        updateDiffOnlyView();
+    </script>
+    <script src="./js/button-events.js"></script>
+</body>
+
+</html>
