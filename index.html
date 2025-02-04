@@ -107,6 +107,13 @@
             height: 30px;
         }
 
+        #diff-status {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+
         @media (max-width: 1250px) {
             #fs {
                 visibility: hidden;
@@ -137,6 +144,7 @@
     </article>
     <div id="container">
         <div id="view"></div>
+        <div id="diff-status">Found 0 differences</div>
     </div>
 
     <script type="text/javascript">
@@ -306,6 +314,7 @@
                     }
                 }
                 saveContent();
+                updateDiffStatus(mv);
             });
 
             rightEditor.on("change", (instance, changeObj) => {
@@ -318,6 +327,7 @@
                     }
                 }
                 saveContent();
+                updateDiffStatus(mv);
             });
 
             // Enhance format button
@@ -331,9 +341,16 @@
                 } catch (e) {
                     // alert("Invalid JSON detected. Please check your input.");
                 }
+                updateDiffStatus(mv);
             };
 
+            updateDiffStatus(mv);
             return mv;
+        }
+
+        function updateDiffStatus(mv) {
+            const diffs = mv.rightChunks().length;
+            document.getElementById('diff-status').textContent = `Found ${diffs} differences`;
         }
 
         // Initialize when DOM is ready
