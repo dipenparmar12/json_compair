@@ -190,6 +190,28 @@
         .clear-btn-right {
             right: 10px;
         }
+
+        /* Paste button styling */
+        .paste-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            background-color: #f8f9fa;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        
+        .paste-btn:hover {
+            opacity: 1;
+            background-color: #e9ecef;
+        }
     </style>
 </head>
 
@@ -503,9 +525,50 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 return clearBtn;
             }
             
+            // Add paste buttons to each pane
+            function addPasteButton(editor, side) {
+                const wrapper = editor.getWrapperElement();
+                const pasteBtn = document.createElement('button');
+                pasteBtn.className = `paste-btn paste-btn-${side}`;
+                pasteBtn.textContent = 'Paste from Clipboard';
+                pasteBtn.style.display = 'none'; // Initially hidden
+                
+                pasteBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    try {
+                        // Request clipboard permission and get text
+                        const text = await navigator.clipboard.readText();
+                        if (text) {
+                            // Try to format if it's valid JSON
+                            try {
+                                const formatted = JSON.stringify(JSON.parse(text), null, 3);
+                                editor.setValue(formatted);
+                            } catch {
+                                // If not valid JSON, just paste as-is
+                                editor.setValue(text);
+                            }
+                            editor.focus();
+                            updateDiffStatus(mv);
+                        }
+                    } catch (err) {
+                        console.error("Clipboard permission denied:", err);
+                        alert("Please allow clipboard access to use the paste feature");
+                    }
+                };
+                
+                // Insert the button inside the editor's wrapper
+                wrapper.parentNode.appendChild(pasteBtn);
+                
+                return pasteBtn;
+            }
+            
             // Add clear buttons to both editors
             const leftClearBtn = addClearButton(leftEditor, 'left');
             const rightClearBtn = addClearButton(rightEditor, 'right');
+            
+            // Add paste buttons to both editors
+            const leftPasteBtn = addPasteButton(leftEditor, 'left');
+            const rightPasteBtn = addPasteButton(rightEditor, 'right');
             
             // Function to update button visibility based on content
             function updateClearButtonsVisibility() {
@@ -515,6 +578,10 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 // Individual clear buttons
                 leftClearBtn.style.display = leftContent ? 'block' : 'none';
                 rightClearBtn.style.display = rightContent ? 'block' : 'none';
+                
+                // Individual paste buttons - only show when content is empty
+                leftPasteBtn.style.display = leftContent ? 'none' : 'block';
+                rightPasteBtn.style.display = rightContent ? 'none' : 'block';
                 
                 // Clear All button - only visible if at least one editor has content
                 clearAllBtn.style.display = (leftContent || rightContent) ? 'inline-block' : 'none';
