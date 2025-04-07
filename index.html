@@ -559,6 +559,15 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
 
             // Enhance format button
             document.getElementById("btn-format").onclick = function() {
+                const leftContent = leftEditor.getValue().trim();
+                const rightContent = rightEditor.getValue().trim();
+                
+                // Only proceed if both sides have content
+                if (!leftContent || !rightContent) {
+                    document.getElementById('diff-status').textContent = "Please provide content in both panels";
+                    return;
+                }
+                
                 try {
                     leftEditor.setValue(JSON.stringify(JSON.parse(leftEditor.getValue()), null, 3));
                     rightEditor.setValue(JSON.stringify(JSON.parse(rightEditor.getValue()), null, 3));
@@ -573,12 +582,18 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
 
             updateDiffStatus(mv);
             return mv;
-
-
-            
         }
 
         function updateDiffStatus(mv) {
+            const leftContent = mv.editor().getValue().trim();
+            const rightContent = mv.rightOriginal().getValue().trim();
+            
+            // Only count differences if both sides have content
+            if (!leftContent || !rightContent) {
+                document.getElementById('diff-status').textContent = "Add JSON content to both sides to compare";
+                return;
+            }
+            
             const diffs = mv.rightChunks().length;
             document.getElementById('diff-status').textContent = `Found ${diffs} differences`;
         }
