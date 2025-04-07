@@ -492,6 +492,7 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 clearBtn.onclick = (e) => {
                     e.stopPropagation();
                     editor.setValue('');
+                    editor.focus(); // Focus the editor after clearing
                     updateDiffStatus(mv);
                 };
                 
