@@ -162,6 +162,34 @@
             border-bottom: 1px solid #eee;
             padding-bottom: 5px;
         }
+
+        /* Clear button styling */
+        .clear-btn {
+            position: absolute;
+            top: 5px;
+            z-index: 100;
+            background-color: #f8f9fa;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        
+        .clear-btn:hover {
+            opacity: 1;
+            background-color: #e9ecef;
+        }
+        
+        .clear-btn-left {
+            right: 10px;
+        }
+        
+        .clear-btn-right {
+            right: 10px;
+        }
     </style>
 </head>
 
@@ -441,13 +469,66 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 rightEditor.setValue(template.right);
             };
             controls.appendChild(templateSelect);
-
+            
+            // Add Clear All button
+            const clearAllBtn = document.createElement('button');
+            clearAllBtn.className = 'toggle-button';
+            clearAllBtn.textContent = 'Clear All';
+            clearAllBtn.style.display = 'none'; // Initially hidden
+            clearAllBtn.onclick = () => {
+                leftEditor.setValue('');
+                rightEditor.setValue('');
+                updateDiffStatus(mv);
+            };
+            controls.appendChild(clearAllBtn);
+            
+            // Add individual clear buttons to each pane
+            function addClearButton(editor, side) {
+                const wrapper = editor.getWrapperElement();
+                const clearBtn = document.createElement('button');
+                clearBtn.className = `clear-btn clear-btn-${side}`;
+                clearBtn.textContent = 'Clear';
+                clearBtn.style.display = 'none'; // Initially hidden
+                clearBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    editor.setValue('');
+                    updateDiffStatus(mv);
+                };
+                
+                // Insert the button inside the editor's wrapper
+                wrapper.parentNode.style.position = 'relative';
+                wrapper.parentNode.appendChild(clearBtn);
+                
+                return clearBtn;
+            }
+            
+            // Add clear buttons to both editors
+            const leftClearBtn = addClearButton(leftEditor, 'left');
+            const rightClearBtn = addClearButton(rightEditor, 'right');
+            
+            // Function to update button visibility based on content
+            function updateClearButtonsVisibility() {
+                const leftContent = leftEditor.getValue().trim();
+                const rightContent = rightEditor.getValue().trim();
+                
+                // Individual clear buttons
+                leftClearBtn.style.display = leftContent ? 'block' : 'none';
+                rightClearBtn.style.display = rightContent ? 'block' : 'none';
+                
+                // Clear All button - only visible if at least one editor has content
+                clearAllBtn.style.display = (leftContent || rightContent) ? 'inline-block' : 'none';
+            }
+            
+            // Set initial button visibility based on initial content
+            updateClearButtonsVisibility();
+            
             // Auto-save content changes
             const saveContent = () => {
                 StorageManager.saveToStorage(
                     leftEditor.getValue(),
                     rightEditor.getValue()
                 );
+                updateClearButtonsVisibility();
             };
 
             leftEditor.on("change", (instance, changeObj) => {
