@@ -19,7 +19,7 @@ A browser-based tool for comparing and formatting JSON data. This tool allows yo
 
 ## Usage
 
-Visit the [JSON Compare Tool](https://yourusername.github.io/json_compair/) to use the online version.
+Visit the [JSON Compare Tool](https://dipenparmar12.github.io/json_compair/) to use the online version.
 
 Or clone this repository and open `index.html` in your browser to run it locally.
 
