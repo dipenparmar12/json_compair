@@ -263,6 +263,39 @@
             }
         };
 
+        // Function to sort JSON object keys recursively
+        function sortJSONKeys(obj) {
+            // Return if not an object or if it's null or an array
+            if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+                return obj;
+            }
+            
+            // Create a new sorted object
+            const sortedObj = {};
+            const keys = Object.keys(obj).sort();
+            
+            for (const key of keys) {
+                // Recursively sort nested objects
+                sortedObj[key] = sortJSONKeys(obj[key]);
+            }
+            
+            return sortedObj;
+        }
+        
+        // Function to sort array items if they are objects
+        function sortJSONArray(arr) {
+            if (!Array.isArray(arr)) {
+                return arr;
+            }
+            
+            return arr.map(item => {
+                if (typeof item === 'object' && item !== null) {
+                    return sortJSONKeys(item);
+                }
+                return item;
+            });
+        }
+
         // Initialize enhanced merge view
         function initializeMergeView(target) {
             // Load saved content or use defaults
@@ -312,7 +345,7 @@
                 scrollLocked = !scrollLocked;
                 scrollLockBtn.classList.toggle('active');
             };
-            controls.appendChild(scrollLockBtn);
+            // controls.appendChild(scrollLockBtn);
 
             // Add Show Only Differences toggle
             const showDiffsBtn = document.createElement('button');
@@ -353,6 +386,47 @@
             }
         };
 controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
+
+            // Add Sort JSON Keys button
+            const sortKeysBtn = document.createElement('button');
+            sortKeysBtn.className = 'toggle-button';
+            sortKeysBtn.textContent = 'Sort JSON Keys';
+            sortKeysBtn.onclick = () => {
+                try {
+                    // Parse and sort left editor content
+                    let leftObj = JSON.parse(leftEditor.getValue());
+                    if (Array.isArray(leftObj)) {
+                        leftObj = sortJSONArray(leftObj);
+                    } else {
+                        leftObj = sortJSONKeys(leftObj);
+                    }
+                    leftEditor.setValue(JSON.stringify(leftObj, null, 3));
+                    
+                    // Parse and sort right editor content
+                    let rightObj = JSON.parse(rightEditor.getValue());
+                    if (Array.isArray(rightObj)) {
+                        rightObj = sortJSONArray(rightObj);
+                    } else {
+                        rightObj = sortJSONKeys(rightObj);
+                    }
+                    rightEditor.setValue(JSON.stringify(rightObj, null, 3));
+                    
+                    // Realign chunks after sorting - fix the error
+                    setTimeout(() => {
+                        if (mv.alignChunks) {
+                            mv.alignChunks();
+                        }
+                        updateDiffStatus(mv);
+                    }, 0);
+
+                } catch (e) {
+                    console.error("Failed to sort JSON:", e);
+                    alert("Failed to sort JSON. Please ensure both sides contain valid JSON.");
+                }
+            };
+            // Insert the sort button after the format button
+            const formatBtn = document.getElementById("btn-format");
+            controls.insertBefore(sortKeysBtn, formatBtn.nextSibling);
 
             // Add template selector
             const templateSelect = document.createElement('select');
