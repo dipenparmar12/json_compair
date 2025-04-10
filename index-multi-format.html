@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="theme-color" content="#08C988" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Online Text Compare" />
+    <title>Compare Files Online</title>
+    <meta name="Description"
+        content="FREE two-way format, diff and merge tool. Compare JSON, XML, HTML, CSS, JavaScript, and more. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser" />
+    <meta name="keywords" content="Online Text Compare - Format and find differences between files of various formats" />
+    <link rel="canonical" href="https://dipenparmar12.github.io/json_compair/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+    <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
+    <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <link rel="stylesheet" type="text/css" href="./css/codemirror.css" />
+    <link rel="stylesheet" type="text/css" href="./css/merge.css" />
+    <script src="./js/codemirror.js"></script>
+    <script src="./js/diff_match_patch.js"></script>
+    <script src="./js/merge.js"></script>
+    <script src="./js/javascript.js"></script>
+    <script src="./js/xml.js"></script>
+    <script src="./js/css.js"></script>
+    <script src="./js/htmlmixed.js"></script>
+    <script src="./js/yaml.js"></script>
+    <script src="./js/sql.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        .contentPage {
+            max-width: 100% !important;
+            padding: 0 !important;
+        }
+
+        #container {
+            background-color: white;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #view {
+            width: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        .CodeMirror-merge {
+            width: 100%;
+        }
+
+        .CodeMirror-merge-pane {
+            width: 47%;
+        }
+
+        .CodeMirror-merge-gap {
+            width: 6%;
+        }
+
+        #container:fullscreen #view {
+            width: 100%;
+        }
+
+        #container:fullscreen .CodeMirror-merge,
+        #container:fullscreen .CodeMirror-merge .CodeMirror {
+            height: 100vh;
+        }
+
+        #viewHeader {
+            padding: 10px;
+            margin: 8px auto 16px auto;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+
+        .toggle-button {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 0 5px;
+            font-size: 14px;
+        }
+
+        .toggle-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .CodeMirror-merge-collapsed-line {
+            display: none !important;
+        }
+
+        .CodeMirror-merge-spacer {
+            display: none;
+        }
+
+        select.toggle-button {
+            height: 30px;
+        }
+
+        #diff-status {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        @media (max-width: 1250px) {
+            #fs {
+                visibility: hidden;
+            }
+
+            #viewHeader {
+                margin: auto;
+                text-align: center;
+                height: 40px;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-line {
+            display: none;
+        }
+
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-r-chunk .CodeMirror-line,
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-l-chunk .CodeMirror-line {
+            display: block;
+            background-color: #f0f8ff;  /* Light blue background for better visibility */
+        }
+
+        /* Add some padding around diff chunks */
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-r-chunk,
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-l-chunk {
+            padding: 5px 0;
+            margin: 5px 0;
+            border-top: 2px solid #ddd;
+            border-bottom: 2px solid #ddd;
+        }
+
+        /* Add context lines before and after diffs */
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-r-chunk .CodeMirror-line:first-child,
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-l-chunk .CodeMirror-line:first-child {
+            border-top: 1px solid #eee;
+            padding-top: 5px;
+        }
+
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-r-chunk .CodeMirror-line:last-child,
+        .CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-l-chunk .CodeMirror-line:last-child {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+
+        /* Clear button styling */
+        .clear-btn {
+            position: absolute;
+            top: 5px;
+            z-index: 100;
+            background-color: #f8f9fa;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        
+        .clear-btn:hover {
+            opacity: 1;
+            background-color: #e9ecef;
+        }
+        
+        .clear-btn-left {
+            right: 10px;
+        }
+        
+        .clear-btn-right {
+            right: 10px;
+        }
+
+        /* Paste button styling */
+        .paste-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            background-color: #f8f9fa;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        
+        .paste-btn:hover {
+            opacity: 1;
+            background-color: #e9ecef;
+        }
+    </style>
+</head>
+
+<body>
+    <article id="ArticlePage" class="contentPage cover">
+        <div class="intro" style="max-width: 100%; margin: 0; padding: 10px 0; text-align: center; background-color: #f8f9fa;">
+            <div class="controls">
+                <select id="format-selector" class="toggle-button">
+                    <option value="application/json">JSON</option>
+                    <option value="application/xml">XML</option>
+                    <option value="text/html">HTML</option>
+                    <option value="text/css">CSS</option>
+                    <option value="text/javascript">JavaScript</option>
+                    <option value="text/x-yaml">YAML</option>
+                    <option value="text/x-sql">SQL</option>
+                    <option value="text/plain">Plain Text</option>
+                </select>
+                <button id="btn-format" class="toggle-button">Format &amp; Compare</button>
+                <!-- Additional controls will be added by JavaScript -->
+            </div>
+        </div>
+    </article>
+    <div id="container">
+        <div id="view"></div>
+        <div id="diff-status">Found 0 differences</div>
+    </div>
+
+    <script type="text/javascript">
+        // Storage Manager Implementation
+        const StorageManager = {
+            STORAGE_KEY: 'text_compare_data',
+            EXPIRY_DAYS: 30,
+
+            saveToStorage: function(leftContent, rightContent, format) {
+                const data = {
+                    left: leftContent,
+                    right: rightContent,
+                    format: format,
+                    timestamp: new Date().getTime()
+                };
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+            },
+
+            loadFromStorage: function() {
+                const storedData = localStorage.getItem(this.STORAGE_KEY);
+                if (!storedData) return null;
+
+                const data = JSON.parse(storedData);
+                const now = new Date().getTime();
+                const age = now - data.timestamp;
+                const expiryTime = this.EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+
+                if (age > expiryTime) {
+                    localStorage.removeItem(this.STORAGE_KEY);
+                    return null;
+                }
+
+                return {
+                    left: data.left,
+                    right: data.right,
+                    format: data.format || 'application/json'
+                };
+            }
+        };
+
+        // Default templates for different formats
+        const DefaultTemplates = {
+            'application/json': {
+                left: JSON.stringify({
+                    name: "John",
+                    age: 30,
+                    city: "New York"
+                }, null, 3),
+                right: JSON.stringify({
+                    name: "John",
+                    age: 31,
+                    city: "Boston"
+                }, null, 3)
+            },
+            'application/xml': {
+                left: `<root>
+    <person>
+        <name>John</name>
+        <age>30</age>
+        <city>New York</city>
+    </person>
+</root>`,
+                right: `<root>
+    <person>
+        <name>John</name>
+        <age>31</age>
+        <city>Boston</city>
+    </person>
+</root>`
+            },
+            'text/html': {
+                left: `<!DOCTYPE html>
+<html>
+<head>
+    <title>Sample Page</title>
+</head>
+<body>
+    <h1>Welcome to our site</h1>
+    <p>This is a paragraph.</p>
+</body>
+</html>`,
+                right: `<!DOCTYPE html>
+<html>
+<head>
+    <title>Sample Page</title>
+</head>
+<body>
+    <h1>Welcome to our website</h1>
+    <p>This is a sample paragraph.</p>
+    <footer>Copyright 2023</footer>
+</body>
+</html>`
+            },
+            'text/css': {
+                left: `.header {
+    background-color: blue;
+    color: white;
+    padding: 10px;
+}
+.content {
+    margin: 20px;
+}`,
+                right: `.header {
+    background-color: darkblue;
+    color: white;
+    padding: 15px;
+}
+.content {
+    margin: 25px;
+    font-size: 16px;
+}`
+            },
+            'text/javascript': {
+                left: `function calculateTotal(items) {
+    return items.reduce((total, item) => {
+        return total + item.price;
+    }, 0);
+}`,
+                right: `function calculateTotal(items) {
+    let total = 0;
+    for (const item of items) {
+        total += item.price * (1 - item.discount || 0);
+    }
+    return total;
+}`
+            },
+            'text/x-yaml': {
+                left: `user:
+  name: John Doe
+  age: 30
+  roles:
+    - admin
+    - editor`,
+                right: `user:
+  name: John Doe
+  age: 31
+  roles:
+    - admin
+  permissions:
+    - read
+    - write`
+            },
+            'text/x-sql': {
+                left: `SELECT 
+    users.name,
+    users.email,
+    orders.order_date
+FROM 
+    users
+JOIN 
+    orders ON users.id = orders.user_id
+WHERE 
+    orders.status = 'completed';`,
+                right: `SELECT 
+    users.name,
+    users.email,
+    orders.order_date,
+    products.name as product_name
+FROM 
+    users
+JOIN 
+    orders ON users.id = orders.user_id
+JOIN
+    order_items ON orders.id = order_items.order_id
+JOIN
+    products ON order_items.product_id = products.id
+WHERE 
+    orders.status = 'completed';`
+            },
+            'text/plain': {
+                left: `This is a sample text.
+It contains multiple lines.
+We can compare these lines with another text.`,
+                right: `This is a sample text.
+It has several lines.
+We can compare these lines with the original text.
+This is an additional line.`
+            }
+        };
+
+        // Format specific functions
+        const FormatHandlers = {
+            'application/json': {
+                format: function(text) {
+                    return JSON.stringify(JSON.parse(text), null, 3);
+                },
+                sort: function(obj) {
+                    return sortJSONKeys(obj);
+                },
+                validate: function(text) {
+                    JSON.parse(text); // Will throw if invalid
+                    return true;
+                }
+            },
+            'application/xml': {
+                format: function(text) {
+                    return formatXML(text);
+                },
+                validate: function(text) {
+                    // Simple validation - could be enhanced
+                    if (text.trim().startsWith('<') && text.trim().endsWith('>')) {
+                        return true;
+                    }
+                    throw new Error('Invalid XML');
+                }
+            },
+            'text/html': {
+                format: function(text) {
+                    return formatHTML(text);
+                },
+                validate: function(text) {
+                    // Simple validation
+                    if (text.toLowerCase().includes('<!doctype html>') || 
+                        text.toLowerCase().includes('<html')) {
+                        return true;
+                    }
+                    return true; // Be lenient with HTML fragments
+                }
+            }
+            // Other formats don't need special handling
+        };
+
+        // Helper function to format XML
+        function formatXML(xml) {
+            let formatted = '';
+            let indent = '';
+            const tab = '    '; // 4 spaces
+            xml.split(/>\s*</).forEach(function(node) {
+                if (node.match(/^\/\w/)) indent = indent.substring(tab.length); // Decrease indent
+                formatted += indent + '<' + node + '>\n';
+                if (node.match(/^<?\w[^>]*[^\/]$/)) indent += tab; // Increase indent
+            });
+            return formatted.substring(1, formatted.length-3);
+        }
+
+        // Helper function to format HTML
+        function formatHTML(html) {
+            // For simplicity, we're using the same formatter as XML
+            // In a production environment, you might want a more sophisticated HTML formatter
+            return formatXML(html);
+        }
+
+        // Function to sort JSON object keys recursively
+        function sortJSONKeys(obj) {
+            // Return if not an object or if it's null or an array
+            if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+                return obj;
+            }
+            
+            // Create a new sorted object
+            const sortedObj = {};
+            const keys = Object.keys(obj).sort();
+            
+            for (const key of keys) {
+                // Recursively sort nested objects
+                sortedObj[key] = sortJSONKeys(obj[key]);
+            }
+            
+            return sortedObj;
+        }
+        
+        // Function to sort array items if they are objects
+        function sortJSONArray(arr) {
+            if (!Array.isArray(arr)) {
+                return arr;
+            }
+            
+            return arr.map(item => {
+                if (typeof item === 'object' && item !== null) {
+                    return sortJSONKeys(item);
+                }
+                return item;
+            });
+        }
+
+        // Initialize enhanced merge view
+        function initializeMergeView(target) {
+            // Load saved content or use defaults
+            const savedContent = StorageManager.loadFromStorage();
+            const formatSelector = document.getElementById('format-selector');
+            const selectedFormat = savedContent?.format || formatSelector.value;
+            
+            // Set the format selector to the saved format
+            formatSelector.value = selectedFormat;
+            
+            const initialContent = savedContent || DefaultTemplates[selectedFormat];
+
+            // Create merge view with enhanced options
+            const mv = CodeMirror.MergeView(target, {
+                value: initialContent.left,
+                origLeft: null,
+                orig: initialContent.right,
+                lineNumbers: true,
+                mode: selectedFormat,
+                showDifferences: true,
+                connect: "align",
+                collapseIdentical: false,
+                revertButtons: true,
+                allowEditingOriginals: true,
+                highlightDifferences: true,
+                lineWrapping: true,
+                styleActiveLine: true,
+                chunkClassLocation: ["background", "wrap", "gutter"]
+            });
+
+            // Add scroll synchronization with toggle
+            let scrollLocked = true;
+            const leftEditor = mv.editor();
+            const rightEditor = mv.rightOriginal();
+
+            function syncScroll(sourceEditor, targetEditor) {
+                if (!scrollLocked) return;
+                const info = sourceEditor.getScrollInfo();
+                targetEditor.scrollTo(info.left, info.top);
+            }
+
+            leftEditor.on("scroll", () => syncScroll(leftEditor, rightEditor));
+            rightEditor.on("scroll", () => syncScroll(rightEditor, leftEditor));
+
+            // Add UI controls
+            const controls = document.querySelector('.controls');
+
+            // Format selector change handler
+            formatSelector.onchange = () => {
+                const newFormat = formatSelector.value;
+                const template = DefaultTemplates[newFormat];
+                
+                if (template) {
+                    // Only change content if editors are empty or user confirms
+                    const leftContent = leftEditor.getValue().trim();
+                    const rightContent = rightEditor.getValue().trim();
+                    
+                    if (!leftContent && !rightContent) {
+                        leftEditor.setValue(template.left);
+                        rightEditor.setValue(template.right);
+                    } else if (confirm('Change to template examples for this format?')) {
+                        leftEditor.setValue(template.left);
+                        rightEditor.setValue(template.right);
+                    }
+                }
+                
+                // Change the mode for both editors
+                leftEditor.setOption('mode', newFormat);
+                rightEditor.setOption('mode', newFormat);
+                
+                // Save the current format preference
+                saveContent();
+            };
+            
+            // Add scroll lock toggle
+            const scrollLockBtn = document.createElement('button');
+            scrollLockBtn.className = 'toggle-button active';
+            scrollLockBtn.textContent = 'Scroll Lock';
+            scrollLockBtn.onclick = () => {
+                scrollLocked = !scrollLocked;
+                scrollLockBtn.classList.toggle('active');
+            };
+            // controls.appendChild(scrollLockBtn);
+
+            // Add Show Only Differences toggle
+            const showDiffsBtn = document.createElement('button');
+            showDiffsBtn.className = 'toggle-button';
+            showDiffsBtn.textContent = 'Show Only Differences';
+            
+            showDiffsBtn.onclick = () => {
+            showDiffsBtn.classList.toggle('active');
+            const showOnlyDiffs = showDiffsBtn.classList.contains('active');
+            
+            const leftPane = leftEditor.getWrapperElement().parentNode;
+            const rightPane = rightEditor.getWrapperElement().parentNode;
+            
+            leftPane.classList.toggle('show-diffs-only', showOnlyDiffs);
+            rightPane.classList.toggle('show-diffs-only', showOnlyDiffs);
+            
+            // If showing diffs, ensure chunks are expanded
+            if (showOnlyDiffs) {
+                // Get all collapsed markers
+                const markers = leftEditor.getAllMarks();
+                markers.forEach(marker => {
+                    if (marker.collapsed) {
+                        marker.clear();
+                    }
+                });
+            }
+            
+            // Refresh both editors
+            leftEditor.refresh();
+            rightEditor.refresh();
+            
+            // Adjust viewport to show first diff if exists
+            if (showOnlyDiffs) {
+                const chunks = mv.rightChunks();
+                if (chunks && chunks.length > 0) {
+                    leftEditor.scrollIntoView({line: chunks[0].from, ch: 0}, 100);
+                }
+            }
+        };
+controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
+
+            // Modify Sort JSON Keys button to be visible only for JSON
+            const sortKeysBtn = document.createElement('button');
+            sortKeysBtn.className = 'toggle-button';
+            sortKeysBtn.textContent = 'Sort JSON Keys';
+            sortKeysBtn.style.display = selectedFormat === 'application/json' ? 'inline-block' : 'none';
+            sortKeysBtn.onclick = () => {
+                try {
+                    // Only works for JSON format
+                    if (formatSelector.value !== 'application/json') {
+                        alert('Sorting is only available for JSON content');
+                        return;
+                    }
+                    
+                    // Parse and sort left editor content
+                    let leftObj = JSON.parse(leftEditor.getValue());
+                    if (Array.isArray(leftObj)) {
+                        leftObj = sortJSONArray(leftObj);
+                    } else {
+                        leftObj = sortJSONKeys(leftObj);
+                    }
+                    leftEditor.setValue(JSON.stringify(leftObj, null, 3));
+                    
+                    // Parse and sort right editor content
+                    let rightObj = JSON.parse(rightEditor.getValue());
+                    if (Array.isArray(rightObj)) {
+                        rightObj = sortJSONArray(rightObj);
+                    } else {
+                        rightObj = sortJSONKeys(rightObj);
+                    }
+                    rightEditor.setValue(JSON.stringify(rightObj, null, 3));
+                    
+                    // Realign chunks after sorting - fix the error
+                    setTimeout(() => {
+                        if (mv.alignChunks) {
+                            mv.alignChunks();
+                        }
+                        updateDiffStatus(mv);
+                    }, 0);
+
+                } catch (e) {
+                    console.error("Failed to sort JSON:", e);
+                    alert("Failed to sort JSON. Please ensure both sides contain valid JSON.");
+                }
+            };
+            // Insert the sort button after the format button
+            const formatBtn = document.getElementById("btn-format");
+            controls.insertBefore(sortKeysBtn, formatBtn.nextSibling);
+
+            // Update format selector visibility handler
+            formatSelector.addEventListener('change', function() {
+                const isJson = this.value === 'application/json';
+                sortKeysBtn.style.display = isJson ? 'inline-block' : 'none';
+            });
+
+            // Add template selector
+            const templateSelect = document.createElement('select');
+            templateSelect.className = 'toggle-button';
+            templateSelect.innerHTML = `
+                <option value="simple">Simple Template</option>
+                <option value="complex">Complex Template</option>
+            `;
+            templateSelect.onchange = () => {
+                const currentFormat = formatSelector.value;
+                if (currentFormat === 'application/json') {
+                    const template = DefaultTemplates[currentFormat][templateSelect.value];
+                    leftEditor.setValue(template.left);
+                    rightEditor.setValue(template.right);
+                } else {
+                    alert('Templates are currently only available for JSON format');
+                }
+            };
+            controls.appendChild(templateSelect);
+            
+            // Add Clear All button
+            const clearAllBtn = document.createElement('button');
+            clearAllBtn.className = 'toggle-button';
+            clearAllBtn.textContent = 'Clear All';
+            clearAllBtn.style.display = 'none'; // Initially hidden
+            clearAllBtn.onclick = () => {
+                leftEditor.setValue('');
+                rightEditor.setValue('');
+                updateDiffStatus(mv);
+            };
+            controls.appendChild(clearAllBtn);
+            
+            // Add individual clear buttons to each pane
+            function addClearButton(editor, side) {
+                const wrapper = editor.getWrapperElement();
+                const clearBtn = document.createElement('button');
+                clearBtn.className = `clear-btn clear-btn-${side}`;
+                clearBtn.textContent = 'Clear';
+                clearBtn.style.display = 'none'; // Initially hidden
+                clearBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    editor.setValue('');
+                    editor.focus(); // Focus the editor after clearing
+                    updateDiffStatus(mv);
+                };
+                
+                // Insert the button inside the editor's wrapper
+                wrapper.parentNode.style.position = 'relative';
+                wrapper.parentNode.appendChild(clearBtn);
+                
+                return clearBtn;
+            }
+            
+            // Add paste buttons to each pane
+            function addPasteButton(editor, side) {
+                const wrapper = editor.getWrapperElement();
+                const pasteBtn = document.createElement('button');
+                pasteBtn.className = `paste-btn paste-btn-${side}`;
+                pasteBtn.textContent = 'Paste from Clipboard';
+                pasteBtn.style.display = 'none'; // Initially hidden
+                
+                pasteBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    try {
+                        // Request clipboard permission and get text
+                        const text = await navigator.clipboard.readText();
+                        if (text) {
+                            // Try to format if it's valid JSON
+                            try {
+                                const formatted = JSON.stringify(JSON.parse(text), null, 3);
+                                editor.setValue(formatted);
+                            } catch {
+                                // If not valid JSON, just paste as-is
+                                editor.setValue(text);
+                            }
+                            editor.focus();
+                            updateDiffStatus(mv);
+                        }
+                    } catch (err) {
+                        console.error("Clipboard permission denied:", err);
+                        alert("Please allow clipboard access to use the paste feature");
+                    }
+                };
+                
+                // Insert the button inside the editor's wrapper
+                wrapper.parentNode.appendChild(pasteBtn);
+                
+                return pasteBtn;
+            }
+            
+            // Add clear buttons to both editors
+            const leftClearBtn = addClearButton(leftEditor, 'left');
+            const rightClearBtn = addClearButton(rightEditor, 'right');
+            
+            // Add paste buttons to both editors
+            const leftPasteBtn = addPasteButton(leftEditor, 'left');
+            const rightPasteBtn = addPasteButton(rightEditor, 'right');
+            
+            // Function to update button visibility based on content
+            function updateClearButtonsVisibility() {
+                const leftContent = leftEditor.getValue().trim();
+                const rightContent = rightEditor.getValue().trim();
+                
+                // Individual clear buttons
+                leftClearBtn.style.display = leftContent ? 'block' : 'none';
+                rightClearBtn.style.display = rightContent ? 'block' : 'none';
+                
+                // Individual paste buttons - only show when content is empty
+                leftPasteBtn.style.display = leftContent ? 'none' : 'block';
+                rightPasteBtn.style.display = rightContent ? 'none' : 'block';
+                
+                // Clear All button - only visible if at least one editor has content
+                clearAllBtn.style.display = (leftContent || rightContent) ? 'inline-block' : 'none';
+            }
+            
+            // Set initial button visibility based on initial content
+            updateClearButtonsVisibility();
+            
+            // Auto-save content changes
+            const saveContent = () => {
+                StorageManager.saveToStorage(
+                    leftEditor.getValue(),
+                    rightEditor.getValue(),
+                    formatSelector.value
+                );
+                updateClearButtonsVisibility();
+            };
+
+            leftEditor.on("change", (instance, changeObj) => {
+                if (changeObj.origin === "paste") {
+                    try {
+                        const format = formatSelector.value;
+                        const handler = FormatHandlers[format];
+                        
+                        if (handler && handler.format) {
+                            const formatted = handler.format(instance.getValue());
+                            instance.setValue(formatted);
+                        }
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
+                }
+                saveContent();
+                updateDiffStatus(mv);
+            });
+
+            rightEditor.on("change", (instance, changeObj) => {
+                if (changeObj.origin === "paste") {
+                    try {
+                        const format = formatSelector.value;
+                        const handler = FormatHandlers[format];
+                        
+                        if (handler && handler.format) {
+                            const formatted = handler.format(instance.getValue());
+                            instance.setValue(formatted);
+                        }
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
+                }
+                saveContent();
+                updateDiffStatus(mv);
+            });
+
+            // Enhance format button
+            document.getElementById("btn-format").onclick = function() {
+                const leftContent = leftEditor.getValue().trim();
+                const rightContent = rightEditor.getValue().trim();
+                const currentFormat = formatSelector.value;
+                
+                // Only proceed if both sides have content
+                if (!leftContent || !rightContent) {
+                    document.getElementById('diff-status').textContent = "Please provide content in both panels";
+                    return;
+                }
+                
+                try {
+                    const handler = FormatHandlers[currentFormat];
+                    
+                    if (handler && handler.format) {
+                        // Use format-specific handler
+                        try {
+                            handler.validate(leftContent);
+                            handler.validate(rightContent);
+                            leftEditor.setValue(handler.format(leftContent));
+                            rightEditor.setValue(handler.format(rightContent));
+                        } catch (e) {
+                            alert(`Invalid ${currentFormat.split('/')[1].toUpperCase()} detected. Please check your input.`);
+                            return;
+                        }
+                    }
+                    
+                    // Align chunks after formatting
+                    mv.right.operation(() => {
+                        if (mv.alignChunks) {
+                            mv.alignChunks();
+                        }
+                    });
+                    
+                    updateDiffStatus(mv);
+                } catch (e) {
+                    console.error("Format error:", e);
+                }
+            };
+
+            updateDiffStatus(mv);
+            return mv;
+        }
+
+        function updateDiffStatus(mv) {
+            const leftContent = mv.editor().getValue().trim();
+            const rightContent = mv.rightOriginal().getValue().trim();
+            
+            // Only count differences if both sides have content
+            if (!leftContent || !rightContent) {
+                document.getElementById('diff-status').textContent = "Add JSON content to both sides to compare";
+                return;
+            }
+            
+            const diffs = mv.rightChunks().length;
+            document.getElementById('diff-status').textContent = `Found ${diffs} differences`;
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            const target = document.getElementById("view");
+            const mv = initializeMergeView(target);
+        });
+    </script>
+</body>
+
+</html>
