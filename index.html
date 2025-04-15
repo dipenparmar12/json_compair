@@ -194,17 +194,16 @@
         /* Paste button styling */
         .paste-btn {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            top: 5px;
+            right: 10px;
             z-index: 100;
             background-color: #f8f9fa;
             border: 1px solid #ccc;
             border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 14px;
+            padding: 3px 8px;
+            font-size: 12px;
             cursor: pointer;
-            opacity: 0.8;
+            opacity: 0.7;
             transition: opacity 0.2s;
         }
         
@@ -532,7 +531,13 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 pasteBtn.className = `paste-btn paste-btn-${side}`;
                 pasteBtn.textContent = 'Paste from Clipboard';
                 pasteBtn.style.display = 'none'; // Initially hidden
-                
+                // Position paste button exactly where clear button is
+                pasteBtn.style.top = '5px';
+                pasteBtn.style.left = 'unset';
+                pasteBtn.style.right = '10px';
+                pasteBtn.style.transform = 'none';
+                pasteBtn.style.padding = '3px 8px';
+                pasteBtn.style.fontSize = '12px';
                 pasteBtn.onclick = async (e) => {
                     e.stopPropagation();
                     try {
@@ -575,13 +580,21 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 const leftContent = leftEditor.getValue().trim();
                 const rightContent = rightEditor.getValue().trim();
                 
-                // Individual clear buttons
-                leftClearBtn.style.display = leftContent ? 'block' : 'none';
-                rightClearBtn.style.display = rightContent ? 'block' : 'none';
-                
-                // Individual paste buttons - only show when content is empty
-                leftPasteBtn.style.display = leftContent ? 'none' : 'block';
-                rightPasteBtn.style.display = rightContent ? 'none' : 'block';
+                // Individual clear/paste buttons
+                if (leftContent) {
+                    leftClearBtn.style.display = 'block';
+                    leftPasteBtn.style.display = 'none';
+                } else {
+                    leftClearBtn.style.display = 'none';
+                    leftPasteBtn.style.display = 'block';
+                }
+                if (rightContent) {
+                    rightClearBtn.style.display = 'block';
+                    rightPasteBtn.style.display = 'none';
+                } else {
+                    rightClearBtn.style.display = 'none';
+                    rightPasteBtn.style.display = 'block';
+                }
                 
                 // Clear All button - only visible if at least one editor has content
                 clearAllBtn.style.display = (leftContent || rightContent) ? 'inline-block' : 'none';
