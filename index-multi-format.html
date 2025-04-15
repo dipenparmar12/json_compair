@@ -7,10 +7,10 @@
     <meta property="og:locale" content="en_US" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Online Text Compare" />
-    <title>Compare JSON files online</title>
+    <title>Compare Files Online</title>
     <meta name="Description"
-        content="FREE two-way JSON format, diff and merge tool. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser" />
-    <meta name="keywords" content="Online JSON Compare - Format and find differences between two JSON files" />
+        content="FREE two-way format, diff and merge tool. Compare JSON, XML, HTML, CSS, JavaScript, and more. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser" />
+    <meta name="keywords" content="Online Text Compare - Format and find differences between files of various formats" />
     <link rel="canonical" href="https://dipenparmar12.github.io/json_compair/" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
     <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
@@ -21,6 +21,11 @@
     <script src="./js/diff_match_patch.js"></script>
     <script src="./js/merge.js"></script>
     <script src="./js/javascript.js"></script>
+    <script src="./js/xml.js"></script>
+    <script src="./js/css.js"></script>
+    <script src="./js/htmlmixed.js"></script>
+    <script src="./js/yaml.js"></script>
+    <script src="./js/sql.js"></script>
     <style>
         body {
             margin: 0;
@@ -212,91 +217,6 @@
             opacity: 1;
             background-color: #e9ecef;
         }
-
-        /* Minimap styles */
-        .editor-wrapper {
-            position: relative;
-            height: 100%;
-            width: 100%;
-        }
-        
-        .minimap {
-            position: absolute;
-            right: 0;
-            top: 0;
-            width: 60px;
-            height: 100%;
-            background: #f5f5f5;
-            border-left: 1px solid #ddd;
-            overflow: hidden;
-            z-index: 10;
-            opacity: 0.8;
-            transition: opacity 0.2s, width 0.2s;
-        }
-
-        .minimap:hover {
-            opacity: 1;
-        }
-
-        .minimap-content {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            transform-origin: top left;
-            pointer-events: none;
-            opacity: 0.7;
-            background: white;
-        }
-
-        .minimap-slider {
-            position: absolute;
-            right: 0;
-            width: 60px;
-            background: rgba(0, 0, 0, 0.1);
-            border-radius: 3px;
-            cursor: pointer;
-        }
-
-        .diff-highlights {
-            position: absolute;
-            right: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-
-        .diff-added {
-            background-color: rgba(0, 255, 0, 0.3);
-            position: absolute;
-            right: 0;
-            width: 100%;
-            height: 2px;
-        }
-
-        .diff-removed {
-            background-color: rgba(255, 0, 0, 0.3);
-            position: absolute;
-            right: 0;
-            width: 100%;
-            height: 2px;
-        }
-
-        @media (max-width: 1250px) {
-            .minimap {
-                width: 30px;
-            }
-            .minimap-slider {
-                width: 30px;
-            }
-        }
-
-        /* Make sure the editor panes account for the minimap width */
-        .CodeMirror-merge-pane {
-            width: 47%;
-            position: relative;
-        }
     </style>
 </head>
 
@@ -304,7 +224,17 @@
     <article id="ArticlePage" class="contentPage cover">
         <div class="intro" style="max-width: 100%; margin: 0; padding: 10px 0; text-align: center; background-color: #f8f9fa;">
             <div class="controls">
-                <button id="btn-format" class="toggle-button">Format &amp; Compare JSON</button>
+                <select id="format-selector" class="toggle-button">
+                    <option value="application/json">JSON</option>
+                    <option value="application/xml">XML</option>
+                    <option value="text/html">HTML</option>
+                    <option value="text/css">CSS</option>
+                    <option value="text/javascript">JavaScript</option>
+                    <option value="text/x-yaml">YAML</option>
+                    <option value="text/x-sql">SQL</option>
+                    <option value="text/plain">Plain Text</option>
+                </select>
+                <button id="btn-format" class="toggle-button">Format &amp; Compare</button>
                 <!-- Additional controls will be added by JavaScript -->
             </div>
         </div>
@@ -317,13 +247,14 @@
     <script type="text/javascript">
         // Storage Manager Implementation
         const StorageManager = {
-            STORAGE_KEY: 'json_compare_data',
+            STORAGE_KEY: 'text_compare_data',
             EXPIRY_DAYS: 30,
 
-            saveToStorage: function(leftContent, rightContent) {
+            saveToStorage: function(leftContent, rightContent, format) {
                 const data = {
                     left: leftContent,
                     right: rightContent,
+                    format: format,
                     timestamp: new Date().getTime()
                 };
                 localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
@@ -345,14 +276,15 @@
 
                 return {
                     left: data.left,
-                    right: data.right
+                    right: data.right,
+                    format: data.format || 'application/json'
                 };
             }
         };
 
-        // Default templates
+        // Default templates for different formats
         const DefaultTemplates = {
-            simple: {
+            'application/json': {
                 left: JSON.stringify({
                     name: "John",
                     age: 30,
@@ -364,39 +296,193 @@
                     city: "Boston"
                 }, null, 3)
             },
-            complex: {
-                left: JSON.stringify({
-                    users: [{
-                        id: 1,
-                        name: "Alice",
-                        active: true
-                    }, {
-                        id: 2,
-                        name: "Bob",
-                        active: false
-                    }],
-                    settings: {
-                        theme: "dark",
-                        notifications: true
-                    }
-                }, null, 3),
-                right: JSON.stringify({
-                    users: [{
-                        id: 1,
-                        name: "Alice",
-                        active: false
-                    }, {
-                        id: 3,
-                        name: "Charlie",
-                        active: true
-                    }],
-                    settings: {
-                        theme: "light",
-                        notifications: true
-                    }
-                }, null, 3)
+            'application/xml': {
+                left: `<root>
+    <person>
+        <name>John</name>
+        <age>30</age>
+        <city>New York</city>
+    </person>
+</root>`,
+                right: `<root>
+    <person>
+        <name>John</name>
+        <age>31</age>
+        <city>Boston</city>
+    </person>
+</root>`
+            },
+            'text/html': {
+                left: `<!DOCTYPE html>
+<html>
+<head>
+    <title>Sample Page</title>
+</head>
+<body>
+    <h1>Welcome to our site</h1>
+    <p>This is a paragraph.</p>
+</body>
+</html>`,
+                right: `<!DOCTYPE html>
+<html>
+<head>
+    <title>Sample Page</title>
+</head>
+<body>
+    <h1>Welcome to our website</h1>
+    <p>This is a sample paragraph.</p>
+    <footer>Copyright 2023</footer>
+</body>
+</html>`
+            },
+            'text/css': {
+                left: `.header {
+    background-color: blue;
+    color: white;
+    padding: 10px;
+}
+.content {
+    margin: 20px;
+}`,
+                right: `.header {
+    background-color: darkblue;
+    color: white;
+    padding: 15px;
+}
+.content {
+    margin: 25px;
+    font-size: 16px;
+}`
+            },
+            'text/javascript': {
+                left: `function calculateTotal(items) {
+    return items.reduce((total, item) => {
+        return total + item.price;
+    }, 0);
+}`,
+                right: `function calculateTotal(items) {
+    let total = 0;
+    for (const item of items) {
+        total += item.price * (1 - item.discount || 0);
+    }
+    return total;
+}`
+            },
+            'text/x-yaml': {
+                left: `user:
+  name: John Doe
+  age: 30
+  roles:
+    - admin
+    - editor`,
+                right: `user:
+  name: John Doe
+  age: 31
+  roles:
+    - admin
+  permissions:
+    - read
+    - write`
+            },
+            'text/x-sql': {
+                left: `SELECT 
+    users.name,
+    users.email,
+    orders.order_date
+FROM 
+    users
+JOIN 
+    orders ON users.id = orders.user_id
+WHERE 
+    orders.status = 'completed';`,
+                right: `SELECT 
+    users.name,
+    users.email,
+    orders.order_date,
+    products.name as product_name
+FROM 
+    users
+JOIN 
+    orders ON users.id = orders.user_id
+JOIN
+    order_items ON orders.id = order_items.order_id
+JOIN
+    products ON order_items.product_id = products.id
+WHERE 
+    orders.status = 'completed';`
+            },
+            'text/plain': {
+                left: `This is a sample text.
+It contains multiple lines.
+We can compare these lines with another text.`,
+                right: `This is a sample text.
+It has several lines.
+We can compare these lines with the original text.
+This is an additional line.`
             }
         };
+
+        // Format specific functions
+        const FormatHandlers = {
+            'application/json': {
+                format: function(text) {
+                    return JSON.stringify(JSON.parse(text), null, 3);
+                },
+                sort: function(obj) {
+                    return sortJSONKeys(obj);
+                },
+                validate: function(text) {
+                    JSON.parse(text); // Will throw if invalid
+                    return true;
+                }
+            },
+            'application/xml': {
+                format: function(text) {
+                    return formatXML(text);
+                },
+                validate: function(text) {
+                    // Simple validation - could be enhanced
+                    if (text.trim().startsWith('<') && text.trim().endsWith('>')) {
+                        return true;
+                    }
+                    throw new Error('Invalid XML');
+                }
+            },
+            'text/html': {
+                format: function(text) {
+                    return formatHTML(text);
+                },
+                validate: function(text) {
+                    // Simple validation
+                    if (text.toLowerCase().includes('<!doctype html>') || 
+                        text.toLowerCase().includes('<html')) {
+                        return true;
+                    }
+                    return true; // Be lenient with HTML fragments
+                }
+            }
+            // Other formats don't need special handling
+        };
+
+        // Helper function to format XML
+        function formatXML(xml) {
+            let formatted = '';
+            let indent = '';
+            const tab = '    '; // 4 spaces
+            xml.split(/>\s*</).forEach(function(node) {
+                if (node.match(/^\/\w/)) indent = indent.substring(tab.length); // Decrease indent
+                formatted += indent + '<' + node + '>\n';
+                if (node.match(/^<?\w[^>]*[^\/]$/)) indent += tab; // Increase indent
+            });
+            return formatted.substring(1, formatted.length-3);
+        }
+
+        // Helper function to format HTML
+        function formatHTML(html) {
+            // For simplicity, we're using the same formatter as XML
+            // In a production environment, you might want a more sophisticated HTML formatter
+            return formatXML(html);
+        }
 
         // Function to sort JSON object keys recursively
         function sortJSONKeys(obj) {
@@ -435,7 +521,13 @@
         function initializeMergeView(target) {
             // Load saved content or use defaults
             const savedContent = StorageManager.loadFromStorage();
-            const initialContent = savedContent || DefaultTemplates.simple;
+            const formatSelector = document.getElementById('format-selector');
+            const selectedFormat = savedContent?.format || formatSelector.value;
+            
+            // Set the format selector to the saved format
+            formatSelector.value = selectedFormat;
+            
+            const initialContent = savedContent || DefaultTemplates[selectedFormat];
 
             // Create merge view with enhanced options
             const mv = CodeMirror.MergeView(target, {
@@ -443,7 +535,7 @@
                 origLeft: null,
                 orig: initialContent.right,
                 lineNumbers: true,
-                mode: "application/json",
+                mode: selectedFormat,
                 showDifferences: true,
                 connect: "align",
                 collapseIdentical: false,
@@ -472,6 +564,33 @@
             // Add UI controls
             const controls = document.querySelector('.controls');
 
+            // Format selector change handler
+            formatSelector.onchange = () => {
+                const newFormat = formatSelector.value;
+                const template = DefaultTemplates[newFormat];
+                
+                if (template) {
+                    // Only change content if editors are empty or user confirms
+                    const leftContent = leftEditor.getValue().trim();
+                    const rightContent = rightEditor.getValue().trim();
+                    
+                    if (!leftContent && !rightContent) {
+                        leftEditor.setValue(template.left);
+                        rightEditor.setValue(template.right);
+                    } else if (confirm('Change to template examples for this format?')) {
+                        leftEditor.setValue(template.left);
+                        rightEditor.setValue(template.right);
+                    }
+                }
+                
+                // Change the mode for both editors
+                leftEditor.setOption('mode', newFormat);
+                rightEditor.setOption('mode', newFormat);
+                
+                // Save the current format preference
+                saveContent();
+            };
+            
             // Add scroll lock toggle
             const scrollLockBtn = document.createElement('button');
             scrollLockBtn.className = 'toggle-button active';
@@ -522,12 +641,19 @@
         };
 controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
 
-            // Add Sort JSON Keys button
+            // Modify Sort JSON Keys button to be visible only for JSON
             const sortKeysBtn = document.createElement('button');
             sortKeysBtn.className = 'toggle-button';
             sortKeysBtn.textContent = 'Sort JSON Keys';
+            sortKeysBtn.style.display = selectedFormat === 'application/json' ? 'inline-block' : 'none';
             sortKeysBtn.onclick = () => {
                 try {
+                    // Only works for JSON format
+                    if (formatSelector.value !== 'application/json') {
+                        alert('Sorting is only available for JSON content');
+                        return;
+                    }
+                    
                     // Parse and sort left editor content
                     let leftObj = JSON.parse(leftEditor.getValue());
                     if (Array.isArray(leftObj)) {
@@ -563,6 +689,12 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
             const formatBtn = document.getElementById("btn-format");
             controls.insertBefore(sortKeysBtn, formatBtn.nextSibling);
 
+            // Update format selector visibility handler
+            formatSelector.addEventListener('change', function() {
+                const isJson = this.value === 'application/json';
+                sortKeysBtn.style.display = isJson ? 'inline-block' : 'none';
+            });
+
             // Add template selector
             const templateSelect = document.createElement('select');
             templateSelect.className = 'toggle-button';
@@ -571,9 +703,14 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 <option value="complex">Complex Template</option>
             `;
             templateSelect.onchange = () => {
-                const template = DefaultTemplates[templateSelect.value];
-                leftEditor.setValue(template.left);
-                rightEditor.setValue(template.right);
+                const currentFormat = formatSelector.value;
+                if (currentFormat === 'application/json') {
+                    const template = DefaultTemplates[currentFormat][templateSelect.value];
+                    leftEditor.setValue(template.left);
+                    rightEditor.setValue(template.right);
+                } else {
+                    alert('Templates are currently only available for JSON format');
+                }
             };
             controls.appendChild(templateSelect);
             
@@ -679,7 +816,8 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
             const saveContent = () => {
                 StorageManager.saveToStorage(
                     leftEditor.getValue(),
-                    rightEditor.getValue()
+                    rightEditor.getValue(),
+                    formatSelector.value
                 );
                 updateClearButtonsVisibility();
             };
@@ -687,8 +825,13 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
             leftEditor.on("change", (instance, changeObj) => {
                 if (changeObj.origin === "paste") {
                     try {
-                        var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
-                        instance.setValue(formatted);
+                        const format = formatSelector.value;
+                        const handler = FormatHandlers[format];
+                        
+                        if (handler && handler.format) {
+                            const formatted = handler.format(instance.getValue());
+                            instance.setValue(formatted);
+                        }
                     } catch (e) {
                         // Ignore parse errors
                     }
@@ -700,8 +843,13 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
             rightEditor.on("change", (instance, changeObj) => {
                 if (changeObj.origin === "paste") {
                     try {
-                        var formatted = JSON.stringify(JSON.parse(instance.getValue()), null, 3);
-                        instance.setValue(formatted);
+                        const format = formatSelector.value;
+                        const handler = FormatHandlers[format];
+                        
+                        if (handler && handler.format) {
+                            const formatted = handler.format(instance.getValue());
+                            instance.setValue(formatted);
+                        }
                     } catch (e) {
                         // Ignore parse errors
                     }
@@ -714,6 +862,7 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
             document.getElementById("btn-format").onclick = function() {
                 const leftContent = leftEditor.getValue().trim();
                 const rightContent = rightEditor.getValue().trim();
+                const currentFormat = formatSelector.value;
                 
                 // Only proceed if both sides have content
                 if (!leftContent || !rightContent) {
@@ -722,148 +871,33 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 }
                 
                 try {
-                    leftEditor.setValue(JSON.stringify(JSON.parse(leftEditor.getValue()), null, 3));
-                    rightEditor.setValue(JSON.stringify(JSON.parse(rightEditor.getValue()), null, 3));
+                    const handler = FormatHandlers[currentFormat];
+                    
+                    if (handler && handler.format) {
+                        // Use format-specific handler
+                        try {
+                            handler.validate(leftContent);
+                            handler.validate(rightContent);
+                            leftEditor.setValue(handler.format(leftContent));
+                            rightEditor.setValue(handler.format(rightContent));
+                        } catch (e) {
+                            alert(`Invalid ${currentFormat.split('/')[1].toUpperCase()} detected. Please check your input.`);
+                            return;
+                        }
+                    }
+                    
+                    // Align chunks after formatting
                     mv.right.operation(() => {
-                        mv.alignChunks();
+                        if (mv.alignChunks) {
+                            mv.alignChunks();
+                        }
                     });
+                    
+                    updateDiffStatus(mv);
                 } catch (e) {
-                    // alert("Invalid JSON detected. Please check your input.");
+                    console.error("Format error:", e);
                 }
-                updateDiffStatus(mv);
             };
-
-            function createMinimap(editor, isRight) {
-                // Create wrapper to contain editor and minimap
-                const wrapper = document.createElement('div');
-                wrapper.className = 'editor-wrapper';
-                
-                // Get the editor's parent and replace the editor with our wrapper
-                const parent = editor.getWrapperElement().parentNode;
-                parent.appendChild(wrapper);
-                wrapper.appendChild(editor.getWrapperElement());
-
-                // Create minimap container
-                const minimap = document.createElement('div');
-                minimap.className = 'minimap';
-                wrapper.appendChild(minimap);
-
-                // Create minimap content container (will hold a clone of editor content)
-                const minimapContent = document.createElement('div');
-                minimapContent.className = 'minimap-content';
-                minimap.appendChild(minimapContent);
-
-                // Create slider to indicate viewport position
-                const slider = document.createElement('div');
-                slider.className = 'minimap-slider';
-                minimap.appendChild(slider);
-
-                // Create container for diff highlights
-                const diffContainer = document.createElement('div');
-                diffContainer.className = 'diff-highlights';
-                minimap.appendChild(diffContainer);
-
-                // Update minimap content function
-                function updateMinimap() {
-                    // Clone the editor's content for the minimap
-                    const content = editor.getWrapperElement().querySelector('.CodeMirror-lines').cloneNode(true);
-                    minimapContent.innerHTML = '';
-                    minimapContent.appendChild(content);
-                    
-                    // Scale the content to fit minimap
-                    const scale = 0.2;
-                    minimapContent.style.transform = `scale(${scale})`;
-                    minimapContent.style.width = `${100/scale}%`;
-                }
-
-                // Update slider position based on editor scroll position
-                function updateSlider() {
-                    const info = editor.getScrollInfo();
-                    const ratio = info.clientHeight / info.height;
-                    const sliderHeight = Math.max(ratio * info.clientHeight, 20);
-                    const scrollRatio = info.top / (info.height - info.clientHeight);
-                    
-                    slider.style.height = `${sliderHeight}px`;
-                    slider.style.top = `${scrollRatio * (info.clientHeight - sliderHeight)}px`;
-                }
-
-                // Add click-and-drag functionality to the slider
-                minimap.addEventListener('mousedown', (e) => {
-                    const startY = e.clientY;
-                    const startTop = parseInt(slider.style.top || 0);
-                    const info = editor.getScrollInfo();
-                    
-                    function onMouseMove(e) {
-                        const delta = e.clientY - startY;
-                        const newTop = Math.max(0, Math.min(info.clientHeight - parseInt(slider.style.height), startTop + delta));
-                        const scrollRatio = newTop / (info.clientHeight - parseInt(slider.style.height));
-                        editor.scrollTo(null, scrollRatio * (info.height - info.clientHeight));
-                    }
-                    
-                    function onMouseUp() {
-                        document.removeEventListener('mousemove', onMouseMove);
-                        document.removeEventListener('mouseup', onMouseUp);
-                    }
-                    
-                    document.addEventListener('mousemove', onMouseMove);
-                    document.addEventListener('mouseup', onMouseUp);
-                });
-
-                // Update diff highlights in the minimap
-                function updateDiffHighlights() {
-                    diffContainer.innerHTML = '';
-                    
-                    // Get diff chunks from the merge view
-                    const chunks = mv.rightChunks();
-                    if (!chunks || chunks.length === 0) return;
-                    
-                    const lineHeight = editor.defaultTextHeight() * 0.2; // Scaled line height
-                    
-                    chunks.forEach(chunk => {
-                        const marker = document.createElement('div');
-                        marker.className = isRight ? 'diff-removed' : 'diff-added';
-                        
-                        // Position based on the editor's line numbers
-                        const startLine = isRight ? chunk.origFrom : chunk.editFrom;
-                        const endLine = isRight ? chunk.origTo : chunk.editTo;
-                        const top = startLine * lineHeight;
-                        const height = (endLine - startLine) * lineHeight;
-                        
-                        marker.style.top = `${top}px`;
-                        marker.style.height = `${Math.max(2, height)}px`;
-                        diffContainer.appendChild(marker);
-                    });
-                }
-
-                // Subscribe to events to keep minimap updated
-                editor.on('change', () => {
-                    setTimeout(() => {
-                        updateMinimap();
-                        updateSlider();
-                        updateDiffHighlights();
-                    }, 100);
-                });
-                
-                editor.on('scroll', updateSlider);
-                
-                // Initialize
-                updateMinimap();
-                updateSlider();
-                updateDiffHighlights();
-                
-                return { minimap, updateDiffHighlights };
-            }
-
-            // Initialize minimaps after merge view is ready
-            const leftMinimap = createMinimap(leftEditor);
-            const rightMinimap = createMinimap(rightEditor, true);
-
-            // Update minimaps when diffs change
-            mv.setShowDifferences(true); // Ensure diffs are shown
-            mv.right.on("updateDiff", () => {
-                leftMinimap.updateDiffHighlights();
-                rightMinimap.updateDiffHighlights();
-            });
 
             updateDiffStatus(mv);
             return mv;
