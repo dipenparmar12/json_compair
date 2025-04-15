@@ -212,6 +212,91 @@
             opacity: 1;
             background-color: #e9ecef;
         }
+
+        /* Minimap styles */
+        .editor-wrapper {
+            position: relative;
+            height: 100%;
+            width: 100%;
+        }
+        
+        .minimap {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 60px;
+            height: 100%;
+            background: #f5f5f5;
+            border-left: 1px solid #ddd;
+            overflow: hidden;
+            z-index: 10;
+            opacity: 0.8;
+            transition: opacity 0.2s, width 0.2s;
+        }
+
+        .minimap:hover {
+            opacity: 1;
+        }
+
+        .minimap-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            transform-origin: top left;
+            pointer-events: none;
+            opacity: 0.7;
+            background: white;
+        }
+
+        .minimap-slider {
+            position: absolute;
+            right: 0;
+            width: 60px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .diff-highlights {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .diff-added {
+            background-color: rgba(0, 255, 0, 0.3);
+            position: absolute;
+            right: 0;
+            width: 100%;
+            height: 2px;
+        }
+
+        .diff-removed {
+            background-color: rgba(255, 0, 0, 0.3);
+            position: absolute;
+            right: 0;
+            width: 100%;
+            height: 2px;
+        }
+
+        @media (max-width: 1250px) {
+            .minimap {
+                width: 30px;
+            }
+            .minimap-slider {
+                width: 30px;
+            }
+        }
+
+        /* Make sure the editor panes account for the minimap width */
+        .CodeMirror-merge-pane {
+            width: 47%;
+            position: relative;
+        }
     </style>
 </head>
 
@@ -647,6 +732,138 @@ controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
                 }
                 updateDiffStatus(mv);
             };
+
+            function createMinimap(editor, isRight) {
+                // Create wrapper to contain editor and minimap
+                const wrapper = document.createElement('div');
+                wrapper.className = 'editor-wrapper';
+                
+                // Get the editor's parent and replace the editor with our wrapper
+                const parent = editor.getWrapperElement().parentNode;
+                parent.appendChild(wrapper);
+                wrapper.appendChild(editor.getWrapperElement());
+
+                // Create minimap container
+                const minimap = document.createElement('div');
+                minimap.className = 'minimap';
+                wrapper.appendChild(minimap);
+
+                // Create minimap content container (will hold a clone of editor content)
+                const minimapContent = document.createElement('div');
+                minimapContent.className = 'minimap-content';
+                minimap.appendChild(minimapContent);
+
+                // Create slider to indicate viewport position
+                const slider = document.createElement('div');
+                slider.className = 'minimap-slider';
+                minimap.appendChild(slider);
+
+                // Create container for diff highlights
+                const diffContainer = document.createElement('div');
+                diffContainer.className = 'diff-highlights';
+                minimap.appendChild(diffContainer);
+
+                // Update minimap content function
+                function updateMinimap() {
+                    // Clone the editor's content for the minimap
+                    const content = editor.getWrapperElement().querySelector('.CodeMirror-lines').cloneNode(true);
+                    minimapContent.innerHTML = '';
+                    minimapContent.appendChild(content);
+                    
+                    // Scale the content to fit minimap
+                    const scale = 0.2;
+                    minimapContent.style.transform = `scale(${scale})`;
+                    minimapContent.style.width = `${100/scale}%`;
+                }
+
+                // Update slider position based on editor scroll position
+                function updateSlider() {
+                    const info = editor.getScrollInfo();
+                    const ratio = info.clientHeight / info.height;
+                    const sliderHeight = Math.max(ratio * info.clientHeight, 20);
+                    const scrollRatio = info.top / (info.height - info.clientHeight);
+                    
+                    slider.style.height = `${sliderHeight}px`;
+                    slider.style.top = `${scrollRatio * (info.clientHeight - sliderHeight)}px`;
+                }
+
+                // Add click-and-drag functionality to the slider
+                minimap.addEventListener('mousedown', (e) => {
+                    const startY = e.clientY;
+                    const startTop = parseInt(slider.style.top || 0);
+                    const info = editor.getScrollInfo();
+                    
+                    function onMouseMove(e) {
+                        const delta = e.clientY - startY;
+                        const newTop = Math.max(0, Math.min(info.clientHeight - parseInt(slider.style.height), startTop + delta));
+                        const scrollRatio = newTop / (info.clientHeight - parseInt(slider.style.height));
+                        editor.scrollTo(null, scrollRatio * (info.height - info.clientHeight));
+                    }
+                    
+                    function onMouseUp() {
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    }
+                    
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+
+                // Update diff highlights in the minimap
+                function updateDiffHighlights() {
+                    diffContainer.innerHTML = '';
+                    
+                    // Get diff chunks from the merge view
+                    const chunks = mv.rightChunks();
+                    if (!chunks || chunks.length === 0) return;
+                    
+                    const lineHeight = editor.defaultTextHeight() * 0.2; // Scaled line height
+                    
+                    chunks.forEach(chunk => {
+                        const marker = document.createElement('div');
+                        marker.className = isRight ? 'diff-removed' : 'diff-added';
+                        
+                        // Position based on the editor's line numbers
+                        const startLine = isRight ? chunk.origFrom : chunk.editFrom;
+                        const endLine = isRight ? chunk.origTo : chunk.editTo;
+                        const top = startLine * lineHeight;
+                        const height = (endLine - startLine) * lineHeight;
+                        
+                        marker.style.top = `${top}px`;
+                        marker.style.height = `${Math.max(2, height)}px`;
+                        diffContainer.appendChild(marker);
+                    });
+                }
+
+                // Subscribe to events to keep minimap updated
+                editor.on('change', () => {
+                    setTimeout(() => {
+                        updateMinimap();
+                        updateSlider();
+                        updateDiffHighlights();
+                    }, 100);
+                });
+                
+                editor.on('scroll', updateSlider);
+                
+                // Initialize
+                updateMinimap();
+                updateSlider();
+                updateDiffHighlights();
+                
+                return { minimap, updateDiffHighlights };
+            }
+
+            // Initialize minimaps after merge view is ready
+            const leftMinimap = createMinimap(leftEditor);
+            const rightMinimap = createMinimap(rightEditor, true);
+
+            // Update minimaps when diffs change
+            mv.setShowDifferences(true); // Ensure diffs are shown
+            mv.right.on("updateDiff", () => {
+                leftMinimap.updateDiffHighlights();
+                rightMinimap.updateDiffHighlights();
+            });
 
             updateDiffStatus(mv);
             return mv;
