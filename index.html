@@ -124,32 +124,28 @@
 
         // Function to sort JSON object keys recursively
         function sortJSONKeys(obj) {
-            // Return if not an object or if it's null or an array
-            if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+            if (obj === null || typeof obj !== 'object') {
                 return obj;
             }
-            
-            // Create a new sorted object
+            if (Array.isArray(obj)) {
+                return sortJSONArray(obj); // Recursively sort arrays
+            }
             const sortedObj = {};
             const keys = Object.keys(obj).sort();
-            
             for (const key of keys) {
-                // Recursively sort nested objects
                 sortedObj[key] = sortJSONKeys(obj[key]);
             }
-            
             return sortedObj;
         }
-        
-        // Function to sort array items if they are objects
+
+        // Function to sort array items if they are objects or arrays
         function sortJSONArray(arr) {
             if (!Array.isArray(arr)) {
                 return arr;
             }
-            
             return arr.map(item => {
-                if (typeof item === 'object' && item !== null) {
-                    return sortJSONKeys(item);
+                if (item && typeof item === 'object') {
+                    return sortJSONKeys(item); // Handles both objects and arrays
                 }
                 return item;
             });
