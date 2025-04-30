@@ -1,0 +1,190 @@
+body {
+    margin: 0;
+    padding: 0;
+}
+
+.contentPage {
+    max-width: 100% !important;
+    padding: 0 !important;
+}
+
+#container {
+    background-color: white;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+#view {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+.CodeMirror-merge {
+    width: 100%;
+}
+
+.CodeMirror-merge-pane {
+    width: 47%;
+}
+
+.CodeMirror-merge-gap {
+    width: 6%;
+}
+
+#container:fullscreen #view {
+    width: 100%;
+}
+
+#container:fullscreen .CodeMirror-merge,
+#container:fullscreen .CodeMirror-merge .CodeMirror {
+    height: 100vh;
+}
+
+#viewHeader {
+    padding: 10px;
+    margin: 8px auto 16px auto;
+    text-align: center;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+}
+
+.toggle-button {
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin: 0 5px;
+    font-size: 14px;
+}
+
+.toggle-button.active {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.CodeMirror-merge-collapsed-line {
+    display: none !important;
+}
+
+.CodeMirror-merge-spacer {
+    display: none;
+}
+
+select.toggle-button {
+    height: 30px;
+}
+
+#diff-status {
+    text-align: center;
+    margin: 10px 0;
+    font-size: 16px;
+    color: #333;
+}
+
+@media (max-width: 1250px) {
+    #fs {
+        visibility: hidden;
+    }
+
+    #viewHeader {
+        margin: auto;
+        text-align: center;
+        height: 40px;
+    }
+
+    .controls {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-line {
+    display: none;
+}
+
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-r-chunk .CodeMirror-line,
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-l-chunk .CodeMirror-line {
+    display: block;
+    background-color: #f0f8ff;
+    /* Light blue background for better visibility */
+}
+
+/* Add some padding around diff chunks */
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-r-chunk,
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-l-chunk {
+    padding: 5px 0;
+    margin: 5px 0;
+    border-top: 2px solid #ddd;
+    border-bottom: 2px solid #ddd;
+}
+
+/* Add context lines before and after diffs */
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-r-chunk .CodeMirror-line:first-child,
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-l-chunk .CodeMirror-line:first-child {
+    border-top: 1px solid #eee;
+    padding-top: 5px;
+}
+
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-r-chunk .CodeMirror-line:last-child,
+.CodeMirror-merge-pane.show-diffs-only .CodeMirror-merge-l-chunk .CodeMirror-line:last-child {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+/* Clear button styling */
+.clear-btn {
+    position: absolute;
+    top: 5px;
+    z-index: 100;
+    background-color: #f8f9fa;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.clear-btn:hover {
+    opacity: 1;
+    background-color: #e9ecef;
+}
+
+.clear-btn-left {
+    right: 10px;
+}
+
+.clear-btn-right {
+    right: 10px;
+}
+
+/* Paste button styling */
+.paste-btn {
+    position: absolute;
+    top: 5px;
+    right: 10px;
+    z-index: 100;
+    background-color: #f8f9fa;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.paste-btn:hover {
+    opacity: 1;
+    background-color: #e9ecef;
+}
