@@ -143,6 +143,17 @@
             if (!Array.isArray(arr)) {
                 return arr;
             }
+            // If array contains only objects, sort by their stringified value
+            if (arr.length > 0 && arr.every(item => typeof item === 'object' && item !== null && !Array.isArray(item))) {
+                arr = arr.slice().sort((a, b) => {
+                    // Sort using stable stringified keys
+                    const aStr = JSON.stringify(sortJSONKeys(a));
+                    const bStr = JSON.stringify(sortJSONKeys(b));
+                    if (aStr < bStr) return -1;
+                    if (aStr > bStr) return 1;
+                    return 0;
+                });
+            }
             return arr.map(item => {
                 if (item && typeof item === 'object') {
                     return sortJSONKeys(item); // Handles both objects and arrays
