@@ -143,6 +143,17 @@
             if (!Array.isArray(arr)) {
                 return arr;
             }
+            // If array contains only objects, try to sort by a stable key
+            if (arr.length > 0 && arr.every(item => typeof item === 'object' && item !== null && !Array.isArray(item))) {
+                // Try to find a common key (id, name, etc.)
+                const keys = Object.keys(arr[0]);
+                let sortKey = keys.includes('id') ? 'id' : (keys.includes('name') ? 'name' : keys[0]);
+                arr = arr.slice().sort((a, b) => {
+                    if (a[sortKey] < b[sortKey]) return -1;
+                    if (a[sortKey] > b[sortKey]) return 1;
+                    return 0;
+                });
+            }
             return arr.map(item => {
                 if (item && typeof item === 'object') {
                     return sortJSONKeys(item); // Handles both objects and arrays
