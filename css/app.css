@@ -188,3 +188,16 @@ select.toggle-button {
     opacity: 1;
     background-color: #e9ecef;
 }
+
+/* Add to your CSS or in a <style> tag */
+.CodeMirror-merge-pane .CodeMirror-line:empty::before {
+    content: " ";
+    color: #ccc;
+    font-style: italic;
+}
+
+.CodeMirror-merge-pane .CodeMirror-line:empty {
+    min-height: 1.3em;
+    background-color: #f9f9f9;
+    border-left: 3px solid #e0e0e0;
+}
