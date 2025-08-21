@@ -1470,125 +1470,174 @@
         document.getElementById("diff-status").textContent = statusText;
       }
 
-      // Safe proximity-aware visual diff that NEVER modifies user data
+      // Proximity-aware visual diff using DOM monitoring for precise override
       function createProximityAwareDiff(mv) {
-        // Store references but never modify user content
         const leftEditor = mv.editor();
         const rightEditor = mv.rightOriginal();
+        let proximityLineMap = new Map(); // Map line numbers to proximity match status
         
-        function applyProximityVisualOverrides() {
+        function updateProximityMap() {
+          proximityLineMap.clear();
+          
           if (!ProximityManager.settings.enabled || !ProximityManager.settings.treatAsMatch) {
-            // Remove any existing proximity overrides
-            clearProximityOverrides();
             return;
           }
           
           try {
             const leftContent = leftEditor.getValue();
             const rightContent = rightEditor.getValue();
-            const leftObj = JSON.parse(leftContent);
-            const rightObj = JSON.parse(rightContent);
             
-            // Find lines that contain proximity matches
-            const proximityLines = findProximityMatchLines(leftObj, rightObj, leftContent, rightContent);
+            // Parse and compare line by line
+            const leftLines = leftContent.split('\n');
+            const rightLines = rightContent.split('\n');
             
-            // Apply CSS overrides to hide diff backgrounds on these lines
-            applyVisualOverrides(proximityLines);
+            for (let i = 0; i < Math.max(leftLines.length, rightLines.length); i++) {
+              const leftLine = leftLines[i] || '';
+              const rightLine = rightLines[i] || '';
+              
+              if (isLineProximityMatch(leftLine, rightLine)) {
+                proximityLineMap.set(i, true);
+              }
+            }
+            
+            // Apply visual overrides
+            applyProximityOverrides();
             
           } catch (e) {
-            console.warn('Proximity visual override failed:', e);
+            console.log('Proximity analysis failed:', e);
           }
         }
         
-        function findProximityMatchLines(leftObj, rightObj, leftContent, rightContent) {
-          const leftLines = leftContent.split('\n');
-          const rightLines = rightContent.split('\n');
-          const proximityLines = [];
+        function isLineProximityMatch(leftLine, rightLine) {
+          // Check if the lines are structurally similar but only differ by numbers within tolerance
+          const leftNums = extractAllNumbers(leftLine);
+          const rightNums = extractAllNumbers(rightLine);
           
-          // Simple approach: check each line for proximity matches
-          for (let i = 0; i < Math.max(leftLines.length, rightLines.length); i++) {
-            const leftLine = leftLines[i] || '';
-            const rightLine = rightLines[i] || '';
-            
-            // Extract numbers from each line
-            const leftNumbers = extractNumbers(leftLine);
-            const rightNumbers = extractNumbers(rightLine);
-            
-            // Check if all numbers in the line are within proximity
-            let allWithinProximity = false;
-            if (leftNumbers.length > 0 && rightNumbers.length > 0 && leftNumbers.length === rightNumbers.length) {
-              allWithinProximity = leftNumbers.every((leftNum, idx) => {
-                const rightNum = rightNumbers[idx];
-                return ProximityManager.isWithinTolerance(leftNum, rightNum);
-              });
-            }
-            
-            if (allWithinProximity) {
-              proximityLines.push(i);
-            }
+          if (leftNums.length === 0 || rightNums.length === 0) {
+            return false;
           }
           
-          return proximityLines;
-        }
-        
-        function extractNumbers(line) {
-          // Extract all numbers from a line of text
-          const numberRegex = /-?\d+\.?\d*/g;
-          const matches = line.match(numberRegex) || [];
-          return matches.map(m => {
-            const num = parseFloat(m);
-            return isNaN(num) ? null : num;
-          }).filter(n => n !== null);
-        }
-        
-        function applyVisualOverrides(lineNumbers) {
-          // Clear previous overrides
-          clearProximityOverrides();
+          if (leftNums.length !== rightNums.length) {
+            return false;
+          }
           
-          // Apply CSS class to hide diff backgrounds
-          lineNumbers.forEach(lineNum => {
-            // Apply to both left and right editors
-            addProximityOverride(leftEditor, lineNum);
-            addProximityOverride(rightEditor, lineNum);
+          // Check if all numbers are within tolerance
+          return leftNums.every((leftNum, idx) => {
+            return ProximityManager.isWithinTolerance(leftNum, rightNums[idx]);
           });
         }
         
-        function addProximityOverride(editor, lineNum) {
+        function extractAllNumbers(line) {
+          const numberPattern = /-?\d+\.?\d*|\d*\.\d+/g;
+          const matches = line.match(numberPattern) || [];
+          return matches.map(m => parseFloat(m)).filter(n => !isNaN(n));
+        }
+        
+        function applyProximityOverrides() {
+          // Use DOM manipulation to override diff backgrounds
+          const leftWrapper = leftEditor.getWrapperElement();
+          const rightWrapper = rightEditor.getWrapperElement();
+          
+          [leftWrapper, rightWrapper].forEach(wrapper => {
+            if (!wrapper) return;
+            
+            // Find all diff backgrounds
+            const diffElements = wrapper.querySelectorAll('.CodeMirror-merge-l-chunk, .CodeMirror-merge-r-chunk, .CodeMirror-linebackground');
+            
+            diffElements.forEach(element => {
+              const lineNum = getLineNumberFromElement(element, wrapper);
+              if (lineNum !== null && proximityLineMap.has(lineNum)) {
+                // Hide this diff background by making it transparent
+                element.style.backgroundColor = 'transparent !important';
+                element.classList.add('proximity-hidden');
+              } else if (element.classList.contains('proximity-hidden')) {
+                // Remove override if no longer a proximity match
+                element.style.backgroundColor = '';
+                element.classList.remove('proximity-hidden');
+              }
+            });
+          });
+        }
+        
+        function getLineNumberFromElement(element, wrapper) {
+          // Try to determine line number from element position
           try {
-            const lineHandle = editor.getLineHandle(lineNum);
-            if (lineHandle) {
-              editor.addLineClass(lineNum, 'background', 'proximity-override-diff');
+            const lines = wrapper.querySelectorAll('.CodeMirror-line');
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].contains(element) || element.contains(lines[i])) {
+                return i;
+              }
+            }
+            
+            // Alternative: check parent elements for line info
+            let parent = element.parentElement;
+            while (parent && parent !== wrapper) {
+              if (parent.classList.contains('CodeMirror-linewidget') || 
+                  parent.classList.contains('CodeMirror-linebackground')) {
+                // Try to extract line number from data attributes or position
+                const lineElements = wrapper.querySelectorAll('.CodeMirror-line');
+                for (let i = 0; i < lineElements.length; i++) {
+                  const rect1 = lineElements[i].getBoundingClientRect();
+                  const rect2 = element.getBoundingClientRect();
+                  if (Math.abs(rect1.top - rect2.top) < 5) {
+                    return i;
+                  }
+                }
+              }
+              parent = parent.parentElement;
             }
           } catch (e) {
-            // Ignore errors for non-existent lines
+            // Ignore errors
           }
+          return null;
         }
         
-        function clearProximityOverrides() {
-          // Remove proximity override classes from all lines
-          const maxLines = Math.max(leftEditor.lineCount(), rightEditor.lineCount());
-          for (let i = 0; i < maxLines; i++) {
-            try {
-              leftEditor.removeLineClass(i, 'background', 'proximity-override-diff');
-              rightEditor.removeLineClass(i, 'background', 'proximity-override-diff');
-            } catch (e) {
-              // Ignore errors for non-existent lines
-            }
-          }
+        // Set up mutation observer to catch CodeMirror's diff updates
+        function setupDiffObserver() {
+          const leftWrapper = leftEditor.getWrapperElement();
+          const rightWrapper = rightEditor.getWrapperElement();
+          
+          [leftWrapper, rightWrapper].forEach(wrapper => {
+            if (!wrapper) return;
+            
+            const observer = new MutationObserver((mutations) => {
+              let shouldUpdate = false;
+              mutations.forEach(mutation => {
+                if (mutation.type === 'childList' || 
+                    (mutation.type === 'attributes' && 
+                     (mutation.attributeName === 'class' || mutation.attributeName === 'style'))) {
+                  shouldUpdate = true;
+                }
+              });
+              
+              if (shouldUpdate) {
+                setTimeout(applyProximityOverrides, 10);
+              }
+            });
+            
+            observer.observe(wrapper, {
+              childList: true,
+              subtree: true,
+              attributes: true,
+              attributeFilter: ['class', 'style']
+            });
+          });
         }
         
-        // Store the visual override function on mv for external access
-        mv._proximityApplyVisualOverrides = applyProximityVisualOverrides;
+        // Store functions for external access
+        mv._proximityApplyVisualOverrides = () => {
+          updateProximityMap();
+        };
         
-        // Apply overrides after initial render
-        setTimeout(applyProximityVisualOverrides, 200);
+        // Initial setup
+        setTimeout(() => {
+          updateProximityMap();
+          setupDiffObserver();
+        }, 300);
         
         // Listen for content changes
-        leftEditor.on('change', () => setTimeout(applyProximityVisualOverrides, 100));
-        rightEditor.on('change', () => setTimeout(applyProximityVisualOverrides, 100));
-        
-        // Store cleanup function for later use
-        mv._proximityCleanup = clearProximityOverrides;
+        leftEditor.on('change', () => setTimeout(updateProximityMap, 100));
+        rightEditor.on('change', () => setTimeout(updateProximityMap, 100));
       }
       
       function createProximityNormalizedVersion(obj, visited = new Set()) {

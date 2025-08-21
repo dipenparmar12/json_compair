@@ -453,6 +453,20 @@ select.toggle-button {
     background: transparent !important;
 }
 
+/* New approach: hide elements marked with proximity-hidden class */
+.proximity-hidden {
+    background-color: transparent !important;
+    background: none !important;
+}
+
+/* Make proximity-hidden chunks completely invisible */
+.CodeMirror-merge-l-chunk.proximity-hidden,
+.CodeMirror-merge-r-chunk.proximity-hidden {
+    background-color: transparent !important;
+    background: none !important;
+    border: none !important;
+}
+
 /* Responsive design for proximity panel */
 @media (max-width: 768px) {
     .proximity-settings {
