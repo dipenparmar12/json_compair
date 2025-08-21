@@ -410,33 +410,6 @@ select.toggle-button {
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.proximity-highlight-right::before {
-    content: "≈";
-    position: absolute;
-    left: -16px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 11px;
-    font-weight: bold;
-    color: #28a745;
-    background: white;
-    padding: 1px 3px;
-    border-radius: 3px;
-    border: 1px solid rgba(40, 167, 69, 0.6);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-/* Hover effects for proximity highlights */
-.proximity-highlight-left:hover,
-.proximity-highlight-right:hover {
-    opacity: 0.9;
-    transition: all 0.2s ease;
-}
-
-/* Notification styles */
-.proximity-notification {
-    font-weight: 500;
-}
 
 /* Enhanced diff status styling */
 #diff-status {

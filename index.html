@@ -680,7 +680,7 @@
         `;
         controls.appendChild(proximityPanel);
 
-        // Proximity toggle functionality with improved UX
+        // Proximity panel open/close only
         const proximityToggle = document.getElementById('proximity-toggle');
         const proximitySettings = document.querySelector('.proximity-settings');
         const floatToleranceInput = document.getElementById('float-tolerance');
@@ -688,97 +688,88 @@
         const mixedComparisonInput = document.getElementById('mixed-comparison');
         const visualFeedbackInput = document.getElementById('visual-feedback');
         const treatAsMatchInput = document.getElementById('treat-as-match');
-
-        // Update input values with current settings
+        // Add enable/disable toggle inside panel
+        const proximityEnabledInput = document.createElement('input');
+        proximityEnabledInput.type = 'checkbox';
+        proximityEnabledInput.id = 'proximity-enabled';
+        proximityEnabledInput.checked = ProximityManager.settings.enabled;
+        // Insert at the top of the panel
+        const titleDiv = proximitySettings.querySelector('.proximity-title');
+        const enableRow = document.createElement('div');
+        enableRow.className = 'proximity-row';
+        enableRow.innerHTML = `<label><input type="checkbox" id="proximity-enabled"> Enable Smart Number Proximity</label>`;
+        titleDiv.insertAdjacentElement('afterend', enableRow);
+        // Set input values from settings
         floatToleranceInput.value = ProximityManager.settings.floatTolerance;
         integerToleranceInput.value = ProximityManager.settings.integerTolerance;
         mixedComparisonInput.checked = ProximityManager.settings.mixedComparison;
         visualFeedbackInput.checked = ProximityManager.settings.visualFeedback;
         treatAsMatchInput.checked = ProximityManager.settings.treatAsMatch;
-
-        // Update toggle button state
-        function updateProximityToggleState() {
-          if (ProximityManager.settings.enabled) {
-            proximityToggle.classList.add('active');
-            proximityToggle.title = 'Smart Number Proximity Comparison: ON';
-          } else {
-            proximityToggle.classList.remove('active');
-            proximityToggle.title = 'Smart Number Proximity Comparison: OFF';
-          }
-        }
-
-        // Initialize toggle state
-        updateProximityToggleState();
-
+        proximityEnabledInput.checked = ProximityManager.settings.enabled;
+        // Open/close panel only
         proximityToggle.onclick = () => {
-          ProximityManager.settings.enabled = !ProximityManager.settings.enabled;
-          updateProximityToggleState();
-          
-          if (ProximityManager.settings.enabled) {
-            proximitySettings.style.display = 'block';
-          } else {
-            proximitySettings.style.display = 'none';
-            // Clear any existing highlights when disabling
-            ProximityManager.clearHighlights(leftEditor, rightEditor);
-          }
-          
+          proximitySettings.style.display = proximitySettings.style.display === 'block' ? 'none' : 'block';
+        };
+        // Enable/disable proximity feature from panel
+        proximityEnabledInput.onchange = () => {
+          ProximityManager.settings.enabled = proximityEnabledInput.checked;
           ProximityManager.saveSettings();
           updateDiffStatus(mv);
+          if (!ProximityManager.settings.enabled) {
+            ProximityManager.clearHighlights(leftEditor, rightEditor);
+          } else if (ProximityManager.settings.visualFeedback && !ProximityManager.settings.treatAsMatch) {
+            ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+          }
         };
+        // Sync checkbox state on panel open
+        proximityToggle.addEventListener('click', () => {
+          proximityEnabledInput.checked = ProximityManager.settings.enabled;
+        });
 
         // Apply proximity settings (no notifications)
         document.getElementById('apply-proximity').onclick = () => {
           const floatVal = parseFloat(floatToleranceInput.value);
           const intVal = parseInt(integerToleranceInput.value);
-          
           if (isNaN(floatVal) || floatVal < 0) {
             alert('Invalid float tolerance value');
             return;
           }
-          
           if (isNaN(intVal) || intVal < 0) {
             alert('Invalid integer tolerance value');
             return;
           }
-
+          ProximityManager.settings.enabled = proximityEnabledInput.checked;
           ProximityManager.settings.floatTolerance = floatVal;
           ProximityManager.settings.integerTolerance = intVal;
           ProximityManager.settings.mixedComparison = mixedComparisonInput.checked;
           ProximityManager.settings.visualFeedback = visualFeedbackInput.checked;
           ProximityManager.settings.treatAsMatch = treatAsMatchInput.checked;
-          
           ProximityManager.saveSettings();
           updateDiffStatus(mv);
-          
-          // Apply/remove visual highlighting based on new settings
-          if (ProximityManager.settings.visualFeedback) {
+          if (ProximityManager.settings.enabled && ProximityManager.settings.visualFeedback && !ProximityManager.settings.treatAsMatch) {
             ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
           } else {
             ProximityManager.clearHighlights(leftEditor, rightEditor);
           }
-          
-          // Close the settings panel after applying
           proximitySettings.style.display = 'none';
         };
 
         // Reset proximity settings (no notifications)
         document.getElementById('reset-proximity').onclick = () => {
+          ProximityManager.settings.enabled = false;
           ProximityManager.settings.floatTolerance = 0.001;
           ProximityManager.settings.integerTolerance = 1;
           ProximityManager.settings.mixedComparison = true;
           ProximityManager.settings.visualFeedback = false;
           ProximityManager.settings.treatAsMatch = true;
-          
+          proximityEnabledInput.checked = ProximityManager.settings.enabled;
           floatToleranceInput.value = ProximityManager.settings.floatTolerance;
           integerToleranceInput.value = ProximityManager.settings.integerTolerance;
           mixedComparisonInput.checked = ProximityManager.settings.mixedComparison;
           visualFeedbackInput.checked = ProximityManager.settings.visualFeedback;
           treatAsMatchInput.checked = ProximityManager.settings.treatAsMatch;
-          
           ProximityManager.saveSettings();
           updateDiffStatus(mv);
-          
-          // Clear highlights when resetting
           ProximityManager.clearHighlights(leftEditor, rightEditor);
         };
 
@@ -1420,39 +1411,53 @@
         const originalDiff = mv.diff;
         
         mv.diff = function() {
-          if (!ProximityManager.settings.enabled) {
+          if (!ProximityManager.settings.enabled || !ProximityManager.settings.treatAsMatch) {
             return originalDiff.apply(this, arguments);
           }
-          
-          // If proximity is enabled, we need to customize the diff process
+          // If treatAsMatch is enabled, proximity-equal values are considered equal
           const leftContent = mv.editor().getValue();
           const rightContent = mv.rightOriginal().getValue();
-          
           try {
             const leftObj = JSON.parse(leftContent);
             const rightObj = JSON.parse(rightContent);
-            
-            // Create modified versions where proximity matches are made identical
-            const modifiedLeft = createProximityNormalizedVersion(leftObj);
-            const modifiedRight = createProximityNormalizedVersion(rightObj);
-            
-            // Temporarily set the modified content for diff calculation
+            // Recursively replace proximity-equal values with a canonical value
+            function normalize(obj1, obj2) {
+              if (typeof obj1 !== typeof obj2) return [obj1, obj2];
+              if (obj1 === null || obj2 === null) return [obj1, obj2];
+              if (Array.isArray(obj1) && Array.isArray(obj2)) {
+                return [
+                  obj1.map((v, i) => normalize(v, obj2[i] !== undefined ? obj2[i] : v)[0]),
+                  obj2.map((v, i) => normalize(obj1[i] !== undefined ? obj1[i] : v, v)[1])
+                ];
+              }
+              if (typeof obj1 === 'object' && typeof obj2 === 'object') {
+                const keys = Array.from(new Set([...Object.keys(obj1), ...Object.keys(obj2)]));
+                const n1 = {};
+                const n2 = {};
+                for (const k of keys) {
+                  const [v1, v2] = normalize(obj1[k], obj2[k]);
+                  n1[k] = v1;
+                  n2[k] = v2;
+                }
+                return [n1, n2];
+              }
+              // Primitive: if proximity match, use left value for both
+              if (ProximityManager.isWithinTolerance(obj1, obj2)) {
+                return [obj1, obj1];
+              }
+              return [obj1, obj2];
+            }
+            const [normLeft, normRight] = normalize(leftObj, rightObj);
+            // Temporarily set the normalized content for diff calculation
             const originalLeftValue = mv.editor().getValue();
             const originalRightValue = mv.rightOriginal().getValue();
-            
-            mv.editor().setValue(JSON.stringify(modifiedLeft, null, 3));
-            mv.rightOriginal().setValue(JSON.stringify(modifiedRight, null, 3));
-            
-            // Calculate diff with modified content
+            mv.editor().setValue(JSON.stringify(normLeft, null, 3));
+            mv.rightOriginal().setValue(JSON.stringify(normRight, null, 3));
             const result = originalDiff.apply(this, arguments);
-            
-            // Restore original content
             mv.editor().setValue(originalLeftValue);
             mv.rightOriginal().setValue(originalRightValue);
-            
             return result;
           } catch (e) {
-            // If JSON parsing fails, fall back to original diff
             return originalDiff.apply(this, arguments);
           }
         };
