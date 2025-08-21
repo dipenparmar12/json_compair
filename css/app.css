@@ -439,6 +439,32 @@ select.toggle-button {
     background-color: #e9ecef;
 }
 
+/* Override diff backgrounds for proximity matches when treatAsMatch is enabled */
+.proximity-override-diff {
+    background: transparent !important;
+}
+
+/* Target specific CodeMirror diff classes */
+.proximity-override-diff.CodeMirror-linebackground,
+.proximity-override-diff .CodeMirror-linebackground {
+    background: transparent !important;
+}
+
+/* Hide merge chunk backgrounds */
+.CodeMirror-merge-l-chunk.proximity-override-diff,
+.CodeMirror-merge-r-chunk.proximity-override-diff,
+.CodeMirror-merge-l-chunk-start.proximity-override-diff,
+.CodeMirror-merge-r-chunk-start.proximity-override-diff,
+.CodeMirror-merge-l-chunk-end.proximity-override-diff,
+.CodeMirror-merge-r-chunk-end.proximity-override-diff {
+    background: transparent !important;
+}
+
+/* Override any gutter backgrounds */
+.proximity-override-diff .CodeMirror-gutter-background {
+    background: transparent !important;
+}
+
 /* Responsive design for proximity panel */
 @media (max-width: 768px) {
     .proximity-settings {
