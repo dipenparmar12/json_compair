@@ -144,7 +144,8 @@
 
         // Enhanced visual feedback system
         highlightProximityMatches: function(leftEditor, rightEditor) {
-          if (!this.settings.enabled || !this.settings.visualFeedback) {
+          // Only highlight if enabled, visualFeedback is on, and treatAsMatch is false
+          if (!this.settings.enabled || !this.settings.visualFeedback || this.settings.treatAsMatch) {
             this.clearHighlights(leftEditor, rightEditor);
             return;
           }
@@ -629,6 +630,15 @@
               </div>
               
               <div class="proximity-section">
+                <div class="proximity-row">
+                  <label>
+                    <input type="checkbox" id="proximity-enabled">
+                    Enable Smart Number Proximity
+                  </label>
+                </div>
+              </div>
+              
+              <div class="proximity-section">
                 <h5>Tolerance Levels</h5>
                 <div class="proximity-row">
                   <label>Float Tolerance:</label>
@@ -651,12 +661,12 @@
                   </label>
                   <span class="tolerance-example">Allow comparing "19.99" with 20</span>
                 </div>
+                <div class="proximity-description">Hide differences for values within tolerance</div>
                 <div class="proximity-row">
                   <label>
                     <input type="checkbox" id="treat-as-match" checked>
                     Treat proximity values as exact matches
                   </label>
-                  <span class="tolerance-example">Hide differences for values within tolerance</span>
                 </div>
               </div>
               
@@ -672,7 +682,6 @@
               </div>
               
               <div class="proximity-actions">
-                <button id="apply-proximity" class="apply-btn">Apply Settings</button>
                 <button id="reset-proximity" class="reset-btn">Reset to Defaults</button>
               </div>
             </div>
@@ -688,17 +697,10 @@
         const mixedComparisonInput = document.getElementById('mixed-comparison');
         const visualFeedbackInput = document.getElementById('visual-feedback');
         const treatAsMatchInput = document.getElementById('treat-as-match');
-        // Add enable/disable toggle inside panel
-        const proximityEnabledInput = document.createElement('input');
-        proximityEnabledInput.type = 'checkbox';
-        proximityEnabledInput.id = 'proximity-enabled';
-        proximityEnabledInput.checked = ProximityManager.settings.enabled;
-        // Insert at the top of the panel
-        const titleDiv = proximitySettings.querySelector('.proximity-title');
-        const enableRow = document.createElement('div');
-        enableRow.className = 'proximity-row';
-        enableRow.innerHTML = `<label><input type="checkbox" id="proximity-enabled"> Enable Smart Number Proximity</label>`;
-        titleDiv.insertAdjacentElement('afterend', enableRow);
+        
+        // Get the enable/disable toggle from the panel (already in HTML)
+        const proximityEnabledInput = proximitySettings.querySelector('#proximity-enabled');
+        
         // Set input values from settings
         floatToleranceInput.value = ProximityManager.settings.floatTolerance;
         integerToleranceInput.value = ProximityManager.settings.integerTolerance;
@@ -726,18 +728,23 @@
           proximityEnabledInput.checked = ProximityManager.settings.enabled;
         });
 
-        // Apply proximity settings (no notifications)
-        document.getElementById('apply-proximity').onclick = () => {
+        // Function to apply settings instantly
+        function applyProximitySettings() {
           const floatVal = parseFloat(floatToleranceInput.value);
           const intVal = parseInt(integerToleranceInput.value);
           if (isNaN(floatVal) || floatVal < 0) {
-            alert('Invalid float tolerance value');
+            floatToleranceInput.style.borderColor = '#dc3545';
             return;
+          } else {
+            floatToleranceInput.style.borderColor = '#ccc';
           }
           if (isNaN(intVal) || intVal < 0) {
-            alert('Invalid integer tolerance value');
+            integerToleranceInput.style.borderColor = '#dc3545';
             return;
+          } else {
+            integerToleranceInput.style.borderColor = '#ccc';
           }
+          
           ProximityManager.settings.enabled = proximityEnabledInput.checked;
           ProximityManager.settings.floatTolerance = floatVal;
           ProximityManager.settings.integerTolerance = intVal;
@@ -745,14 +752,29 @@
           ProximityManager.settings.visualFeedback = visualFeedbackInput.checked;
           ProximityManager.settings.treatAsMatch = treatAsMatchInput.checked;
           ProximityManager.saveSettings();
+          
+          // Refresh the diff to apply treatAsMatch changes
+          if (mv) {
+            refreshCompare();
+          }
+          
           updateDiffStatus(mv);
+          
+          // Apply highlighting based on settings
           if (ProximityManager.settings.enabled && ProximityManager.settings.visualFeedback && !ProximityManager.settings.treatAsMatch) {
             ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
           } else {
             ProximityManager.clearHighlights(leftEditor, rightEditor);
           }
-          proximitySettings.style.display = 'none';
-        };
+        }
+
+        // Add instant change handlers for all inputs
+        proximityEnabledInput.addEventListener('change', applyProximitySettings);
+        floatToleranceInput.addEventListener('input', applyProximitySettings);
+        integerToleranceInput.addEventListener('input', applyProximitySettings);
+        mixedComparisonInput.addEventListener('change', applyProximitySettings);
+        visualFeedbackInput.addEventListener('change', applyProximitySettings);
+        treatAsMatchInput.addEventListener('change', applyProximitySettings);
 
         // Reset proximity settings (no notifications)
         document.getElementById('reset-proximity').onclick = () => {
