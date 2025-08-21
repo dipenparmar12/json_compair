@@ -60,13 +60,15 @@
     </div>
 
     <script type="text/javascript">
-      // Smart Number Proximity Comparison Manager
+      // Smart Number Proximity Comparison Manager (enhanced with better UX)
       const ProximityManager = {
         settings: {
           enabled: false,
           floatTolerance: 0.001,
           integerTolerance: 1,
-          mixedComparison: true
+          mixedComparison: true,
+          visualFeedback: false,  // Changed default to false
+          treatAsMatch: true      // New option: treat proximity values as actual matches
         },
 
         STORAGE_KEY: 'json_compare_proximity_settings',
@@ -138,6 +140,174 @@
 
         compareValues: function(val1, val2) {
           return this.isWithinTolerance(val1, val2);
+        },
+
+        // Enhanced visual feedback system
+        highlightProximityMatches: function(leftEditor, rightEditor) {
+          if (!this.settings.enabled || !this.settings.visualFeedback) {
+            this.clearHighlights(leftEditor, rightEditor);
+            return;
+          }
+
+          const leftContent = leftEditor.getValue();
+          const rightContent = rightEditor.getValue();
+          
+          this.clearHighlights(leftEditor, rightEditor);
+          
+          try {
+            const leftObj = JSON.parse(leftContent);
+            const rightObj = JSON.parse(rightContent);
+            
+            this.highlightObjectMatches(leftEditor, rightEditor, leftObj, rightObj);
+          } catch (e) {
+            // If JSON parsing fails, try line-by-line highlighting
+            this.highlightLineMatches(leftEditor, rightEditor);
+          }
+        },
+
+        highlightObjectMatches: function(leftEditor, rightEditor, leftObj, rightObj) {
+          const matches = [];
+          
+          function findMatches(obj1, obj2, path = '', leftPath = '', rightPath = '') {
+            if (typeof obj1 !== typeof obj2) {
+              if (ProximityManager.settings.mixedComparison && ProximityManager.isWithinTolerance(obj1, obj2)) {
+                matches.push({ leftPath, rightPath, value1: obj1, value2: obj2 });
+              }
+              return;
+            }
+
+            if (obj1 === null || obj2 === null) return;
+
+            if (Array.isArray(obj1) && Array.isArray(obj2)) {
+              const maxLen = Math.max(obj1.length, obj2.length);
+              for (let i = 0; i < maxLen; i++) {
+                if (i < obj1.length && i < obj2.length) {
+                  const newPath = `${path}[${i}]`;
+                  findMatches(obj1[i], obj2[i], newPath, newPath, newPath);
+                }
+              }
+            } else if (typeof obj1 === 'object' && typeof obj2 === 'object') {
+              const allKeys = new Set([...Object.keys(obj1), ...Object.keys(obj2)]);
+              for (const key of allKeys) {
+                if (key in obj1 && key in obj2) {
+                  const newPath = path ? `${path}.${key}` : key;
+                  findMatches(obj1[key], obj2[key], newPath, newPath, newPath);
+                }
+              }
+            } else {
+              // Primitive values
+              if (obj1 !== obj2 && ProximityManager.isWithinTolerance(obj1, obj2)) {
+                matches.push({ leftPath, rightPath, value1: obj1, value2: obj2 });
+              }
+            }
+          }
+
+          findMatches(leftObj, rightObj);
+          
+          // Apply highlights based on found matches
+          this.applyHighlights(leftEditor, rightEditor, matches);
+        },
+
+        highlightLineMatches: function(leftEditor, rightEditor) {
+          const leftLines = leftEditor.getValue().split('\n');
+          const rightLines = rightEditor.getValue().split('\n');
+          
+          for (let i = 0; i < Math.min(leftLines.length, rightLines.length); i++) {
+            const leftLine = leftLines[i];
+            const rightLine = rightLines[i];
+            
+            // Check if lines contain numbers within tolerance
+            const leftNumbers = this.extractNumbers(leftLine);
+            const rightNumbers = this.extractNumbers(rightLine);
+            
+            for (const leftNum of leftNumbers) {
+              for (const rightNum of rightNumbers) {
+                if (leftNum.value !== rightNum.value && this.isWithinTolerance(leftNum.value, rightNum.value)) {
+                  // Highlight the numbers in both editors
+                  this.highlightRange(leftEditor, i, leftNum.start, leftNum.end, 'proximity-highlight-left');
+                  this.highlightRange(rightEditor, i, rightNum.start, rightNum.end, 'proximity-highlight-right');
+                }
+              }
+            }
+          }
+        },
+
+        extractNumbers: function(text) {
+          const numbers = [];
+          const regex = /[-+]?(?:\d*\.?\d+(?:[eE][-+]?\d+)?)/g;
+          let match;
+          
+          while ((match = regex.exec(text)) !== null) {
+            const value = parseFloat(match[0]);
+            if (!isNaN(value)) {
+              numbers.push({
+                value: value,
+                start: match.index,
+                end: match.index + match[0].length,
+                text: match[0]
+              });
+            }
+          }
+          
+          return numbers;
+        },
+
+        applyHighlights: function(leftEditor, rightEditor, matches) {
+          // This is a simplified version - in practice, you'd need to map object paths to line positions
+          const leftContent = leftEditor.getValue();
+          const rightContent = rightEditor.getValue();
+          
+          matches.forEach(match => {
+            // Find the position of the values in the text
+            const leftPos = this.findValuePosition(leftContent, match.value1);
+            const rightPos = this.findValuePosition(rightContent, match.value2);
+            
+            if (leftPos && rightPos) {
+              this.highlightRange(leftEditor, leftPos.line, leftPos.start, leftPos.end, 'proximity-highlight-left');
+              this.highlightRange(rightEditor, rightPos.line, rightPos.start, rightPos.end, 'proximity-highlight-right');
+            }
+          });
+        },
+
+        findValuePosition: function(content, value) {
+          const lines = content.split('\n');
+          const valueStr = String(value);
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const index = line.indexOf(valueStr);
+            if (index !== -1) {
+              return {
+                line: i,
+                start: index,
+                end: index + valueStr.length
+              };
+            }
+          }
+          return null;
+        },
+
+        highlightRange: function(editor, line, start, end, className) {
+          const from = { line: line, ch: start };
+          const to = { line: line, ch: end };
+          
+          editor.markText(from, to, {
+            className: className,
+            title: 'Number within tolerance',
+            attributes: { 'data-proximity-highlight': 'true' }
+          });
+        },
+
+        clearHighlights: function(leftEditor, rightEditor) {
+          // Clear all proximity highlights
+          [leftEditor, rightEditor].forEach(editor => {
+            const marks = editor.getAllMarks();
+            marks.forEach(mark => {
+              if (mark.className && mark.className.startsWith('proximity-highlight')) {
+                mark.clear();
+              }
+            });
+          });
         }
       };
 
@@ -179,6 +349,8 @@
             params.set('floatTolerance', ProximityManager.settings.floatTolerance.toString());
             params.set('integerTolerance', ProximityManager.settings.integerTolerance.toString());
             params.set('mixedComparison', ProximityManager.settings.mixedComparison ? '1' : '0');
+            params.set('visualFeedback', ProximityManager.settings.visualFeedback ? '1' : '0');
+            params.set('treatAsMatch', ProximityManager.settings.treatAsMatch ? '1' : '0');
           }
           
           const newUrl = window.location.origin + window.location.pathname + 
@@ -201,6 +373,8 @@
             ProximityManager.settings.floatTolerance = parseFloat(params.get('floatTolerance')) || 0.001;
             ProximityManager.settings.integerTolerance = parseInt(params.get('integerTolerance')) || 1;
             ProximityManager.settings.mixedComparison = params.get('mixedComparison') !== '0';
+            ProximityManager.settings.visualFeedback = params.get('visualFeedback') === '1';
+            ProximityManager.settings.treatAsMatch = params.get('treatAsMatch') !== '0';
           }
           
           if (!leftParam && !rightParam) return null;
@@ -227,6 +401,8 @@
             params.set('floatTolerance', ProximityManager.settings.floatTolerance.toString());
             params.set('integerTolerance', ProximityManager.settings.integerTolerance.toString());
             params.set('mixedComparison', ProximityManager.settings.mixedComparison ? '1' : '0');
+            params.set('visualFeedback', ProximityManager.settings.visualFeedback ? '1' : '0');
+            params.set('treatAsMatch', ProximityManager.settings.treatAsMatch ? '1' : '0');
           }
           
           return window.location.origin + window.location.pathname + 
@@ -438,7 +614,7 @@
         // Add UI controls
         const controls = document.querySelector(".controls");
 
-        // Create Proximity Settings Panel
+        // Create Proximity Settings Panel with improved UI
         const proximityPanel = document.createElement("div");
         proximityPanel.className = "proximity-panel";
         proximityPanel.innerHTML = `
@@ -447,24 +623,56 @@
               🔢 Smart Numbers
             </button>
             <div class="proximity-settings" style="display: none;">
-              <div class="proximity-row">
-                <label>Float Tolerance:</label>
-                <input type="number" id="float-tolerance" step="0.001" min="0" max="1" value="0.001">
-                <span class="tolerance-example">e.g., 19.99 ≈ 19.991</span>
+              <div class="proximity-title">
+                <h4>Smart Number Proximity Settings</h4>
+                <p>Configure how similar numbers should be treated during comparison</p>
               </div>
-              <div class="proximity-row">
-                <label>Integer Tolerance:</label>
-                <input type="number" id="integer-tolerance" step="1" min="0" max="100" value="1">
-                <span class="tolerance-example">e.g., 100 ≈ 101</span>
+              
+              <div class="proximity-section">
+                <h5>Tolerance Levels</h5>
+                <div class="proximity-row">
+                  <label>Float Tolerance:</label>
+                  <input type="number" id="float-tolerance" step="0.001" min="0" max="1" value="0.001">
+                  <span class="tolerance-example">19.99 ≈ 19.991</span>
+                </div>
+                <div class="proximity-row">
+                  <label>Integer Tolerance:</label>
+                  <input type="number" id="integer-tolerance" step="1" min="0" max="100" value="1">
+                  <span class="tolerance-example">100 ≈ 101</span>
+                </div>
               </div>
-              <div class="proximity-row">
-                <label>
-                  <input type="checkbox" id="mixed-comparison" checked>
-                  Mixed string/number comparison
-                </label>
+              
+              <div class="proximity-section">
+                <h5>Comparison Options</h5>
+                <div class="proximity-row">
+                  <label>
+                    <input type="checkbox" id="mixed-comparison" checked>
+                    Mixed string/number comparison
+                  </label>
+                  <span class="tolerance-example">Allow comparing "19.99" with 20</span>
+                </div>
+                <div class="proximity-row">
+                  <label>
+                    <input type="checkbox" id="treat-as-match" checked>
+                    Treat proximity values as exact matches
+                  </label>
+                  <span class="tolerance-example">Hide differences for values within tolerance</span>
+                </div>
               </div>
+              
+              <div class="proximity-section">
+                <h5>Visual Feedback</h5>
+                <div class="proximity-row">
+                  <label>
+                    <input type="checkbox" id="visual-feedback">
+                    Highlight proximity matches
+                  </label>
+                  <span class="tolerance-example">Show colored indicators for matched numbers</span>
+                </div>
+              </div>
+              
               <div class="proximity-actions">
-                <button id="apply-proximity" class="apply-btn">Apply</button>
+                <button id="apply-proximity" class="apply-btn">Apply Settings</button>
                 <button id="reset-proximity" class="reset-btn">Reset to Defaults</button>
               </div>
             </div>
@@ -472,17 +680,21 @@
         `;
         controls.appendChild(proximityPanel);
 
-        // Proximity toggle functionality
+        // Proximity toggle functionality with improved UX
         const proximityToggle = document.getElementById('proximity-toggle');
         const proximitySettings = document.querySelector('.proximity-settings');
         const floatToleranceInput = document.getElementById('float-tolerance');
         const integerToleranceInput = document.getElementById('integer-tolerance');
         const mixedComparisonInput = document.getElementById('mixed-comparison');
+        const visualFeedbackInput = document.getElementById('visual-feedback');
+        const treatAsMatchInput = document.getElementById('treat-as-match');
 
         // Update input values with current settings
         floatToleranceInput.value = ProximityManager.settings.floatTolerance;
         integerToleranceInput.value = ProximityManager.settings.integerTolerance;
         mixedComparisonInput.checked = ProximityManager.settings.mixedComparison;
+        visualFeedbackInput.checked = ProximityManager.settings.visualFeedback;
+        treatAsMatchInput.checked = ProximityManager.settings.treatAsMatch;
 
         // Update toggle button state
         function updateProximityToggleState() {
@@ -504,56 +716,70 @@
           
           if (ProximityManager.settings.enabled) {
             proximitySettings.style.display = 'block';
-            // Show helpful notification
-            showNotification('Smart Number Proximity enabled! Configure tolerances below.', 'info');
           } else {
             proximitySettings.style.display = 'none';
-            showNotification('Smart Number Proximity disabled.', 'info');
+            // Clear any existing highlights when disabling
+            ProximityManager.clearHighlights(leftEditor, rightEditor);
           }
           
           ProximityManager.saveSettings();
           updateDiffStatus(mv);
         };
 
-        // Apply proximity settings
+        // Apply proximity settings (no notifications)
         document.getElementById('apply-proximity').onclick = () => {
           const floatVal = parseFloat(floatToleranceInput.value);
           const intVal = parseInt(integerToleranceInput.value);
           
           if (isNaN(floatVal) || floatVal < 0) {
-            showNotification('Invalid float tolerance value', 'error');
+            alert('Invalid float tolerance value');
             return;
           }
           
           if (isNaN(intVal) || intVal < 0) {
-            showNotification('Invalid integer tolerance value', 'error');
+            alert('Invalid integer tolerance value');
             return;
           }
 
           ProximityManager.settings.floatTolerance = floatVal;
           ProximityManager.settings.integerTolerance = intVal;
           ProximityManager.settings.mixedComparison = mixedComparisonInput.checked;
+          ProximityManager.settings.visualFeedback = visualFeedbackInput.checked;
+          ProximityManager.settings.treatAsMatch = treatAsMatchInput.checked;
           
           ProximityManager.saveSettings();
           updateDiffStatus(mv);
           
-          showNotification('Proximity settings applied successfully!', 'success');
+          // Apply/remove visual highlighting based on new settings
+          if (ProximityManager.settings.visualFeedback) {
+            ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+          } else {
+            ProximityManager.clearHighlights(leftEditor, rightEditor);
+          }
+          
+          // Close the settings panel after applying
+          proximitySettings.style.display = 'none';
         };
 
-        // Reset proximity settings
+        // Reset proximity settings (no notifications)
         document.getElementById('reset-proximity').onclick = () => {
           ProximityManager.settings.floatTolerance = 0.001;
           ProximityManager.settings.integerTolerance = 1;
           ProximityManager.settings.mixedComparison = true;
+          ProximityManager.settings.visualFeedback = false;
+          ProximityManager.settings.treatAsMatch = true;
           
           floatToleranceInput.value = ProximityManager.settings.floatTolerance;
           integerToleranceInput.value = ProximityManager.settings.integerTolerance;
           mixedComparisonInput.checked = ProximityManager.settings.mixedComparison;
+          visualFeedbackInput.checked = ProximityManager.settings.visualFeedback;
+          treatAsMatchInput.checked = ProximityManager.settings.treatAsMatch;
           
           ProximityManager.saveSettings();
           updateDiffStatus(mv);
           
-          showNotification('Proximity settings reset to defaults', 'info');
+          // Clear highlights when resetting
+          ProximityManager.clearHighlights(leftEditor, rightEditor);
         };
 
         // Notification system for user feedback
@@ -615,10 +841,7 @@
           e.stopPropagation();
         });
 
-        // Show proximity settings if enabled on load
-        if (ProximityManager.settings.enabled) {
-          proximitySettings.style.display = 'block';
-        }
+        // Settings panel stays closed by default - no auto-opening
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
@@ -735,7 +958,7 @@
           const rightContent = rightEditor.getValue();
           
           if (!leftContent.trim() && !rightContent.trim()) {
-            showNotification("Please add some content to share!", "warning");
+            alert("Please add some content to share!");
             return;
           }
           
@@ -748,12 +971,6 @@
             const originalText = shareBtn.textContent;
             shareBtn.textContent = "✅ URL Copied!";
             shareBtn.style.backgroundColor = "#28a745";
-            
-            let message = "Share URL copied to clipboard!";
-            if (ProximityManager.settings.enabled) {
-              message += " (includes proximity settings)";
-            }
-            showNotification(message, "success");
             
             setTimeout(() => {
               shareBtn.textContent = originalText;
@@ -772,12 +989,6 @@
             const originalText = shareBtn.textContent;
             shareBtn.textContent = "✅ URL Copied!";
             shareBtn.style.backgroundColor = "#28a745";
-            
-            let message = "Share URL copied to clipboard!";
-            if (ProximityManager.settings.enabled) {
-              message += " (includes proximity settings)";
-            }
-            showNotification(message, "success");
             
             setTimeout(() => {
               shareBtn.textContent = originalText;
@@ -846,10 +1057,10 @@
             // Update URL when loading template - include proximity settings
             URLManager.saveToURL(template.left, template.right, true);
             
-            // Show helpful notification for financial/measurement templates
-            if (templateKey === 'financial' || templateKey === 'measurements') {
-              showNotification(`${templateKey} template loaded! Try enabling Smart Numbers to see proximity matching.`, 'info');
-            }
+            // Apply proximity highlighting after loading template
+            setTimeout(() => {
+              ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+            }, 100);
           }
           
           // Reset select to placeholder
@@ -1006,6 +1217,11 @@
           }
           saveContent();
           updateDiffStatus(mv);
+          
+          // Apply proximity highlighting after content change
+          setTimeout(() => {
+            ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+          }, 100);
         });
 
         rightEditor.on("change", (instance, changeObj) => {
@@ -1023,6 +1239,11 @@
           }
           saveContent();
           updateDiffStatus(mv);
+          
+          // Apply proximity highlighting after content change
+          setTimeout(() => {
+            ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+          }, 100);
         });
 
         // Enhance format button
@@ -1047,6 +1268,11 @@
             mv.right.operation(() => {
               mv.alignChunks();
             });
+            
+            // Apply proximity highlighting after formatting
+            setTimeout(() => {
+              ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+            }, 100);
           } catch (e) {
             // alert("Invalid JSON detected. Please check your input.");
           }
@@ -1055,6 +1281,15 @@
 
         // Apply proximity-aware diffing
         createProximityAwareDiff(mv);
+
+        // Apply initial proximity highlighting if enabled and content is present
+        setTimeout(() => {
+          const leftContent = leftEditor.getValue().trim();
+          const rightContent = rightEditor.getValue().trim();
+          if (leftContent && rightContent) {
+            ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+          }
+        }, 100);
 
         updateDiffStatus(mv);
         return mv;
@@ -1254,61 +1489,24 @@
         const target = document.getElementById("view");
         const mv = initializeMergeView(target);
         
-        // Show notification if content was loaded from URL
+        // Check if content was loaded from URL (no notification)
         const urlContent = URLManager.loadFromURL();
-        if (urlContent && (urlContent.left || urlContent.right)) {
-          // Create and show notification
-          const notification = document.createElement("div");
-          notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #28a745;
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 10000;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            font-size: 14px;
-            max-width: 300px;
-            animation: slideIn 0.3s ease;
+        
+        // Add animation keyframes for future use
+        if (!document.getElementById('notification-styles')) {
+          const style = document.createElement('style');
+          style.id = 'notification-styles';
+          style.textContent = `
+            @keyframes slideIn {
+              from { transform: translateX(100%); opacity: 0; }
+              to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+              from { transform: translateX(0); opacity: 1; }
+              to { transform: translateX(100%); opacity: 0; }
+            }
           `;
-          
-          let message = "✅ Shared comparison loaded successfully!";
-          if (ProximityManager.settings.enabled) {
-            message += " (Smart Numbers enabled)";
-          }
-          notification.textContent = message;
-          
-          // Add animation keyframes
-          if (!document.getElementById('notification-styles')) {
-            const style = document.createElement('style');
-            style.id = 'notification-styles';
-            style.textContent = `
-              @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-              }
-              @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(100%); opacity: 0; }
-              }
-            `;
-            document.head.appendChild(style);
-          }
-          
-          document.body.appendChild(notification);
-          
-          // Auto-remove after 4 seconds
-          setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease';
-            setTimeout(() => {
-              if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-              }
-            }, 300);
-          }, 4000);
+          document.head.appendChild(style);
         }
       });
     </script>
