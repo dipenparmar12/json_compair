@@ -31,7 +31,8 @@
       }
 
       const newUrl =
-        window.location.origin + window.location.pathname +
+        window.location.origin +
+        window.location.pathname +
         (params.toString() ? "?" + params.toString() : "");
 
       window.history.replaceState({}, "", newUrl);
@@ -219,61 +220,238 @@
       return item;
     });
   }
-
-  // Flexible JSON parser that accepts Python dict literals as input.
-  // It normalizes Python-style booleans/None, single quotes, unquoted keys, and trailing commas
-  // into valid JSON, then parses with JSON.parse.
+  // Enhanced flexible JSON parser that accepts Python dict literals and other Python data types
+  // Supports: dicts, lists, tuples, sets, booleans, None, strings, numbers, datetime objects,
+  // Decimal, complex numbers, bytes, and common Python object representations
   function parseFlexibleJSON(text) {
     if (!text || !text.trim()) return null;
     let s = text.trim();
 
-    // Quick heuristic: if it already starts with { or [ or " then try native parse first
-    try {
-      return JSON.parse(s);
-    } catch (e) {
-      // continue to try flexible parsing
-    }
-
-    // Replace Python booleans and None with JSON equivalents
-    s = s.replace(/\bTrue\b/g, 'true')
-         .replace(/\bFalse\b/g, 'false')
-         .replace(/\bNone\b/g, 'null');
-
-    // Convert single-quoted strings to double-quoted strings
-    // This tries to avoid converting single quotes inside double quoted strings.
-    s = s.replace(/'([^']*)'/g, function(m, p1) {
-      // escape any existing double quotes inside
-      const escaped = p1.replace(/\\\"/g, '\\\\"').replace(/"/g, '\\"');
-      return '"' + escaped + '"';
-    });
-
-    // Add quotes around unquoted object keys: { key: -> { "key":
-    // This is a best-effort and won't handle computed keys or nested colons in strings.
-    s = s.replace(/([\{,\s])(\s*)([A-Za-z0-9_\-]+)\s*:/g, function(_, a, b, key) {
-      // if key is already quoted, skip
-      if (/^['\"]/.test(key)) return _;
-      return a + b + '"' + key + '":';
-    });
-
-    // Remove trailing commas before } or ]
-    s = s.replace(/,\s*(?=[}\]])/g, '');
-
-    // Now attempt native parse
-    try {
-      return JSON.parse(s);
-    } catch (e) {
-      // As a last resort, try evaluating in a safe sandbox by using Function
-      // Convert Python dict-literal-specific True/False/None already replaced.
+    // Quick heuristic: if it already starts with valid JSON syntax, try native parse first
+    if (/^[\{\[\"\d\-]/.test(s) || /^(true|false|null)$/i.test(s)) {
       try {
-        // Wrap in parentheses so object literal parses correctly
-        const fn = new Function('return (' + s + ');');
-        return fn();
-      } catch (err) {
-        // rethrow the original JSON error for upstream handling
-        throw new Error('Unable to parse input as JSON or Python dict: ' + err.message);
+        return JSON.parse(s);
+      } catch (e) {
+        // Continue to flexible parsing
       }
     }
+
+    // Step 1: Handle Python literals and constants first
+    s = s
+      .replace(/\bTrue\b/g, "true")
+      .replace(/\bFalse\b/g, "false")
+      .replace(/\bNone\b/g, "null");
+
+    // Step 2: Convert single quotes to double quotes (handle this early and carefully)
+    s = convertSingleQuotesToDouble(s);
+
+    // Step 3: Handle Python numeric types
+    // Handle complex numbers: (1+2j) -> {"real": 1, "imag": 2}
+    s = s.replace(
+      /\(([+-]?\d*\.?\d*)\s*([+-])\s*(\d*\.?\d*)j\)/g,
+      '{"real": $1, "imag": "$2$3"}'
+    );
+    s = s.replace(/([+-]?\d*\.?\d*)j/g, '{"real": 0, "imag": "$1"}');
+
+    // Handle Decimal objects: Decimal('123.45') -> "123.45"
+    s = s.replace(/Decimal\(\"([^\"]+)\"\)/g, '"$1"');
+
+    // Step 4: Handle Python string representations
+    // Handle bytes literals: b"data" -> "data" (simplified conversion)
+    s = s.replace(/b\"([^\"]*)\"/g, '"$1"');
+
+    // Handle raw strings: r"data" -> "data"
+    s = s.replace(/r\"([^\"]*)\"/g, '"$1"');
+
+    // Handle unicode strings: u"data" -> "data"
+    s = s.replace(/u\"([^\"]*)\"/g, '"$1"');
+
+    // Handle f-strings (simplified): f"Hello {name}" -> "Hello {name}"
+    s = s.replace(/f\"([^\"]*)\"/g, '"$1"');
+
+    // Step 5: Handle Python object representations
+    // Convert Python object representations like <User #655715> to structured objects
+    s = s.replace(/<([A-Za-z0-9_]+)\s*(#\d+)?>/g, '{"type": "$1", "id": "$2"}');
+
+    // Step 6: Handle Python datetime objects
+    s = s.replace(/datetime\.datetime\(([^)]+)\)/g, function (match, args) {
+      const parts = args.split(",").map((part) => part.trim());
+      const year = parts[0];
+      const month = parts[1];
+      const day = parts[2];
+      const hour = parts[3] || "0";
+      const minute = parts[4] || "0";
+      const second = parts[5] || "0";
+      const microsecond = parts[6] || "0";
+
+      return `"${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:${second.padStart(2, "0")}.${microsecond.padStart(6, "0")}"`;
+    });
+
+    // Handle date objects
+    s = s.replace(/datetime\.date\(([^)]+)\)/g, function (match, args) {
+      const parts = args.split(",").map((part) => part.trim());
+      const year = parts[0];
+      const month = parts[1];
+      const day = parts[2];
+      return `"${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}"`;
+    });
+
+    // Step 7: Handle Python collection types
+    // Handle sets: {1, 2, 3} -> [1, 2, 3] (but preserve dicts)
+    s = s.replace(/\{([^}]*)\}/g, function (match, content) {
+      content = content.trim();
+      if (!content) return "{}"; // Empty set becomes empty object
+
+      // Check if it's a dictionary (contains colons not in quotes)
+      if (containsColonOutsideQuotes(content)) {
+        // It's a dictionary, keep as object
+        return match;
+      } else {
+        // It's a set, convert to array
+        const elements = content
+          .split(",")
+          .map((el) => el.trim())
+          .filter((el) => el);
+        return "[" + elements.join(", ") + "]";
+      }
+    });
+
+    // Handle tuples: (1, 2, 3) -> [1, 2, 3]
+    s = s.replace(/\(([^)]*)\)/g, function (match, content) {
+      content = content.trim();
+      if (!content) return "[]"; // Empty tuple
+
+      // Check if it looks like a function call or complex number (already handled)
+      if (/^[+-]?\d*\.?\d*[+-]\d*\.?\d*j$/.test(content)) return match;
+
+      // Simple tuple detection: comma-separated values without colons
+      if (content.includes(",") || !containsColonOutsideQuotes(content)) {
+        const elements = content
+          .split(",")
+          .map((el) => el.trim())
+          .filter((el) => el);
+        return "[" + elements.join(", ") + "]";
+      }
+
+      return match;
+    });
+
+    // Step 8: Handle object key formatting
+    // Add quotes around unquoted object keys
+    s = s.replace(
+      /([\{,]\s*)([A-Za-z0-9_\-]+)\s*:/g,
+      function (match, prefix, key) {
+        // Skip if already quoted
+        if (/^[\"\']/.test(key)) return match;
+        // Skip if it's a number
+        if (/^\d+$/.test(key)) return match;
+        return prefix + '"' + key + '":';
+      }
+    );
+
+    // Step 9: Clean up formatting
+    // Remove trailing commas before } or ]
+    s = s.replace(/,\s*(?=[}\]])/g, "");
+
+    // Handle multiple consecutive commas
+    s = s.replace(/,\s*,+/g, ",");
+
+    // Step 10: Final parsing attempts
+    try {
+      return JSON.parse(s);
+    } catch (e) {
+      throw new Error(
+        `Unable to parse input as JSON or Python data structure. ` +
+          `Processed: "${s.slice(0, 200)}${s.length > 200 ? "..." : ""}". ` +
+          `Error: ${e.message}`
+      );
+    }
   }
+
+  // Helper function to convert single quotes to double quotes properly
+  function convertSingleQuotesToDouble(str) {
+    let result = "";
+    let i = 0;
+
+    while (i < str.length) {
+      if (str[i] === "'" && (i === 0 || str[i - 1] !== "\\")) {
+        // Start of single-quoted string
+        result += '"';
+        i++; // skip opening quote
+
+        // Process content until closing quote
+        while (i < str.length) {
+          if (str[i] === "'" && (i === 0 || str[i - 1] !== "\\")) {
+            // End of string
+            result += '"';
+            i++;
+            break;
+          } else if (str[i] === '"' && (i === 0 || str[i - 1] !== "\\")) {
+            // Escape unescaped double quotes
+            result += '\\"';
+            i++;
+          } else {
+            result += str[i];
+            i++;
+          }
+        }
+      } else {
+        result += str[i];
+        i++;
+      }
+    }
+
+    return result;
+  }
+
+  // Helper function to check if content contains colon outside quotes
+  function containsColonOutsideQuotes(content) {
+    let inQuotes = false;
+    let quoteChar = "";
+
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      const prevChar = i > 0 ? content[i - 1] : "";
+
+      if (!inQuotes && (char === '"' || char === "'")) {
+        inQuotes = true;
+        quoteChar = char;
+      } else if (inQuotes && char === quoteChar && prevChar !== "\\") {
+        inQuotes = false;
+      } else if (!inQuotes && char === ":") {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // Helper function to pretty-print the result
+  function parseAndFormat(text) {
+    try {
+      const result = parseFlexibleJSON(text);
+      return JSON.stringify(result, null, 2);
+    } catch (e) {
+      return `Error: ${e.message}`;
+    }
+  }
+
+  // Export for use
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { parseFlexibleJSON, parseAndFormat };
+  }
+
+  // // Test with the provided data
+  // const testData =
+  //   "{'cooling': 'cooling-ac-conventional', 'heating': 'heating-furnace-natgas', 'version': 3, 'waterheater': 'wh-tank-natgas', 'cooling-setpoint': 80}";
+  // console.log("Testing with provided data:");
+  // console.log("Input:", testData);
+  // try {
+  //   const result = parseFlexibleJSON(testData);
+  //   console.log("Success! Output:", JSON.stringify(result, null, 2));
+  // } catch (e) {
+  //   console.log("Error:", e.message);
+  // }
 
   // Expose utilities on the global window for compatibility
   window.URLManager = URLManager;
@@ -282,5 +460,4 @@
   window.sortJSONKeys = sortJSONKeys;
   window.sortJSONArray = sortJSONArray;
   window.parseFlexibleJSON = parseFlexibleJSON;
-
 })();
