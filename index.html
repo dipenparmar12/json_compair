@@ -173,49 +173,103 @@
           try { return parseFlexibleJSON(str); } catch { return null; }
         }
 
-        // Align two JSON objects at root level, inserting blank lines where keys are missing.
-        // Keeps JSON valid: commas only added if that side has another subsequent key.
-        function buildAlignedRoot(leftObj, rightObj) {
-          if (leftObj === null || rightObj === null || typeof leftObj !== 'object' || typeof rightObj !== 'object' || Array.isArray(leftObj) || Array.isArray(rightObj)) {
-            return { left: JSON.stringify(leftObj, null, 3), right: JSON.stringify(rightObj, null, 3) };
+        // Recursive alignment of two JSON values inserting blank placeholder lines (single space) where
+        // a property (or nested structure) exists only on one side. This sacrifices strict JSON validity
+        // in placeholder zones (blank lines) but keeps existing value lines intact for readability.
+        function alignJSON(leftVal, rightVal, indent = 0, isRoot = false) {
+          const IND = '  '.repeat(indent);
+          // Primitive or mismatched types / arrays treated as single-line stringified blocks
+            const isObjL = leftVal && typeof leftVal === 'object' && !Array.isArray(leftVal);
+            const isObjR = rightVal && typeof rightVal === 'object' && !Array.isArray(rightVal);
+
+          // If both plain (not objects) just output one line each
+          if (!isObjL && !isObjR) {
+            return {
+              leftLines: [leftVal === undefined ? ' ' : JSON.stringify(leftVal)],
+              rightLines: [rightVal === undefined ? ' ' : JSON.stringify(rightVal)]
+            };
           }
-          const leftKeys = Object.keys(leftObj);
-          const rightKeys = Object.keys(rightObj);
-          const unionKeys = [];
-          leftKeys.forEach(k => { if (!unionKeys.includes(k)) unionKeys.push(k); });
-          rightKeys.forEach(k => { if (!unionKeys.includes(k)) unionKeys.push(k); });
-          const leftOwnSet = new Set(leftKeys);
-          const rightOwnSet = new Set(rightKeys);
+
+          // If one side object and other not, stringify non-object to single line and align object height
+          if (isObjL && !isObjR) {
+            const objAligned = alignObject(leftVal, null, indent + 0);
+            const other = JSON.stringify(rightVal);
+            const rightLines = [other !== undefined ? other : ' '];
+            while (rightLines.length < objAligned.leftLines.length) rightLines.push(' ');
+            return { leftLines: objAligned.leftLines, rightLines };
+          }
+          if (!isObjL && isObjR) {
+            const objAligned = alignObject(null, rightVal, indent + 0);
+            const leftLines = [JSON.stringify(leftVal)];
+            while (leftLines.length < objAligned.rightLines.length) leftLines.push(' ');
+            return { leftLines, rightLines: objAligned.rightLines };
+          }
+
+          // Both objects
+          return alignObject(leftVal, rightVal, indent + 0, isRoot);
+        }
+
+        function alignObject(leftObj, rightObj, indent = 0, isRoot = false) {
+          const IND = '  '.repeat(indent);
+          const leftKeys = leftObj ? Object.keys(leftObj) : [];
+          const rightKeys = rightObj ? Object.keys(rightObj) : [];
+          const keySet = Array.from(new Set([...leftKeys, ...rightKeys])).sort();
           const leftLines = ['{'];
           const rightLines = ['{'];
-          function needsComma(sideHasSet, currentIndex) {
-            for (let j = currentIndex + 1; j < unionKeys.length; j++) {
-              if (sideHasSet.has(unionKeys[j])) return true;
-            }
-            return false;
-          }
-          unionKeys.forEach((key, idx) => {
-            const lHas = leftOwnSet.has(key);
-            const rHas = rightOwnSet.has(key);
-            const lComma = lHas && needsComma(leftOwnSet, idx);
-            const rComma = rHas && needsComma(rightOwnSet, idx);
-            if (lHas) {
-              const lVal = leftObj[key];
-              leftLines.push('  ' + JSON.stringify(key) + ': ' + JSON.stringify(lVal, null, 0) + (lComma ? ',' : ''));
+          keySet.forEach((k, idx) => {
+            const lHas = leftObj && Object.prototype.hasOwnProperty.call(leftObj, k);
+            const rHas = rightObj && Object.prototype.hasOwnProperty.call(rightObj, k);
+            const lVal = lHas ? leftObj[k] : undefined;
+            const rVal = rHas ? rightObj[k] : undefined;
+            const lastKey = idx === keySet.length - 1;
+            const sub = alignJSON(lVal, rVal, indent + 1);
+            // Determine if child is single-line to format as standard JSON property; else multi-line block
+            const singleLine = sub.leftLines.length === 1 && sub.rightLines.length === 1;
+            if (singleLine) {
+              // left side
+              if (lHas) {
+                leftLines.push('  '.repeat(indent + 1) + JSON.stringify(k) + ': ' + sub.leftLines[0] + (lastKey ? '' : ','));
+              } else {
+                leftLines.push(' '); // placeholder
+              }
+              // right side
+              if (rHas) {
+                rightLines.push('  '.repeat(indent + 1) + JSON.stringify(k) + ': ' + sub.rightLines[0] + (lastKey ? '' : ','));
+              } else {
+                rightLines.push(' ');
+              }
             } else {
-              // blank placeholder line (kept truly blank for visual spacing)
-              leftLines.push('');
-            }
-            if (rHas) {
-              const rVal = rightObj[key];
-              rightLines.push('  ' + JSON.stringify(key) + ': ' + JSON.stringify(rVal, null, 0) + (rComma ? ',' : ''));
-            } else {
-              rightLines.push('');
+              // Multi-line value (object on at least one side)
+              if (lHas) {
+                leftLines.push('  '.repeat(indent + 1) + JSON.stringify(k) + ': {');
+                // child lines without its own surrounding braces? sub already produced including braces if object
+                // We aligned objects by producing braces at top-level; for nested we reused sub.* lines
+                sub.leftLines.forEach((line, i) => {
+                  if (i === 0 || i === sub.leftLines.length - 1) return; // skip outer braces to avoid double
+                  leftLines.push('  '.repeat(indent + 2) + line);
+                });
+                leftLines.push('  '.repeat(indent + 1) + '}' + (lastKey ? '' : ','));
+              } else {
+                // produce placeholders matching height
+                const height = sub.leftLines.length; // approximate
+                for (let i = 0; i < height; i++) leftLines.push(' ');
+              }
+              if (rHas) {
+                rightLines.push('  '.repeat(indent + 1) + JSON.stringify(k) + ': {');
+                sub.rightLines.forEach((line, i) => {
+                  if (i === 0 || i === sub.rightLines.length - 1) return;
+                  rightLines.push('  '.repeat(indent + 2) + line);
+                });
+                rightLines.push('  '.repeat(indent + 1) + '}' + (lastKey ? '' : ','));
+              } else {
+                const height = sub.rightLines.length;
+                for (let i = 0; i < height; i++) rightLines.push(' ');
+              }
             }
           });
           leftLines.push('}');
           rightLines.push('}');
-          return { left: leftLines.join('\n'), right: rightLines.join('\n') };
+          return { leftLines, rightLines };
         }
 
         function enableMissingAsBlank() {
@@ -223,18 +277,17 @@
           originalContent.left = leftEditor.getValue();
           originalContent.right = rightEditor.getValue();
           const leftObj = safeParse(originalContent.left);
-            const rightObj = safeParse(originalContent.right);
-          if (leftObj && rightObj) {
-            const aligned = buildAlignedRoot(leftObj, rightObj);
+          const rightObj = safeParse(originalContent.right);
+          if (leftObj && rightObj && typeof leftObj === 'object' && typeof rightObj === 'object') {
+            const aligned = alignJSON(leftObj, rightObj, 0, true);
             leftEditor.setOption('readOnly', true);
             rightEditor.setOption('readOnly', true);
-            leftEditor.setValue(aligned.left);
-            rightEditor.setValue(aligned.right);
+            leftEditor.setValue(aligned.leftLines.join('\n'));
+            rightEditor.setValue(aligned.rightLines.join('\n'));
             missingAsBlankEnabled = true;
             missingBlankBtn.classList.add('active');
             updateDiffStatus(mv);
           } else {
-            // parsing failed; keep original and visually indicate disabled
             alert('Unable to parse both sides as JSON objects for alignment.');
           }
         }
