@@ -63,6 +63,8 @@
     <script type="text/javascript">
     // Utilities are loaded from ./utils.js
 
+  // parseFlexibleJSON is provided by `utils.js` and exposed on window.parseFlexibleJSON
+
       // Initialize enhanced merge view
       function initializeMergeView(target) {
         // Load content from URL parameters first, then from storage, then use defaults
@@ -162,7 +164,7 @@
         sortKeysBtn.onclick = () => {
           try {
             // Parse and sort left editor content
-            let leftObj = JSON.parse(leftEditor.getValue());
+            let leftObj = parseFlexibleJSON(leftEditor.getValue());
             if (Array.isArray(leftObj)) {
               leftObj = sortJSONArray(leftObj);
             } else {
@@ -171,7 +173,7 @@
             leftEditor.setValue(JSON.stringify(leftObj, null, 3));
 
             // Parse and sort right editor content
-            let rightObj = JSON.parse(rightEditor.getValue());
+            let rightObj = parseFlexibleJSON(rightEditor.getValue());
             if (Array.isArray(rightObj)) {
               rightObj = sortJSONArray(rightObj);
             } else {
@@ -320,11 +322,11 @@
             e.stopPropagation();
             try {
               // Request clipboard permission and get text
-              const text = await navigator.clipboard.readText();
+        const text = await navigator.clipboard.readText();
               if (text) {
                 // Try to format if it's valid JSON
                 try {
-                  const formatted = JSON.stringify(JSON.parse(text), null, 3);
+          const formatted = JSON.stringify(parseFlexibleJSON(text), null, 3);
                   editor.setValue(formatted);
                 } catch {
                   // If not valid JSON, just paste as-is
@@ -401,11 +403,7 @@
         leftEditor.on("change", (instance, changeObj) => {
           if (changeObj.origin === "paste") {
             try {
-              var formatted = JSON.stringify(
-                JSON.parse(instance.getValue()),
-                null,
-                3
-              );
+              var formatted = JSON.stringify(parseFlexibleJSON(instance.getValue()), null, 3);
               instance.setValue(formatted);
             } catch (e) {
               // Ignore parse errors
@@ -418,11 +416,7 @@
         rightEditor.on("change", (instance, changeObj) => {
           if (changeObj.origin === "paste") {
             try {
-              var formatted = JSON.stringify(
-                JSON.parse(instance.getValue()),
-                null,
-                3
-              );
+              var formatted = JSON.stringify(parseFlexibleJSON(instance.getValue()), null, 3);
               instance.setValue(formatted);
             } catch (e) {
               // Ignore parse errors
@@ -445,12 +439,8 @@
           }
 
           try {
-            leftEditor.setValue(
-              JSON.stringify(JSON.parse(leftEditor.getValue()), null, 3)
-            );
-            rightEditor.setValue(
-              JSON.stringify(JSON.parse(rightEditor.getValue()), null, 3)
-            );
+            leftEditor.setValue(JSON.stringify(parseFlexibleJSON(leftEditor.getValue()), null, 3));
+            rightEditor.setValue(JSON.stringify(parseFlexibleJSON(rightEditor.getValue()), null, 3));
             mv.right.operation(() => {
               mv.alignChunks();
             });

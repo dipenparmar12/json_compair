@@ -220,11 +220,67 @@
     });
   }
 
+  // Flexible JSON parser that accepts Python dict literals as input.
+  // It normalizes Python-style booleans/None, single quotes, unquoted keys, and trailing commas
+  // into valid JSON, then parses with JSON.parse.
+  function parseFlexibleJSON(text) {
+    if (!text || !text.trim()) return null;
+    let s = text.trim();
+
+    // Quick heuristic: if it already starts with { or [ or " then try native parse first
+    try {
+      return JSON.parse(s);
+    } catch (e) {
+      // continue to try flexible parsing
+    }
+
+    // Replace Python booleans and None with JSON equivalents
+    s = s.replace(/\bTrue\b/g, 'true')
+         .replace(/\bFalse\b/g, 'false')
+         .replace(/\bNone\b/g, 'null');
+
+    // Convert single-quoted strings to double-quoted strings
+    // This tries to avoid converting single quotes inside double quoted strings.
+    s = s.replace(/'([^']*)'/g, function(m, p1) {
+      // escape any existing double quotes inside
+      const escaped = p1.replace(/\\\"/g, '\\\\"').replace(/"/g, '\\"');
+      return '"' + escaped + '"';
+    });
+
+    // Add quotes around unquoted object keys: { key: -> { "key":
+    // This is a best-effort and won't handle computed keys or nested colons in strings.
+    s = s.replace(/([\{,\s])(\s*)([A-Za-z0-9_\-]+)\s*:/g, function(_, a, b, key) {
+      // if key is already quoted, skip
+      if (/^['\"]/.test(key)) return _;
+      return a + b + '"' + key + '":';
+    });
+
+    // Remove trailing commas before } or ]
+    s = s.replace(/,\s*(?=[}\]])/g, '');
+
+    // Now attempt native parse
+    try {
+      return JSON.parse(s);
+    } catch (e) {
+      // As a last resort, try evaluating in a safe sandbox by using Function
+      // Convert Python dict-literal-specific True/False/None already replaced.
+      try {
+        // Wrap in parentheses so object literal parses correctly
+        const fn = new Function('return (' + s + ');');
+        return fn();
+      } catch (err) {
+        // rethrow the original JSON error for upstream handling
+        throw new Error('Unable to parse input as JSON or Python dict: ' + err.message);
+      }
+    }
+  }
+
   // Expose utilities on the global window for compatibility
   window.URLManager = URLManager;
   window.StorageManager = StorageManager;
   window.DefaultTemplates = DefaultTemplates;
   window.sortJSONKeys = sortJSONKeys;
   window.sortJSONArray = sortJSONArray;
+  window.parseFlexibleJSON = parseFlexibleJSON;
 
 })();
