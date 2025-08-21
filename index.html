@@ -73,6 +73,10 @@
         const savedContent = StorageManager.loadFromStorage();
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
 
+  // State for "missing as blank" feature
+  let originalContent = { left: null, right: null }; // cache when toggle enabled
+  let missingAsBlankEnabled = false;
+
         // Create merge view with enhanced options
         const mv = CodeMirror.MergeView(target, {
           value: initialContent.left,
@@ -157,6 +161,98 @@
           }
         };
         controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
+
+        // --- Show Missing As Blank Toggle ---
+        const missingBlankBtn = document.createElement("button");
+        missingBlankBtn.className = "toggle-button";
+        missingBlankBtn.textContent = "Show Missing as Blank";
+        controls.insertBefore(missingBlankBtn, showDiffsBtn.nextSibling);
+
+        // Utility: attempt JSON parse with graceful fallback
+        function safeParse(str) {
+          try { return parseFlexibleJSON(str); } catch { return null; }
+        }
+
+        // Align two JSON objects at root level, inserting blank lines where keys are missing.
+        // Keeps JSON valid: commas only added if that side has another subsequent key.
+        function buildAlignedRoot(leftObj, rightObj) {
+          if (leftObj === null || rightObj === null || typeof leftObj !== 'object' || typeof rightObj !== 'object' || Array.isArray(leftObj) || Array.isArray(rightObj)) {
+            return { left: JSON.stringify(leftObj, null, 3), right: JSON.stringify(rightObj, null, 3) };
+          }
+          const leftKeys = Object.keys(leftObj);
+          const rightKeys = Object.keys(rightObj);
+          const unionKeys = [];
+          leftKeys.forEach(k => { if (!unionKeys.includes(k)) unionKeys.push(k); });
+          rightKeys.forEach(k => { if (!unionKeys.includes(k)) unionKeys.push(k); });
+          const leftOwnSet = new Set(leftKeys);
+          const rightOwnSet = new Set(rightKeys);
+          const leftLines = ['{'];
+          const rightLines = ['{'];
+          function needsComma(sideHasSet, currentIndex) {
+            for (let j = currentIndex + 1; j < unionKeys.length; j++) {
+              if (sideHasSet.has(unionKeys[j])) return true;
+            }
+            return false;
+          }
+          unionKeys.forEach((key, idx) => {
+            const lHas = leftOwnSet.has(key);
+            const rHas = rightOwnSet.has(key);
+            const lComma = lHas && needsComma(leftOwnSet, idx);
+            const rComma = rHas && needsComma(rightOwnSet, idx);
+            if (lHas) {
+              const lVal = leftObj[key];
+              leftLines.push('  ' + JSON.stringify(key) + ': ' + JSON.stringify(lVal, null, 0) + (lComma ? ',' : ''));
+            } else {
+              // blank placeholder line (kept truly blank for visual spacing)
+              leftLines.push('');
+            }
+            if (rHas) {
+              const rVal = rightObj[key];
+              rightLines.push('  ' + JSON.stringify(key) + ': ' + JSON.stringify(rVal, null, 0) + (rComma ? ',' : ''));
+            } else {
+              rightLines.push('');
+            }
+          });
+          leftLines.push('}');
+          rightLines.push('}');
+          return { left: leftLines.join('\n'), right: rightLines.join('\n') };
+        }
+
+        function enableMissingAsBlank() {
+          if (missingAsBlankEnabled) return;
+          originalContent.left = leftEditor.getValue();
+          originalContent.right = rightEditor.getValue();
+          const leftObj = safeParse(originalContent.left);
+            const rightObj = safeParse(originalContent.right);
+          if (leftObj && rightObj) {
+            const aligned = buildAlignedRoot(leftObj, rightObj);
+            leftEditor.setOption('readOnly', true);
+            rightEditor.setOption('readOnly', true);
+            leftEditor.setValue(aligned.left);
+            rightEditor.setValue(aligned.right);
+            missingAsBlankEnabled = true;
+            missingBlankBtn.classList.add('active');
+            updateDiffStatus(mv);
+          } else {
+            // parsing failed; keep original and visually indicate disabled
+            alert('Unable to parse both sides as JSON objects for alignment.');
+          }
+        }
+
+        function disableMissingAsBlank() {
+          if (!missingAsBlankEnabled) return;
+          leftEditor.setOption('readOnly', false);
+          rightEditor.setOption('readOnly', false);
+          leftEditor.setValue(originalContent.left);
+          rightEditor.setValue(originalContent.right);
+          missingAsBlankEnabled = false;
+          missingBlankBtn.classList.remove('active');
+          updateDiffStatus(mv);
+        }
+
+        missingBlankBtn.onclick = () => {
+          if (!missingAsBlankEnabled) enableMissingAsBlank(); else disableMissingAsBlank();
+        };
 
         // Add Sort JSON Keys button
         const sortKeysBtn = document.createElement("button");
