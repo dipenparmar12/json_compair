@@ -144,7 +144,8 @@
 
         // Enhanced visual feedback system
         highlightProximityMatches: function(leftEditor, rightEditor) {
-          // Only highlight if enabled, visualFeedback is on, and treatAsMatch is false
+          // Only highlight if enabled and visualFeedback is on
+          // When treatAsMatch is enabled, don't highlight anything
           if (!this.settings.enabled || !this.settings.visualFeedback || this.settings.treatAsMatch) {
             this.clearHighlights(leftEditor, rightEditor);
             return;
@@ -171,7 +172,8 @@
           
           function findMatches(obj1, obj2, path = '', leftPath = '', rightPath = '') {
             if (typeof obj1 !== typeof obj2) {
-              if (ProximityManager.settings.mixedComparison && ProximityManager.isWithinTolerance(obj1, obj2)) {
+              // Only highlight if they're different AND not within tolerance
+              if (!ProximityManager.settings.mixedComparison || !ProximityManager.isWithinTolerance(obj1, obj2)) {
                 matches.push({ leftPath, rightPath, value1: obj1, value2: obj2 });
               }
               return;
@@ -196,8 +198,8 @@
                 }
               }
             } else {
-              // Primitive values
-              if (obj1 !== obj2 && ProximityManager.isWithinTolerance(obj1, obj2)) {
+              // Primitive values - only highlight if they're different AND NOT within tolerance
+              if (obj1 !== obj2 && !ProximityManager.isWithinTolerance(obj1, obj2)) {
                 matches.push({ leftPath, rightPath, value1: obj1, value2: obj2 });
               }
             }
@@ -344,9 +346,9 @@
             params.set('right', this.compress(rightContent));
           }
 
-          // Include proximity settings in URL if enabled
-          if (includeProximitySettings && ProximityManager.settings.enabled) {
-            params.set('proximityEnabled', '1');
+          // Include proximity settings in URL
+          if (includeProximitySettings) {
+            params.set('proximityEnabled', ProximityManager.settings.enabled ? '1' : '0');
             params.set('floatTolerance', ProximityManager.settings.floatTolerance.toString());
             params.set('integerTolerance', ProximityManager.settings.integerTolerance.toString());
             params.set('mixedComparison', ProximityManager.settings.mixedComparison ? '1' : '0');
@@ -369,8 +371,8 @@
           const rightParam = params.get('right');
           
           // Load proximity settings from URL
-          if (params.get('proximityEnabled') === '1') {
-            ProximityManager.settings.enabled = true;
+          if (params.has('proximityEnabled')) {
+            ProximityManager.settings.enabled = params.get('proximityEnabled') === '1';
             ProximityManager.settings.floatTolerance = parseFloat(params.get('floatTolerance')) || 0.001;
             ProximityManager.settings.integerTolerance = parseInt(params.get('integerTolerance')) || 1;
             ProximityManager.settings.mixedComparison = params.get('mixedComparison') !== '0';
@@ -753,17 +755,30 @@
           ProximityManager.settings.treatAsMatch = treatAsMatchInput.checked;
           ProximityManager.saveSettings();
           
+          // Save settings to URL as well
+          if (mv) {
+            URLManager.saveToURL(mv.editor().getValue(), mv.rightOriginal().getValue(), true);
+          }
+          
           // Refresh the diff to apply treatAsMatch changes
           if (mv) {
-            refreshCompare();
+            // Trigger a manual refresh by updating the values slightly
+            const leftVal = mv.editor().getValue();
+            const rightVal = mv.rightOriginal().getValue();
+            mv.editor().setValue(leftVal);
+            mv.rightOriginal().setValue(rightVal);
           }
           
           updateDiffStatus(mv);
           
-          // Apply highlighting based on settings
+          // Apply highlighting based on settings  
+          // Only show highlighting when enabled, visual feedback is on, AND treatAsMatch is OFF
           if (ProximityManager.settings.enabled && ProximityManager.settings.visualFeedback && !ProximityManager.settings.treatAsMatch) {
-            ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+            setTimeout(() => {
+              ProximityManager.highlightProximityMatches(leftEditor, rightEditor);
+            }, 100);
           } else {
+            // Always clear highlights when treatAsMatch is enabled or visual feedback is disabled
             ProximityManager.clearHighlights(leftEditor, rightEditor);
           }
         }
@@ -1433,10 +1448,11 @@
         const originalDiff = mv.diff;
         
         mv.diff = function() {
-          if (!ProximityManager.settings.enabled || !ProximityManager.settings.treatAsMatch) {
+          // Apply proximity-aware diff when proximity is enabled (for both visual feedback and treatAsMatch)
+          if (!ProximityManager.settings.enabled) {
             return originalDiff.apply(this, arguments);
           }
-          // If treatAsMatch is enabled, proximity-equal values are considered equal
+          
           const leftContent = mv.editor().getValue();
           const rightContent = mv.rightOriginal().getValue();
           try {
@@ -1444,7 +1460,13 @@
             const rightObj = JSON.parse(rightContent);
             // Recursively replace proximity-equal values with a canonical value
             function normalize(obj1, obj2) {
-              if (typeof obj1 !== typeof obj2) return [obj1, obj2];
+              if (typeof obj1 !== typeof obj2) {
+                // Handle mixed type comparison
+                if (ProximityManager.settings.mixedComparison && ProximityManager.isWithinTolerance(obj1, obj2)) {
+                  return [obj1, obj1]; // Use left value for both
+                }
+                return [obj1, obj2];
+              }
               if (obj1 === null || obj2 === null) return [obj1, obj2];
               if (Array.isArray(obj1) && Array.isArray(obj2)) {
                 return [
