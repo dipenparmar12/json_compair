@@ -40,13 +40,17 @@
 
     // Step 4: Handle Python string representations
     // Handle bytes literals: b"data" -> "data" (simplified conversion)
-    s = s.replace(/b\"([^\"]*)\"/g, '"$1"');
+    // Make sure we don't match keys ending with 'b' by checking for word boundary or whitespace before 'b'
+    s = s.replace(/(\s|^)b\"([^\"]*)\"/g, '$1"$2"');
     // Handle raw strings: r"data" -> "data"
-    s = s.replace(/r\"([^\"]*)\"/g, '"$1"');
+    // Make sure we don't match keys ending with 'r' by checking for word boundary or whitespace before 'r'
+    s = s.replace(/(\s|^)r\"([^\"]*)\"/g, '$1"$2"');
     // Handle unicode strings: u"data" -> "data"
-    s = s.replace(/u\"([^\"]*)\"/g, '"$1"');
+    // Make sure we don't match keys ending with 'u' by checking for word boundary or whitespace before 'u'
+    s = s.replace(/(\s|^)u\"([^\"]*)\"/g, '$1"$2"');
     // Handle f-strings (simplified): f"Hello {name}" -> "Hello {name}"
-    s = s.replace(/f\"([^\"]*)\"/g, '"$1"');
+    // Make sure we don't match keys ending with 'f' by checking for word boundary or whitespace before 'f'
+    s = s.replace(/(\s|^)f\"([^\"]*)\"/g, '$1"$2"');
 
     // Step 5: Handle Python object representations
     // Convert Python object representations like <User #655715> to structured objects
@@ -171,29 +175,59 @@
     let i = 0;
 
     while (i < str.length) {
-      if (str[i] === "'" && (i === 0 || str[i - 1] !== "\\")) {
-        // Start of single-quoted string
-        result += '"';
-        i++; // skip opening quote
-
-        // Process content until closing quote
-        while (i < str.length) {
-          if (str[i] === "'" && (i === 0 || str[i - 1] !== "\\")) {
-            // End of string
-            result += '"';
-            i++;
-            break;
-          } else if (str[i] === '"' && (i === 0 || str[i - 1] !== "\\")) {
-            // Escape unescaped double quotes
-            result += '\\"';
-            i++;
-          } else {
-            result += str[i];
-            i++;
+      const char = str[i];
+      const prevChar = i > 0 ? str[i - 1] : "";
+      const nextChar = i < str.length - 1 ? str[i + 1] : "";
+      
+      // Only treat single quote as string delimiter if it's in a context that makes sense
+      // Look for patterns like: 'key': or {'key' or ,'key' or ['key'
+      if (char === "'" && prevChar !== "\\" && 
+          (i === 0 || /[\{\[,:\s]/.test(prevChar))) {
+        
+        // Look ahead to find the matching closing quote
+        let foundClosingQuote = false;
+        let j = i + 1;
+        
+        while (j < str.length) {
+          if (str[j] === "'" && str[j - 1] !== "\\") {
+            // Check if this looks like a proper string end
+            const charAfterQuote = j < str.length - 1 ? str[j + 1] : "";
+            if (j === str.length - 1 || /[\}\],:\s]/.test(charAfterQuote)) {
+              foundClosingQuote = true;
+              break;
+            }
           }
+          j++;
+        }
+        
+        if (foundClosingQuote) {
+          // This looks like a proper quoted string, convert it
+          result += '"';
+          i++; // skip opening quote
+
+          // Process content until closing quote
+          while (i < str.length) {
+            if (str[i] === "'" && str[i - 1] !== "\\") {
+              // End of string
+              result += '"';
+              i++;
+              break;
+            } else if (str[i] === '"' && str[i - 1] !== "\\") {
+              // Escape unescaped double quotes
+              result += '\\"';
+              i++;
+            } else {
+              result += str[i];
+              i++;
+            }
+          }
+        } else {
+          // Not a proper quoted string, keep the single quote as is
+          result += char;
+          i++;
         }
       } else {
-        result += str[i];
+        result += char;
         i++;
       }
     }
@@ -270,5 +304,7 @@
     };
   }
 
-  window.parseFlexibleJSON = parseFlexibleJSON;
+  if (typeof window !== "undefined") {
+    window.parseFlexibleJSON = parseFlexibleJSON;
+  }
 })();
