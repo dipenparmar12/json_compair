@@ -60,7 +60,88 @@
     </div>
 
     <script type="text/javascript">
-      // URL Parameter Manager for shareable links
+      // Smart Number Proximity Comparison Manager
+      const ProximityManager = {
+        settings: {
+          enabled: false,
+          floatTolerance: 0.001,
+          integerTolerance: 1,
+          mixedComparison: true
+        },
+
+        STORAGE_KEY: 'json_compare_proximity_settings',
+
+        saveSettings: function() {
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.settings));
+        },
+
+        loadSettings: function() {
+          const stored = localStorage.getItem(this.STORAGE_KEY);
+          if (stored) {
+            try {
+              this.settings = { ...this.settings, ...JSON.parse(stored) };
+            } catch (e) {
+              console.warn('Failed to load proximity settings');
+            }
+          }
+        },
+
+        isWithinTolerance: function(val1, val2) {
+          if (!this.settings.enabled) return val1 === val2;
+
+          // Handle exact matches first
+          if (val1 === val2) return true;
+
+          // Convert to numbers if possible
+          const num1 = this.parseNumber(val1);
+          const num2 = this.parseNumber(val2);
+
+          // If both are numbers, compare with tolerance
+          if (num1 !== null && num2 !== null) {
+            const isFloat1 = !Number.isInteger(num1);
+            const isFloat2 = !Number.isInteger(num2);
+            
+            if (isFloat1 || isFloat2) {
+              // At least one is float, use float tolerance
+              return Math.abs(num1 - num2) <= this.settings.floatTolerance;
+            } else {
+              // Both are integers, use integer tolerance
+              return Math.abs(num1 - num2) <= this.settings.integerTolerance;
+            }
+          }
+
+          // Mixed comparison: string vs number
+          if (this.settings.mixedComparison && (num1 !== null || num2 !== null)) {
+            const n1 = num1 !== null ? num1 : this.parseNumber(String(val1));
+            const n2 = num2 !== null ? num2 : this.parseNumber(String(val2));
+            
+            if (n1 !== null && n2 !== null) {
+              const isFloat = !Number.isInteger(n1) || !Number.isInteger(n2);
+              const tolerance = isFloat ? this.settings.floatTolerance : this.settings.integerTolerance;
+              return Math.abs(n1 - n2) <= tolerance;
+            }
+          }
+
+          return false;
+        },
+
+        parseNumber: function(value) {
+          if (typeof value === 'number') return value;
+          if (typeof value !== 'string') return null;
+          
+          const trimmed = value.trim();
+          if (trimmed === '') return null;
+          
+          const num = Number(trimmed);
+          return isNaN(num) ? null : num;
+        },
+
+        compareValues: function(val1, val2) {
+          return this.isWithinTolerance(val1, val2);
+        }
+      };
+
+      // URL Parameter Manager for shareable links (enhanced with proximity settings)
       const URLManager = {
         // Compress data using LZ-String-like compression (simple implementation)
         compress: function(str) {
@@ -82,7 +163,7 @@
           }
         },
 
-        saveToURL: function(leftContent, rightContent) {
+        saveToURL: function(leftContent, rightContent, includeProximitySettings = true) {
           const params = new URLSearchParams();
           
           if (leftContent.trim()) {
@@ -90,6 +171,14 @@
           }
           if (rightContent.trim()) {
             params.set('right', this.compress(rightContent));
+          }
+
+          // Include proximity settings in URL if enabled
+          if (includeProximitySettings && ProximityManager.settings.enabled) {
+            params.set('proximityEnabled', '1');
+            params.set('floatTolerance', ProximityManager.settings.floatTolerance.toString());
+            params.set('integerTolerance', ProximityManager.settings.integerTolerance.toString());
+            params.set('mixedComparison', ProximityManager.settings.mixedComparison ? '1' : '0');
           }
           
           const newUrl = window.location.origin + window.location.pathname + 
@@ -106,6 +195,14 @@
           const leftParam = params.get('left');
           const rightParam = params.get('right');
           
+          // Load proximity settings from URL
+          if (params.get('proximityEnabled') === '1') {
+            ProximityManager.settings.enabled = true;
+            ProximityManager.settings.floatTolerance = parseFloat(params.get('floatTolerance')) || 0.001;
+            ProximityManager.settings.integerTolerance = parseInt(params.get('integerTolerance')) || 1;
+            ProximityManager.settings.mixedComparison = params.get('mixedComparison') !== '0';
+          }
+          
           if (!leftParam && !rightParam) return null;
           
           return {
@@ -114,7 +211,7 @@
           };
         },
 
-        generateShareableURL: function(leftContent, rightContent) {
+        generateShareableURL: function(leftContent, rightContent, includeProximitySettings = true) {
           const params = new URLSearchParams();
           
           if (leftContent.trim()) {
@@ -123,23 +220,37 @@
           if (rightContent.trim()) {
             params.set('right', this.compress(rightContent));
           }
+
+          // Include proximity settings in shareable URL if enabled
+          if (includeProximitySettings && ProximityManager.settings.enabled) {
+            params.set('proximityEnabled', '1');
+            params.set('floatTolerance', ProximityManager.settings.floatTolerance.toString());
+            params.set('integerTolerance', ProximityManager.settings.integerTolerance.toString());
+            params.set('mixedComparison', ProximityManager.settings.mixedComparison ? '1' : '0');
+          }
           
           return window.location.origin + window.location.pathname + 
                  (params.toString() ? '?' + params.toString() : '');
         }
       };
 
-      // Storage Manager Implementation
+      // Storage Manager Implementation (enhanced with proximity settings)
       const StorageManager = {
         STORAGE_KEY: "json_compare_data",
         EXPIRY_DAYS: 30,
 
-        saveToStorage: function (leftContent, rightContent) {
+        saveToStorage: function (leftContent, rightContent, includeProximitySettings = true) {
           const data = {
             left: leftContent,
             right: rightContent,
             timestamp: new Date().getTime(),
           };
+
+          // Include proximity settings if enabled
+          if (includeProximitySettings && ProximityManager.settings.enabled) {
+            data.proximitySettings = ProximityManager.settings;
+          }
+
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
         },
 
@@ -155,6 +266,11 @@
           if (age > expiryTime) {
             localStorage.removeItem(this.STORAGE_KEY);
             return null;
+          }
+
+          // Restore proximity settings if available
+          if (data.proximitySettings) {
+            ProximityManager.settings = { ...ProximityManager.settings, ...data.proximitySettings };
           }
 
           return {
@@ -322,6 +438,202 @@
         // Add UI controls
         const controls = document.querySelector(".controls");
 
+        // Create Proximity Settings Panel
+        const proximityPanel = document.createElement("div");
+        proximityPanel.className = "proximity-panel";
+        proximityPanel.innerHTML = `
+          <div class="proximity-header">
+            <button id="proximity-toggle" class="toggle-button" title="Enable Smart Number Proximity Comparison">
+              🔢 Smart Numbers
+            </button>
+            <div class="proximity-settings" style="display: none;">
+              <div class="proximity-row">
+                <label>Float Tolerance:</label>
+                <input type="number" id="float-tolerance" step="0.001" min="0" max="1" value="0.001">
+                <span class="tolerance-example">e.g., 19.99 ≈ 19.991</span>
+              </div>
+              <div class="proximity-row">
+                <label>Integer Tolerance:</label>
+                <input type="number" id="integer-tolerance" step="1" min="0" max="100" value="1">
+                <span class="tolerance-example">e.g., 100 ≈ 101</span>
+              </div>
+              <div class="proximity-row">
+                <label>
+                  <input type="checkbox" id="mixed-comparison" checked>
+                  Mixed string/number comparison
+                </label>
+              </div>
+              <div class="proximity-actions">
+                <button id="apply-proximity" class="apply-btn">Apply</button>
+                <button id="reset-proximity" class="reset-btn">Reset to Defaults</button>
+              </div>
+            </div>
+          </div>
+        `;
+        controls.appendChild(proximityPanel);
+
+        // Proximity toggle functionality
+        const proximityToggle = document.getElementById('proximity-toggle');
+        const proximitySettings = document.querySelector('.proximity-settings');
+        const floatToleranceInput = document.getElementById('float-tolerance');
+        const integerToleranceInput = document.getElementById('integer-tolerance');
+        const mixedComparisonInput = document.getElementById('mixed-comparison');
+
+        // Update input values with current settings
+        floatToleranceInput.value = ProximityManager.settings.floatTolerance;
+        integerToleranceInput.value = ProximityManager.settings.integerTolerance;
+        mixedComparisonInput.checked = ProximityManager.settings.mixedComparison;
+
+        // Update toggle button state
+        function updateProximityToggleState() {
+          if (ProximityManager.settings.enabled) {
+            proximityToggle.classList.add('active');
+            proximityToggle.title = 'Smart Number Proximity Comparison: ON';
+          } else {
+            proximityToggle.classList.remove('active');
+            proximityToggle.title = 'Smart Number Proximity Comparison: OFF';
+          }
+        }
+
+        // Initialize toggle state
+        updateProximityToggleState();
+
+        proximityToggle.onclick = () => {
+          ProximityManager.settings.enabled = !ProximityManager.settings.enabled;
+          updateProximityToggleState();
+          
+          if (ProximityManager.settings.enabled) {
+            proximitySettings.style.display = 'block';
+            // Show helpful notification
+            showNotification('Smart Number Proximity enabled! Configure tolerances below.', 'info');
+          } else {
+            proximitySettings.style.display = 'none';
+            showNotification('Smart Number Proximity disabled.', 'info');
+          }
+          
+          ProximityManager.saveSettings();
+          updateDiffStatus(mv);
+        };
+
+        // Apply proximity settings
+        document.getElementById('apply-proximity').onclick = () => {
+          const floatVal = parseFloat(floatToleranceInput.value);
+          const intVal = parseInt(integerToleranceInput.value);
+          
+          if (isNaN(floatVal) || floatVal < 0) {
+            showNotification('Invalid float tolerance value', 'error');
+            return;
+          }
+          
+          if (isNaN(intVal) || intVal < 0) {
+            showNotification('Invalid integer tolerance value', 'error');
+            return;
+          }
+
+          ProximityManager.settings.floatTolerance = floatVal;
+          ProximityManager.settings.integerTolerance = intVal;
+          ProximityManager.settings.mixedComparison = mixedComparisonInput.checked;
+          
+          ProximityManager.saveSettings();
+          updateDiffStatus(mv);
+          
+          showNotification('Proximity settings applied successfully!', 'success');
+        };
+
+        // Reset proximity settings
+        document.getElementById('reset-proximity').onclick = () => {
+          ProximityManager.settings.floatTolerance = 0.001;
+          ProximityManager.settings.integerTolerance = 1;
+          ProximityManager.settings.mixedComparison = true;
+          
+          floatToleranceInput.value = ProximityManager.settings.floatTolerance;
+          integerToleranceInput.value = ProximityManager.settings.integerTolerance;
+          mixedComparisonInput.checked = ProximityManager.settings.mixedComparison;
+          
+          ProximityManager.saveSettings();
+          updateDiffStatus(mv);
+          
+          showNotification('Proximity settings reset to defaults', 'info');
+        };
+
+        // Notification system for user feedback
+        function showNotification(message, type = 'info') {
+          // Remove existing notifications
+          const existingNotification = document.querySelector('.proximity-notification');
+          if (existingNotification) {
+            existingNotification.remove();
+          }
+
+          const notification = document.createElement('div');
+          notification.className = `proximity-notification ${type}`;
+          notification.textContent = message;
+          
+          // Style based on type
+          let backgroundColor = '#007cba'; // info
+          if (type === 'success') backgroundColor = '#28a745';
+          if (type === 'error') backgroundColor = '#dc3545';
+          if (type === 'warning') backgroundColor = '#ffc107';
+          
+          notification.style.cssText = `
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: ${backgroundColor};
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 10000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            font-size: 14px;
+            max-width: 300px;
+            animation: slideIn 0.3s ease;
+          `;
+          
+          document.body.appendChild(notification);
+          
+          // Auto-remove after 3 seconds
+          setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => {
+              if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+              }
+            }, 300);
+          }, 3000);
+        }
+
+        // Close proximity settings when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!proximityPanel.contains(e.target)) {
+            proximitySettings.style.display = 'none';
+          }
+        });
+
+        // Prevent closing when clicking inside the settings panel
+        proximitySettings.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
+
+        // Show proximity settings if enabled on load
+        if (ProximityManager.settings.enabled) {
+          proximitySettings.style.display = 'block';
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+          // Ctrl/Cmd + Shift + P: Toggle proximity
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+            e.preventDefault();
+            proximityToggle.click();
+          }
+          
+          // Escape: Close proximity settings
+          if (e.key === 'Escape') {
+            proximitySettings.style.display = 'none';
+          }
+        });
+
         // Add scroll lock toggle
         const scrollLockBtn = document.createElement("button");
         scrollLockBtn.className = "toggle-button active";
@@ -414,7 +726,7 @@
         const formatBtn = document.getElementById("btn-format");
         controls.insertBefore(sortKeysBtn, formatBtn.nextSibling);
 
-        // Add Share URL button
+        // Add Share URL button (enhanced with proximity settings)
         const shareBtn = document.createElement("button");
         shareBtn.className = "toggle-button";
         shareBtn.textContent = "📋 Copy Share URL";
@@ -423,11 +735,11 @@
           const rightContent = rightEditor.getValue();
           
           if (!leftContent.trim() && !rightContent.trim()) {
-            alert("Please add some content to share!");
+            showNotification("Please add some content to share!", "warning");
             return;
           }
           
-          const shareUrl = URLManager.generateShareableURL(leftContent, rightContent);
+          const shareUrl = URLManager.generateShareableURL(leftContent, rightContent, true);
           
           try {
             await navigator.clipboard.writeText(shareUrl);
@@ -436,6 +748,12 @@
             const originalText = shareBtn.textContent;
             shareBtn.textContent = "✅ URL Copied!";
             shareBtn.style.backgroundColor = "#28a745";
+            
+            let message = "Share URL copied to clipboard!";
+            if (ProximityManager.settings.enabled) {
+              message += " (includes proximity settings)";
+            }
+            showNotification(message, "success");
             
             setTimeout(() => {
               shareBtn.textContent = originalText;
@@ -455,6 +773,12 @@
             shareBtn.textContent = "✅ URL Copied!";
             shareBtn.style.backgroundColor = "#28a745";
             
+            let message = "Share URL copied to clipboard!";
+            if (ProximityManager.settings.enabled) {
+              message += " (includes proximity settings)";
+            }
+            showNotification(message, "success");
+            
             setTimeout(() => {
               shareBtn.textContent = originalText;
               shareBtn.style.backgroundColor = "";
@@ -463,23 +787,77 @@
         };
         controls.insertBefore(shareBtn, sortKeysBtn.nextSibling);
 
-        // Add template selector
+        // Add template selector (enhanced to preserve proximity settings)
         const templateSelect = document.createElement("select");
         templateSelect.className = "toggle-button";
         templateSelect.innerHTML = `
+                <option value="">Choose Template...</option>
                 <option value="simple">Simple Template</option>
                 <option value="complex">Complex Template</option>
+                <option value="financial">Financial Data</option>
+                <option value="measurements">Measurement Data</option>
             `;
         templateSelect.onchange = () => {
-          const template = DefaultTemplates[templateSelect.value];
-          leftEditor.setValue(template.left);
-          rightEditor.setValue(template.right);
-          // Update URL when loading template
-          URLManager.saveToURL(template.left, template.right);
+          const templateKey = templateSelect.value;
+          if (!templateKey) return;
+          
+          let template;
+          if (templateKey === 'financial') {
+            template = {
+              left: JSON.stringify({
+                "transactions": [
+                  {"id": 1, "amount": 19.99, "currency": "USD", "tax": 2.0},
+                  {"id": 2, "amount": 100.50, "currency": "USD", "tax": 10.1}
+                ],
+                "total": 130.59
+              }, null, 3),
+              right: JSON.stringify({
+                "transactions": [
+                  {"id": 1, "amount": 19.991, "currency": "USD", "tax": 2.001},
+                  {"id": 2, "amount": 101, "currency": "USD", "tax": 10.05}
+                ],
+                "total": 130.596
+              }, null, 3)
+            };
+          } else if (templateKey === 'measurements') {
+            template = {
+              left: JSON.stringify({
+                "sensors": [
+                  {"id": "temp1", "reading": 23.5, "unit": "°C", "timestamp": 1640995200},
+                  {"id": "press1", "reading": 1013.25, "unit": "hPa", "timestamp": 1640995201}
+                ],
+                "location": "Lab A"
+              }, null, 3),
+              right: JSON.stringify({
+                "sensors": [
+                  {"id": "temp1", "reading": 23.501, "unit": "°C", "timestamp": 1640995200},
+                  {"id": "press1", "reading": 1014, "unit": "hPa", "timestamp": 1640995202}
+                ],
+                "location": "Lab A"
+              }, null, 3)
+            };
+          } else {
+            template = DefaultTemplates[templateKey];
+          }
+          
+          if (template) {
+            leftEditor.setValue(template.left);
+            rightEditor.setValue(template.right);
+            // Update URL when loading template - include proximity settings
+            URLManager.saveToURL(template.left, template.right, true);
+            
+            // Show helpful notification for financial/measurement templates
+            if (templateKey === 'financial' || templateKey === 'measurements') {
+              showNotification(`${templateKey} template loaded! Try enabling Smart Numbers to see proximity matching.`, 'info');
+            }
+          }
+          
+          // Reset select to placeholder
+          templateSelect.value = '';
         };
         controls.appendChild(templateSelect);
 
-        // Add Clear All button
+        // Add Clear All button (enhanced to preserve proximity settings)
         const clearAllBtn = document.createElement("button");
         clearAllBtn.className = "toggle-button";
         clearAllBtn.textContent = "Clear All";
@@ -487,7 +865,7 @@
         clearAllBtn.onclick = () => {
           leftEditor.setValue("");
           rightEditor.setValue("");
-          URLManager.saveToURL("", ""); // Clear URL parameters
+          URLManager.saveToURL("", "", true); // Clear URL parameters but preserve proximity settings
           updateDiffStatus(mv);
         };
         controls.appendChild(clearAllBtn);
@@ -503,9 +881,9 @@
             e.stopPropagation();
             editor.setValue("");
             editor.focus(); // Focus the editor after clearing
-            // Update URL when clearing individual editor
+            // Update URL when clearing individual editor (preserve proximity settings)
             setTimeout(() => {
-              URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+              URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue(), true);
             }, 0);
             updateDiffStatus(mv);
           };
@@ -597,17 +975,17 @@
         // Set initial button visibility based on initial content
         updateClearButtonsVisibility();
 
-        // Auto-save content changes and update URL
+        // Auto-save content changes and update URL (enhanced with proximity settings)
         const saveContent = () => {
           const leftContent = leftEditor.getValue();
           const rightContent = rightEditor.getValue();
           
-          StorageManager.saveToStorage(leftContent, rightContent);
+          StorageManager.saveToStorage(leftContent, rightContent, true);
           
-          // Update URL parameters for sharing (debounced)
+          // Update URL parameters for sharing (debounced) - include proximity settings
           clearTimeout(saveContent.urlUpdateTimer);
           saveContent.urlUpdateTimer = setTimeout(() => {
-            URLManager.saveToURL(leftContent, rightContent);
+            URLManager.saveToURL(leftContent, rightContent, true);
           }, 1000); // 1 second delay to avoid too frequent URL updates
           
           updateClearButtonsVisibility();
@@ -675,8 +1053,100 @@
           updateDiffStatus(mv);
         };
 
+        // Apply proximity-aware diffing
+        createProximityAwareDiff(mv);
+
         updateDiffStatus(mv);
         return mv;
+      }
+
+      // Enhanced function to analyze proximity matches
+      function analyzeProximityMatches(leftContent, rightContent) {
+        if (!ProximityManager.settings.enabled) return { count: 0, details: [] };
+
+        let proximityMatches = 0;
+        const matchDetails = [];
+
+        try {
+          const leftObj = JSON.parse(leftContent);
+          const rightObj = JSON.parse(rightContent);
+
+          function compareObjects(obj1, obj2, path = '') {
+            if (typeof obj1 !== typeof obj2) {
+              // Check mixed comparison
+              if (ProximityManager.settings.mixedComparison) {
+                if (ProximityManager.isWithinTolerance(obj1, obj2)) {
+                  proximityMatches++;
+                  matchDetails.push({
+                    path: path || 'root',
+                    value1: obj1,
+                    value2: obj2,
+                    type: 'mixed'
+                  });
+                }
+              }
+              return;
+            }
+
+            if (obj1 === null || obj2 === null) return;
+
+            if (Array.isArray(obj1) && Array.isArray(obj2)) {
+              const maxLen = Math.max(obj1.length, obj2.length);
+              for (let i = 0; i < maxLen; i++) {
+                if (i < obj1.length && i < obj2.length) {
+                  compareObjects(obj1[i], obj2[i], `${path}[${i}]`);
+                }
+              }
+            } else if (typeof obj1 === 'object' && typeof obj2 === 'object') {
+              const allKeys = new Set([...Object.keys(obj1), ...Object.keys(obj2)]);
+              for (const key of allKeys) {
+                if (key in obj1 && key in obj2) {
+                  const newPath = path ? `${path}.${key}` : key;
+                  compareObjects(obj1[key], obj2[key], newPath);
+                }
+              }
+            } else {
+              // Primitive values
+              if (obj1 !== obj2 && ProximityManager.isWithinTolerance(obj1, obj2)) {
+                proximityMatches++;
+                const num1 = ProximityManager.parseNumber(obj1);
+                const num2 = ProximityManager.parseNumber(obj2);
+                const isFloat = (num1 !== null && !Number.isInteger(num1)) || 
+                               (num2 !== null && !Number.isInteger(num2));
+                
+                matchDetails.push({
+                  path: path || 'root',
+                  value1: obj1,
+                  value2: obj2,
+                  type: isFloat ? 'float' : 'integer'
+                });
+              }
+            }
+          }
+
+          compareObjects(leftObj, rightObj);
+        } catch (e) {
+          // If JSON parsing fails, try simple text comparison
+          const lines1 = leftContent.split('\n');
+          const lines2 = rightContent.split('\n');
+          
+          for (let i = 0; i < Math.min(lines1.length, lines2.length); i++) {
+            const line1 = lines1[i].trim();
+            const line2 = lines2[i].trim();
+            
+            if (line1 !== line2 && ProximityManager.isWithinTolerance(line1, line2)) {
+              proximityMatches++;
+              matchDetails.push({
+                path: `line ${i + 1}`,
+                value1: line1,
+                value2: line2,
+                type: 'text'
+              });
+            }
+          }
+        }
+
+        return { count: proximityMatches, details: matchDetails };
       }
 
       function updateDiffStatus(mv) {
@@ -691,13 +1161,96 @@
         }
 
         const diffs = mv.rightChunks().length;
-        document.getElementById(
-          "diff-status"
-        ).textContent = `Found ${diffs} differences`;
+        let statusText = `Found ${diffs} differences`;
+
+        // Add proximity analysis if enabled
+        if (ProximityManager.settings.enabled) {
+          const proximityAnalysis = analyzeProximityMatches(leftContent, rightContent);
+          if (proximityAnalysis.count > 0) {
+            statusText += ` • ${proximityAnalysis.count} numbers within tolerance`;
+            
+            // Show detailed tooltip on hover
+            const statusElement = document.getElementById("diff-status");
+            statusElement.title = proximityAnalysis.details.map(detail => 
+              `${detail.path}: ${detail.value1} ≈ ${detail.value2} (${detail.type})`
+            ).join('\n');
+          }
+        }
+
+        document.getElementById("diff-status").textContent = statusText;
+      }
+
+      // Custom diff function that respects proximity settings
+      function createProximityAwareDiff(mv) {
+        const originalDiff = mv.diff;
+        
+        mv.diff = function() {
+          if (!ProximityManager.settings.enabled) {
+            return originalDiff.apply(this, arguments);
+          }
+          
+          // If proximity is enabled, we need to customize the diff process
+          const leftContent = mv.editor().getValue();
+          const rightContent = mv.rightOriginal().getValue();
+          
+          try {
+            const leftObj = JSON.parse(leftContent);
+            const rightObj = JSON.parse(rightContent);
+            
+            // Create modified versions where proximity matches are made identical
+            const modifiedLeft = createProximityNormalizedVersion(leftObj);
+            const modifiedRight = createProximityNormalizedVersion(rightObj);
+            
+            // Temporarily set the modified content for diff calculation
+            const originalLeftValue = mv.editor().getValue();
+            const originalRightValue = mv.rightOriginal().getValue();
+            
+            mv.editor().setValue(JSON.stringify(modifiedLeft, null, 3));
+            mv.rightOriginal().setValue(JSON.stringify(modifiedRight, null, 3));
+            
+            // Calculate diff with modified content
+            const result = originalDiff.apply(this, arguments);
+            
+            // Restore original content
+            mv.editor().setValue(originalLeftValue);
+            mv.rightOriginal().setValue(originalRightValue);
+            
+            return result;
+          } catch (e) {
+            // If JSON parsing fails, fall back to original diff
+            return originalDiff.apply(this, arguments);
+          }
+        };
+      }
+      
+      function createProximityNormalizedVersion(obj, visited = new Set()) {
+        if (obj === null || typeof obj !== 'object') {
+          return obj;
+        }
+        
+        // Prevent infinite recursion
+        if (visited.has(obj)) {
+          return obj;
+        }
+        visited.add(obj);
+        
+        if (Array.isArray(obj)) {
+          return obj.map(item => createProximityNormalizedVersion(item, visited));
+        }
+        
+        const normalized = {};
+        for (const [key, value] of Object.entries(obj)) {
+          normalized[key] = createProximityNormalizedVersion(value, visited);
+        }
+        
+        return normalized;
       }
 
       // Initialize when DOM is ready
       document.addEventListener("DOMContentLoaded", () => {
+        // Load proximity settings first
+        ProximityManager.loadSettings();
+        
         const target = document.getElementById("view");
         const mv = initializeMergeView(target);
         
@@ -721,7 +1274,12 @@
             max-width: 300px;
             animation: slideIn 0.3s ease;
           `;
-          notification.textContent = "✅ Shared comparison loaded successfully!";
+          
+          let message = "✅ Shared comparison loaded successfully!";
+          if (ProximityManager.settings.enabled) {
+            message += " (Smart Numbers enabled)";
+          }
+          notification.textContent = message;
           
           // Add animation keyframes
           if (!document.getElementById('notification-styles')) {
