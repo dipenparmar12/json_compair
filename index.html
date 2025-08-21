@@ -243,9 +243,23 @@
             `;
         templateSelect.onchange = () => {
           const template = DefaultTemplates[templateSelect.value];
+
+          // Warn if either editor already has content
+          const leftHas = leftEditor.getValue().trim().length > 0;
+          const rightHas = rightEditor.getValue().trim().length > 0;
+
+          if (leftHas || rightHas) {
+            const proceed = confirm(
+              'Loading this template will replace current editor content. Do you want to continue?'
+            );
+            if (!proceed) return; // Do nothing if user cancels
+          }
+
           leftEditor.setValue(template.left);
           rightEditor.setValue(template.right);
-          // Update URL when loading template
+
+          // Save to storage and update URL when loading template
+          StorageManager.saveToStorage(template.left, template.right);
           URLManager.saveToURL(template.left, template.right);
         };
         controls.appendChild(templateSelect);
