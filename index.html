@@ -762,11 +762,33 @@
           
           // Refresh the diff to apply treatAsMatch changes
           if (mv) {
-            // Trigger a manual refresh by updating the values slightly
-            const leftVal = mv.editor().getValue();
-            const rightVal = mv.rightOriginal().getValue();
-            mv.editor().setValue(leftVal);
-            mv.rightOriginal().setValue(rightVal);
+            // For treatAsMatch mode, force a complete recalculation
+            if (ProximityManager.settings.enabled && ProximityManager.settings.treatAsMatch) {
+              // Store current values
+              const leftVal = mv.editor().getValue();
+              const rightVal = mv.rightOriginal().getValue();
+              
+              // Clear both sides completely
+              mv.editor().setValue('');
+              mv.rightOriginal().setValue('');
+              
+              // Use setTimeout to ensure the clear happens before setting new values
+              setTimeout(() => {
+                mv.editor().setValue(leftVal);
+                mv.rightOriginal().setValue(rightVal);
+                
+                // Force diff recalculation
+                if (mv.diff) {
+                  mv.diff();
+                }
+              }, 10);
+            } else {
+              // Normal refresh for other modes
+              const leftVal = mv.editor().getValue();
+              const rightVal = mv.rightOriginal().getValue();
+              mv.editor().setValue(leftVal);
+              mv.rightOriginal().setValue(rightVal);
+            }
           }
           
           updateDiffStatus(mv);
@@ -1447,17 +1469,20 @@
       function createProximityAwareDiff(mv) {
         const originalDiff = mv.diff;
         
+        // Override the diff method
         mv.diff = function() {
-          // Apply proximity-aware diff when proximity is enabled (for both visual feedback and treatAsMatch)
+          // Apply proximity-aware diff when proximity is enabled
           if (!ProximityManager.settings.enabled) {
             return originalDiff.apply(this, arguments);
           }
           
           const leftContent = mv.editor().getValue();
           const rightContent = mv.rightOriginal().getValue();
+          
           try {
             const leftObj = JSON.parse(leftContent);
             const rightObj = JSON.parse(rightContent);
+            
             // Recursively replace proximity-equal values with a canonical value
             function normalize(obj1, obj2) {
               if (typeof obj1 !== typeof obj2) {
@@ -1491,20 +1516,51 @@
               }
               return [obj1, obj2];
             }
+            
             const [normLeft, normRight] = normalize(leftObj, rightObj);
-            // Temporarily set the normalized content for diff calculation
+            
+            // Force a complete re-render by recreating the merge view with normalized content
+            const normalizedLeftContent = JSON.stringify(normLeft, null, 3);
+            const normalizedRightContent = JSON.stringify(normRight, null, 3);
+            
+            // Temporarily set the normalized content
             const originalLeftValue = mv.editor().getValue();
             const originalRightValue = mv.rightOriginal().getValue();
-            mv.editor().setValue(JSON.stringify(normLeft, null, 3));
-            mv.rightOriginal().setValue(JSON.stringify(normRight, null, 3));
+            
+            mv.editor().setValue(normalizedLeftContent);
+            mv.rightOriginal().setValue(normalizedRightContent);
+            
+            // Calculate diff on normalized content
             const result = originalDiff.apply(this, arguments);
+            
+            // Restore original content
             mv.editor().setValue(originalLeftValue);
             mv.rightOriginal().setValue(originalRightValue);
+            
             return result;
           } catch (e) {
+            console.warn('Proximity diff normalization failed:', e);
             return originalDiff.apply(this, arguments);
           }
         };
+        
+        // Also override the forceUpdate method if it exists
+        if (mv.forceUpdate) {
+          const originalForceUpdate = mv.forceUpdate;
+          mv.forceUpdate = function() {
+            mv.diff(); // Ensure diff is recalculated
+            return originalForceUpdate.apply(this, arguments);
+          };
+        }
+        
+        // Override the refresh method if it exists
+        if (mv.refresh) {
+          const originalRefresh = mv.refresh;
+          mv.refresh = function() {
+            mv.diff(); // Ensure diff is recalculated
+            return originalRefresh.apply(this, arguments);
+          };
+        }
       }
       
       function createProximityNormalizedVersion(obj, visited = new Set()) {
