@@ -431,6 +431,10 @@
           
           try {
             await navigator.clipboard.writeText(shareUrl);
+            // show temporary button text change
+            const originalText = shareBtn.textContent;
+            shareBtn.textContent = 'Copied';
+            setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
           } catch (err) {
             // Fallback for browsers that don't support clipboard API
             const textArea = document.createElement("textarea");
@@ -439,9 +443,13 @@
             textArea.select();
             document.execCommand('copy');
             document.body.removeChild(textArea);
+      // show temporary button text change for fallback
+      const originalText = shareBtn.textContent;
+      shareBtn.textContent = 'Copied';
+      setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
           }
         };
-        controls.insertBefore(shareBtn, sortKeysBtn.nextSibling);
+    controls.insertBefore(shareBtn, sortKeysBtn.nextSibling);
 
         // Add template selector
         const templateSelect = document.createElement("select");
