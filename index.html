@@ -267,6 +267,133 @@
         };
         controls.appendChild(templateSelect);
 
+        // Add Mode selector for syntax highlighting
+        const modeSelect = document.createElement("select");
+        modeSelect.className = "toggle-button";
+        modeSelect.title = "Select syntax highlighting mode";
+        modeSelect.innerHTML = `
+                <option value="auto">Auto Detect</option>
+                <option value="application/json">JSON</option>
+                <option value="text/plain">Text</option>
+                <option value="text/csv">CSV</option>
+                <option value="javascript">JavaScript</option>
+                <option value="python">Python</option>
+                <option value="text/html">HTML</option>
+                <option value="text/css">CSS</option>
+                <option value="application/xml">XML</option>
+                <option value="text/x-sql">SQL</option>
+                <option value="text/x-yaml">YAML</option>
+            `;
+        controls.appendChild(modeSelect);
+
+        // Utility: map our mode values to CodeMirror mode names and script paths (CDN)
+        const modeMap = {
+          'application/json': {name: 'javascript', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js'},
+          'text/plain': {name: 'null', script: null},
+          'text/csv': {name: 'csv', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/csv/csv.min.js'},
+          'javascript': {name: 'javascript', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js'},
+          'python': {name: 'python', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js'},
+          'text/html': {name: 'htmlmixed', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/css/css.min.js https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/htmlmixed/htmlmixed.min.js'},
+          'text/css': {name: 'css', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/css/css.min.js'},
+          'application/xml': {name: 'xml', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js'},
+          'text/x-sql': {name: 'sql', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/sql/sql.min.js'},
+          'text/x-yaml': {name: 'yaml', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/yaml/yaml.min.js'},
+        };
+
+        // Dynamically load one or more scripts and call callback when done
+        function loadScripts(urls, cb) {
+          if (!urls) return cb();
+          const parts = urls.split(/\s+/).filter(Boolean);
+          let loaded = 0;
+          parts.forEach((u) => {
+            // Check if script already present
+            if (document.querySelector(`script[src="${u}"]`)) {
+              loaded++;
+              if (loaded === parts.length) cb();
+              return;
+            }
+            const s = document.createElement('script');
+            s.src = u;
+            s.onload = () => {
+              loaded++;
+              if (loaded === parts.length) cb();
+            };
+            s.onerror = () => {
+              loaded++;
+              if (loaded === parts.length) cb();
+            };
+            document.head.appendChild(s);
+          });
+        }
+
+        // Heuristic content type detection
+        function detectModeFromContent(text) {
+          const t = text.trim();
+          if (!t) return 'text/plain';
+          // JSON
+          if ((t[0] === '{' && t[t.length-1] === '}') || (t[0] === '[' && t[t.length-1] === ']')) return 'application/json';
+          // XML/HTML
+          if (t.startsWith('<')) {
+            if (/^<\?xml\s/i.test(t) || /^<\w+/i.test(t)) return 'application/xml';
+          }
+          // CSV (commas/newlines and consistent columns)
+          if (t.split('\n').length > 1 && t.indexOf(',') !== -1) return 'text/csv';
+          // SQL keywords
+          if (/\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE)\b/i.test(t)) return 'text/x-sql';
+          // Python heuristics
+          if (/^\s*def\s+\w+\s*\(|^\s*import\s+/m.test(t)) return 'python';
+          // JS heuristics
+          if (/\b(function|const|let|var)\b/.test(t)) return 'javascript';
+          // YAML (starts with --- or key: value)
+          if (/^---\n|^\w+:\s/m.test(t)) return 'text/x-yaml';
+          return 'text/plain';
+        }
+
+        // Apply a given mode to both editors (loads required scripts)
+        function applyModeToEditors(modeValue) {
+          const map = modeMap[modeValue] || {name: modeValue, script: null};
+          loadScripts(map.script, () => {
+            const modeName = map.name === 'null' ? null : map.name;
+            const cmMode = modeName ? modeName : null;
+            try {
+              leftEditor.setOption('mode', cmMode || 'null');
+            } catch (e) {}
+            try {
+              rightEditor.setOption('mode', cmMode || 'null');
+            } catch (e) {}
+            // Also update merge view options
+            if (mv && mv.options) mv.options.mode = cmMode;
+            leftEditor.refresh();
+            rightEditor.refresh();
+          });
+        }
+
+        // Debounced auto-detect
+        let detectTimer = null;
+        function scheduleAutoDetect() {
+          clearTimeout(detectTimer);
+          detectTimer = setTimeout(() => {
+            const leftText = leftEditor.getValue();
+            const rightText = rightEditor.getValue();
+            const sample = leftText.trim() || rightText.trim();
+            const detected = detectModeFromContent(sample);
+            // Only change if mode selector is on auto
+            if (modeSelect.value === 'auto') {
+              applyModeToEditors(detected);
+            }
+          }, 400);
+        }
+
+        // Hook modeSelect changes
+        modeSelect.onchange = () => {
+          if (modeSelect.value === 'auto') {
+            scheduleAutoDetect();
+          } else {
+            applyModeToEditors(modeSelect.value);
+          }
+        };
+
+
         // Add Clear All button
         const clearAllBtn = document.createElement("button");
         clearAllBtn.className = "toggle-button";
@@ -385,6 +512,9 @@
         // Set initial button visibility based on initial content
         updateClearButtonsVisibility();
 
+  // Run initial auto-detect for mode
+  scheduleAutoDetect();
+
         // Auto-save content changes and update URL
         const saveContent = () => {
           const leftContent = leftEditor.getValue();
@@ -412,6 +542,8 @@
           }
           saveContent();
           updateDiffStatus(mv);
+          // schedule mode auto-detection
+          scheduleAutoDetect();
         });
 
         rightEditor.on("change", (instance, changeObj) => {
@@ -425,6 +557,8 @@
           }
           saveContent();
           updateDiffStatus(mv);
+          // schedule mode auto-detection
+          scheduleAutoDetect();
         });
 
         // Enhance format button
