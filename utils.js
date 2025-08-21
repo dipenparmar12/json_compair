@@ -227,4 +227,104 @@
   window.DefaultTemplates = DefaultTemplates;
   window.sortJSONKeys = sortJSONKeys;
   window.sortJSONArray = sortJSONArray;
+  // Mode utilities for syntax highlighting (moved from index.html)
+  const ModeUtils = (function () {
+    const modeMap = {
+      'application/json': { name: 'javascript', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js' },
+      'text/plain': { name: 'null', script: null },
+      'text/csv': { name: 'csv', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/csv/csv.min.js' },
+      'javascript': { name: 'javascript', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js' },
+      'python': { name: 'python', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js' },
+      'text/html': { name: 'htmlmixed', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/css/css.min.js https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/htmlmixed/htmlmixed.min.js' },
+      'text/css': { name: 'css', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/css/css.min.js' },
+      'application/xml': { name: 'xml', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js' },
+      'text/x-sql': { name: 'sql', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/sql/sql.min.js' },
+      'text/x-yaml': { name: 'yaml', script: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/yaml/yaml.min.js' },
+    };
+
+    function loadScripts(urls, cb) {
+      if (!urls) return cb && cb();
+      const parts = urls.split(/\s+/).filter(Boolean);
+      let loaded = 0;
+      parts.forEach((u) => {
+        if (document.querySelector(`script[src="${u}"]`)) {
+          loaded++;
+          if (loaded === parts.length && cb) cb();
+          return;
+        }
+        const s = document.createElement('script');
+        s.src = u;
+        s.onload = () => {
+          loaded++;
+          if (loaded === parts.length && cb) cb();
+        };
+        s.onerror = () => {
+          loaded++;
+          if (loaded === parts.length && cb) cb();
+        };
+        document.head.appendChild(s);
+      });
+    }
+
+    function detectModeFromContent(text) {
+      const t = (text || '').trim();
+      if (!t) return 'text/plain';
+      if ((t[0] === '{' && t[t.length - 1] === '}') || (t[0] === '[' && t[t.length - 1] === ']')) return 'application/json';
+      if (t.startsWith('<')) {
+        if (/^<\?xml\s/i.test(t) || /^<\w+/i.test(t)) return 'application/xml';
+      }
+      if (t.split('\n').length > 1 && t.indexOf(',') !== -1) return 'text/csv';
+      if (/\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE)\b/i.test(t)) return 'text/x-sql';
+      if (/^\s*def\s+\w+\s*\(|^\s*import\s+/m.test(t)) return 'python';
+      if (/\b(function|const|let|var)\b/.test(t)) return 'javascript';
+      if (/^---\n|^\w+:\s/m.test(t)) return 'text/x-yaml';
+      return 'text/plain';
+    }
+
+    function applyModeToEditors(modeValue, leftEditor, rightEditor, mv) {
+      const map = modeMap[modeValue] || { name: modeValue, script: null };
+      return new Promise((resolve) => {
+        loadScripts(map.script, () => {
+          const modeName = map.name === 'null' ? null : map.name;
+          const cmMode = modeName ? modeName : null;
+          try {
+            leftEditor && leftEditor.setOption && leftEditor.setOption('mode', cmMode || 'null');
+          } catch (e) {}
+          try {
+            rightEditor && rightEditor.setOption && rightEditor.setOption('mode', cmMode || 'null');
+          } catch (e) {}
+          if (mv && mv.options) mv.options.mode = cmMode;
+          try { leftEditor && leftEditor.refresh && leftEditor.refresh(); } catch (e) {}
+          try { rightEditor && rightEditor.refresh && rightEditor.refresh(); } catch (e) {}
+          resolve();
+        });
+      });
+    }
+
+    function scheduleAutoDetect(leftEditor, rightEditor, modeSelect, mv, delay = 400) {
+      let detectTimer = null;
+      return function () {
+        clearTimeout(detectTimer);
+        detectTimer = setTimeout(() => {
+          const leftText = leftEditor && leftEditor.getValue ? leftEditor.getValue() : '';
+          const rightText = rightEditor && rightEditor.getValue ? rightEditor.getValue() : '';
+          const sample = (leftText || '').trim() || (rightText || '').trim();
+          const detected = detectModeFromContent(sample);
+          if (modeSelect && modeSelect.value === 'auto') {
+            applyModeToEditors(detected, leftEditor, rightEditor, mv);
+          }
+        }, delay);
+      };
+    }
+
+    return {
+      modeMap,
+      loadScripts,
+      detectModeFromContent,
+      applyModeToEditors,
+      scheduleAutoDetect,
+    };
+  })();
+
+  window.ModeUtils = ModeUtils;
 })();
