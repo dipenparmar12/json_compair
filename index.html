@@ -60,6 +60,75 @@
     </div>
 
     <script type="text/javascript">
+      // URL Parameter Manager for shareable links
+      const URLManager = {
+        // Compress data using LZ-String-like compression (simple implementation)
+        compress: function(str) {
+          try {
+            // Use built-in compression if available, otherwise base64 encode
+            return btoa(encodeURIComponent(str));
+          } catch (e) {
+            console.warn('Compression failed, using fallback');
+            return encodeURIComponent(str);
+          }
+        },
+
+        decompress: function(str) {
+          try {
+            return decodeURIComponent(atob(str));
+          } catch (e) {
+            console.warn('Decompression failed, using fallback');
+            return decodeURIComponent(str);
+          }
+        },
+
+        saveToURL: function(leftContent, rightContent) {
+          const params = new URLSearchParams();
+          
+          if (leftContent.trim()) {
+            params.set('left', this.compress(leftContent));
+          }
+          if (rightContent.trim()) {
+            params.set('right', this.compress(rightContent));
+          }
+          
+          const newUrl = window.location.origin + window.location.pathname + 
+                        (params.toString() ? '?' + params.toString() : '');
+          
+          // Update browser URL without page reload
+          window.history.replaceState({}, '', newUrl);
+          
+          return newUrl;
+        },
+
+        loadFromURL: function() {
+          const params = new URLSearchParams(window.location.search);
+          const leftParam = params.get('left');
+          const rightParam = params.get('right');
+          
+          if (!leftParam && !rightParam) return null;
+          
+          return {
+            left: leftParam ? this.decompress(leftParam) : '',
+            right: rightParam ? this.decompress(rightParam) : ''
+          };
+        },
+
+        generateShareableURL: function(leftContent, rightContent) {
+          const params = new URLSearchParams();
+          
+          if (leftContent.trim()) {
+            params.set('left', this.compress(leftContent));
+          }
+          if (rightContent.trim()) {
+            params.set('right', this.compress(rightContent));
+          }
+          
+          return window.location.origin + window.location.pathname + 
+                 (params.toString() ? '?' + params.toString() : '');
+        }
+      };
+
       // Storage Manager Implementation
       const StorageManager = {
         STORAGE_KEY: "json_compare_data",
@@ -213,9 +282,10 @@
 
       // Initialize enhanced merge view
       function initializeMergeView(target) {
-        // Load saved content or use defaults
+        // Load content from URL parameters first, then from storage, then use defaults
+        const urlContent = URLManager.loadFromURL();
         const savedContent = StorageManager.loadFromStorage();
-        const initialContent = savedContent || DefaultTemplates.simple;
+        const initialContent = urlContent || savedContent || DefaultTemplates.simple;
 
         // Create merge view with enhanced options
         const mv = CodeMirror.MergeView(target, {
@@ -344,6 +414,55 @@
         const formatBtn = document.getElementById("btn-format");
         controls.insertBefore(sortKeysBtn, formatBtn.nextSibling);
 
+        // Add Share URL button
+        const shareBtn = document.createElement("button");
+        shareBtn.className = "toggle-button";
+        shareBtn.textContent = "📋 Copy Share URL";
+        shareBtn.onclick = async () => {
+          const leftContent = leftEditor.getValue();
+          const rightContent = rightEditor.getValue();
+          
+          if (!leftContent.trim() && !rightContent.trim()) {
+            alert("Please add some content to share!");
+            return;
+          }
+          
+          const shareUrl = URLManager.generateShareableURL(leftContent, rightContent);
+          
+          try {
+            await navigator.clipboard.writeText(shareUrl);
+            
+            // Visual feedback
+            const originalText = shareBtn.textContent;
+            shareBtn.textContent = "✅ URL Copied!";
+            shareBtn.style.backgroundColor = "#28a745";
+            
+            setTimeout(() => {
+              shareBtn.textContent = originalText;
+              shareBtn.style.backgroundColor = "";
+            }, 2000);
+            
+          } catch (err) {
+            // Fallback for browsers that don't support clipboard API
+            const textArea = document.createElement("textarea");
+            textArea.value = shareUrl;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            const originalText = shareBtn.textContent;
+            shareBtn.textContent = "✅ URL Copied!";
+            shareBtn.style.backgroundColor = "#28a745";
+            
+            setTimeout(() => {
+              shareBtn.textContent = originalText;
+              shareBtn.style.backgroundColor = "";
+            }, 2000);
+          }
+        };
+        controls.insertBefore(shareBtn, sortKeysBtn.nextSibling);
+
         // Add template selector
         const templateSelect = document.createElement("select");
         templateSelect.className = "toggle-button";
@@ -355,6 +474,8 @@
           const template = DefaultTemplates[templateSelect.value];
           leftEditor.setValue(template.left);
           rightEditor.setValue(template.right);
+          // Update URL when loading template
+          URLManager.saveToURL(template.left, template.right);
         };
         controls.appendChild(templateSelect);
 
@@ -366,6 +487,7 @@
         clearAllBtn.onclick = () => {
           leftEditor.setValue("");
           rightEditor.setValue("");
+          URLManager.saveToURL("", ""); // Clear URL parameters
           updateDiffStatus(mv);
         };
         controls.appendChild(clearAllBtn);
@@ -381,6 +503,10 @@
             e.stopPropagation();
             editor.setValue("");
             editor.focus(); // Focus the editor after clearing
+            // Update URL when clearing individual editor
+            setTimeout(() => {
+              URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+            }, 0);
             updateDiffStatus(mv);
           };
 
@@ -471,12 +597,19 @@
         // Set initial button visibility based on initial content
         updateClearButtonsVisibility();
 
-        // Auto-save content changes
+        // Auto-save content changes and update URL
         const saveContent = () => {
-          StorageManager.saveToStorage(
-            leftEditor.getValue(),
-            rightEditor.getValue()
-          );
+          const leftContent = leftEditor.getValue();
+          const rightContent = rightEditor.getValue();
+          
+          StorageManager.saveToStorage(leftContent, rightContent);
+          
+          // Update URL parameters for sharing (debounced)
+          clearTimeout(saveContent.urlUpdateTimer);
+          saveContent.urlUpdateTimer = setTimeout(() => {
+            URLManager.saveToURL(leftContent, rightContent);
+          }, 1000); // 1 second delay to avoid too frequent URL updates
+          
           updateClearButtonsVisibility();
         };
 
@@ -567,6 +700,58 @@
       document.addEventListener("DOMContentLoaded", () => {
         const target = document.getElementById("view");
         const mv = initializeMergeView(target);
+        
+        // Show notification if content was loaded from URL
+        const urlContent = URLManager.loadFromURL();
+        if (urlContent && (urlContent.left || urlContent.right)) {
+          // Create and show notification
+          const notification = document.createElement("div");
+          notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 10000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            font-size: 14px;
+            max-width: 300px;
+            animation: slideIn 0.3s ease;
+          `;
+          notification.textContent = "✅ Shared comparison loaded successfully!";
+          
+          // Add animation keyframes
+          if (!document.getElementById('notification-styles')) {
+            const style = document.createElement('style');
+            style.id = 'notification-styles';
+            style.textContent = `
+              @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+              }
+              @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+              }
+            `;
+            document.head.appendChild(style);
+          }
+          
+          document.body.appendChild(notification);
+          
+          // Auto-remove after 4 seconds
+          setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => {
+              if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+              }
+            }, 300);
+          }, 4000);
+        }
       });
     </script>
   </body>

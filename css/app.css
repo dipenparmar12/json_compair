@@ -48,6 +48,25 @@ body {
     text-align: center;
 }
 
+/* Share button specific styling */
+.toggle-button:focus {
+    outline: 2px solid #007cba;
+    outline-offset: 2px;
+}
+
+.toggle-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Improved visual feedback for share button */
+.toggle-button.share-success {
+    background-color: #28a745 !important;
+    color: white !important;
+    transform: scale(1.02);
+    transition: all 0.2s ease;
+}
+
 .controls {
     display: flex;
     justify-content: center;
