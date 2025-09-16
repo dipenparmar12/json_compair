@@ -17,6 +17,15 @@ A browser-based tool for comparing and formatting JSON data. This tool allows yo
 - Show only differences mode
 - Synchronized scrolling
 
+CSV support
+- Drag and drop CSV files directly onto the left or right editor pane.
+- Dropped CSV files are automatically converted to JSON (array of objects) using a built-in converter and formatted for comparison.
+- You can compare CSV vs CSV, CSV vs JSON, or JSON vs JSON. If conversion fails, the tool shows an error and leaves the original content untouched.
+
+Notes about conversion
+- The converter attempts to auto-detect separator (comma, tab, or semicolon) and handles quoted fields and escaped quotes.
+- By default it will coerce numeric and boolean-looking values to proper JSON types when converting.
+
 ## Usage
 
 Visit the [JSON Compare Tool](https://dipenparmar12.github.io/json_compair/) to use the online version.

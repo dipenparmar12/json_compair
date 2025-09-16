@@ -34,6 +34,7 @@
     <script src="./js/javascript.js"></script>
     <script src="./utils.js"></script>
     <script src="./json_utils.js"></script>
+    <script src="./utils_csv.js"></script>
   </head>
 
   <body>
@@ -107,6 +108,15 @@
 
         // Add UI controls
         const controls = document.querySelector(".controls");
+
+          // Error message area (bottom) to show CSV conversion errors
+          let errorArea = document.getElementById('conversion-error-area');
+          if (!errorArea) {
+            errorArea = document.createElement('div');
+            errorArea.id = 'conversion-error-area';
+            errorArea.style.cssText = 'color: #b00020; padding: 8px 10px; text-align: left; display: none;';
+            document.body.appendChild(errorArea);
+          }
 
         // Add scroll lock toggle
         const scrollLockBtn = document.createElement("button");
@@ -426,6 +436,80 @@
           saveContent();
           updateDiffStatus(mv);
         });
+
+        // Helper: show conversion error message temporarily
+        function showConversionError(msg) {
+          errorArea.textContent = msg;
+          errorArea.style.display = 'block';
+          setTimeout(() => {
+            errorArea.style.display = 'none';
+          }, 6000);
+        }
+
+        // Handle file drop on an editor: convert CSV -> JSON if applicable
+        function handleEditorFileDrop(editor, files) {
+          if (!files || files.length === 0) return;
+          const file = files[0];
+          const reader = new FileReader();
+          reader.onerror = function (e) {
+            showConversionError('Failed to read dropped file.');
+          };
+          reader.onload = function (e) {
+            const text = e.target.result;
+
+            // If file is CSV (by type or extension) or starts with typical CSV header, try conversion
+            const name = file.name || '';
+            const isCSVByName = name.toLowerCase().endsWith('.csv');
+            const looksLikeCSV = text && /[,;\t][^\n]*\n/.test(text);
+
+            if (isCSVByName || looksLikeCSV) {
+              try {
+                const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                // Replace editor content with formatted JSON
+                editor.setValue(JSON.stringify(jsonArray, null, 3));
+
+                // Save and update URL
+                StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                updateDiffStatus(mv);
+              } catch (err) {
+                console.error('CSV -> JSON conversion failed', err);
+                showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                // Do not modify editor content on failure
+              }
+            } else {
+              // Not CSV - just paste the text into the editor
+              editor.setValue(text);
+            }
+          };
+          reader.readAsText(file);
+        }
+
+        // Register native drop handlers on editor wrappers
+        function registerDropOnEditor(editor, side) {
+          const wrapper = editor.getWrapperElement();
+          const parent = wrapper.parentNode;
+
+          parent.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          });
+
+          parent.addEventListener('drop', function (e) {
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files && files.length) {
+              handleEditorFileDrop(editor, files);
+            } else {
+              // If plain text was dropped, read from dataTransfer
+              const text = e.dataTransfer.getData('text/plain');
+              if (text) editor.setValue(text);
+            }
+          });
+        }
+
+        registerDropOnEditor(leftEditor, 'left');
+        registerDropOnEditor(rightEditor, 'right');
 
         // Enhance format button
         document.getElementById("btn-format").onclick = function () {
