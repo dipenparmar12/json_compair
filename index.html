@@ -335,13 +335,26 @@
               // Request clipboard permission and get text
         const text = await navigator.clipboard.readText();
               if (text) {
-                // Try to format if it's valid JSON
-                try {
-          const formatted = JSON.stringify(parseFlexibleJSON(text), null, 3);
-                  editor.setValue(formatted);
-                } catch {
-                  // If not valid JSON, just paste as-is
-                  editor.setValue(text);
+                // If it looks like CSV, convert and replace editor content
+                const looksLikeCSV = /[,;\t][^\n]*\n?/.test(text);
+                if (looksLikeCSV && window.CSVUtils) {
+                  try {
+                    const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                    editor.setValue(JSON.stringify(jsonArray, null, 3));
+                  } catch (err) {
+                    // Fallback to raw paste and show error
+                    editor.setValue(text);
+                    showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                  }
+                } else {
+                  // Try to format if it's valid JSON
+                  try {
+                    const formatted = JSON.stringify(parseFlexibleJSON(text), null, 3);
+                    editor.setValue(formatted);
+                  } catch {
+                    // If not valid JSON, just paste as-is
+                    editor.setValue(text);
+                  }
                 }
                 editor.focus();
                 updateDiffStatus(mv);
@@ -414,10 +427,29 @@
         leftEditor.on("change", (instance, changeObj) => {
           if (changeObj.origin === "paste") {
             try {
-              var formatted = JSON.stringify(parseFlexibleJSON(instance.getValue()), null, 3);
-              instance.setValue(formatted);
+              // Get pasted fragment (array of lines)
+              const pastedText = (changeObj.text || []).join('\n');
+              const looksLikeCSV = pastedText && /[,;\t][^\n]*\n?/.test(pastedText);
+              if (looksLikeCSV && window.CSVUtils) {
+                // Convert pasted CSV fragment to JSON and replace entire editor content
+                try {
+                  const jsonArray = window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true });
+                  instance.setValue(JSON.stringify(jsonArray, null, 3));
+                } catch (err) {
+                  // On conversion failure, leave the pasted CSV as-is and show error
+                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                }
+              } else {
+                // Try to format if it's JSON-like (existing behavior)
+                try {
+                  var formatted = JSON.stringify(parseFlexibleJSON(instance.getValue()), null, 3);
+                  instance.setValue(formatted);
+                } catch (e) {
+                  // Ignore parse errors
+                }
+              }
             } catch (e) {
-              // Ignore parse errors
+              // Ignore any unexpected errors during paste handling
             }
           }
           saveContent();
@@ -427,10 +459,25 @@
         rightEditor.on("change", (instance, changeObj) => {
           if (changeObj.origin === "paste") {
             try {
-              var formatted = JSON.stringify(parseFlexibleJSON(instance.getValue()), null, 3);
-              instance.setValue(formatted);
+              const pastedText = (changeObj.text || []).join('\n');
+              const looksLikeCSV = pastedText && /[,;\t][^\n]*\n?/.test(pastedText);
+              if (looksLikeCSV && window.CSVUtils) {
+                try {
+                  const jsonArray = window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true });
+                  instance.setValue(JSON.stringify(jsonArray, null, 3));
+                } catch (err) {
+                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                }
+              } else {
+                try {
+                  var formatted = JSON.stringify(parseFlexibleJSON(instance.getValue()), null, 3);
+                  instance.setValue(formatted);
+                } catch (e) {
+                  // Ignore parse errors
+                }
+              }
             } catch (e) {
-              // Ignore parse errors
+              // Ignore unexpected errors
             }
           }
           saveContent();
@@ -489,23 +536,67 @@
         function registerDropOnEditor(editor, side) {
           const wrapper = editor.getWrapperElement();
           const parent = wrapper.parentNode;
-
+          // Use capture phase and stop propagation so CodeMirror's internal drag/drop handlers don't also insert content
           parent.addEventListener('dragover', function (e) {
             e.preventDefault();
+            e.stopPropagation();
             e.dataTransfer.dropEffect = 'copy';
-          });
+          }, true);
 
           parent.addEventListener('drop', function (e) {
+            // Intercept in capture phase and prevent CodeMirror from handling the same event
             e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
             const files = e.dataTransfer.files;
             if (files && files.length) {
               handleEditorFileDrop(editor, files);
             } else {
-              // If plain text was dropped, read from dataTransfer
+              // If plain text was dropped, read from dataTransfer and attempt conversion
               const text = e.dataTransfer.getData('text/plain');
-              if (text) editor.setValue(text);
+              if (text) {
+                const looksLikeCSV = /[,;\t][^\n]*\n?/.test(text);
+                if (looksLikeCSV && window.CSVUtils) {
+                  try {
+                    const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                    editor.setValue(JSON.stringify(jsonArray, null, 3));
+                  } catch (err) {
+                    showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                    editor.setValue(text);
+                  }
+                } else {
+                  editor.setValue(text);
+                }
+              }
             }
-          });
+          }, true);
+
+          // Intercept paste in capture phase to prevent CodeMirror from inserting raw CSV text first
+          wrapper.addEventListener('paste', function (e) {
+            try {
+              const clipboardText = (e.clipboardData || window.clipboardData).getData('text/plain');
+              if (!clipboardText) return;
+              const looksLikeCSV = /[,;\t][^\n]*\n?/.test(clipboardText);
+              if (looksLikeCSV && window.CSVUtils) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                try {
+                  const jsonArray = window.CSVUtils.csvToJSON(clipboardText, { coerceTypes: true });
+                  editor.setValue(JSON.stringify(jsonArray, null, 3));
+                  // Update storage and URL
+                  StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                  URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                  updateDiffStatus(mv);
+                } catch (err) {
+                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                }
+              }
+            } catch (err) {
+              // ignore
+            }
+          }, true);
         }
 
         registerDropOnEditor(leftEditor, 'left');
