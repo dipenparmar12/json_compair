@@ -82,7 +82,20 @@
         right: rightContent,
         timestamp: new Date().getTime(),
       };
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      try {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      } catch (err) {
+        // localStorage quota exceeded or other failure — fall back to IndexedDB async save
+        console.warn('localStorage.setItem failed, falling back to IndexedDB:', err && err.message ? err.message : err);
+        try {
+          // Fire-and-forget async save
+          saveSnapshotToIDB(this.STORAGE_KEY, data).catch((e) => {
+            console.error('IndexedDB fallback save failed:', e && e.message ? e.message : e);
+          });
+        } catch (e) {
+          // ignore
+        }
+      }
     },
 
     loadFromStorage: function () {
@@ -104,6 +117,81 @@
         right: data.right,
       };
     },
+  };
+
+  // --- IndexedDB Helpers (async fallback when localStorage is unavailable or full) ---
+  const IDB_DB_NAME = 'json_compair_db';
+  const IDB_STORE = 'snapshots';
+
+  function openIDB() {
+    return new Promise((resolve, reject) => {
+      try {
+        const r = indexedDB.open(IDB_DB_NAME, 1);
+        r.onupgradeneeded = (e) => {
+          try {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+          } catch (ex) {
+            console.warn('IDB upgrade error', ex);
+          }
+        };
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error || new Error('IDB open failed'));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async function saveSnapshotToIDB(key, data) {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        const store = tx.objectStore(IDB_STORE);
+        const req = store.put(data, key);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => reject(req.error || new Error('IDB put failed'));
+        tx.oncomplete = () => db.close();
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async function loadSnapshotFromIDB(key) {
+    try {
+      const db = await openIDB();
+      return await new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction(IDB_STORE, 'readonly');
+          const store = tx.objectStore(IDB_STORE);
+          const req = store.get(key);
+          req.onsuccess = () => {
+            resolve(req.result || null);
+            db.close();
+          };
+          req.onerror = () => {
+            reject(req.error || new Error('IDB get failed'));
+            db.close();
+          };
+        } catch (err) {
+          reject(err);
+        }
+      });
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Expose IDB helper functions on StorageManager for optional use
+  StorageManager.saveToIndexedDB = function (leftContent, rightContent) {
+    const data = { left: leftContent, right: rightContent, timestamp: new Date().getTime() };
+    return saveSnapshotToIDB(this.STORAGE_KEY, data);
+  };
+
+  StorageManager.loadFromIndexedDB = function () {
+    return loadSnapshotFromIDB(this.STORAGE_KEY);
   };
 
   // Default templates

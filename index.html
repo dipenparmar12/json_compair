@@ -32,6 +32,8 @@
     <script src="./js/diff_match_patch.js"></script>
     <script src="./js/merge.js"></script>
     <script src="./js/javascript.js"></script>
+    <!-- pako for client-side gzip compression/decompression -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script src="./utils.js"></script>
     <script src="./json_utils.js"></script>
     <script src="./utils_csv.js"></script>
@@ -217,35 +219,157 @@
         shareBtn.onclick = async () => {
           const leftContent = leftEditor.getValue();
           const rightContent = rightEditor.getValue();
-          
+
           if (!leftContent.trim() && !rightContent.trim()) {
             alert("Please add some content to share!");
             return;
           }
-          
-          const shareUrl = URLManager.generateShareableURL(leftContent, rightContent);
-          
+
+          // Try to create a short URL first
           try {
-            await navigator.clipboard.writeText(shareUrl);
-            // show temporary button text change
-            const originalText = shareBtn.textContent;
-            shareBtn.textContent = 'Copied';
-            setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+            const shareUrl = URLManager.generateShareableURL(leftContent, rightContent);
+
+            // Safe URL length threshold (conservative). If URL is short enough, copy it.
+            const MAX_SAFE_URL_LEN = 1800;
+            if (shareUrl.length <= MAX_SAFE_URL_LEN) {
+              try {
+                await navigator.clipboard.writeText(shareUrl);
+                const originalText = shareBtn.textContent;
+                shareBtn.textContent = 'Copied';
+                setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+                return;
+              } catch (err) {
+                const textArea = document.createElement("textarea");
+                textArea.value = shareUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                const originalText = shareBtn.textContent;
+                shareBtn.textContent = 'Copied';
+                setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+                return;
+              }
+            }
+
+            // If the URL would be too long, fall back to client-side snapshot file export.
+            // Build a compressed snapshot using pako (gzip).
+            if (window.pako) {
+              const snap = JSON.stringify({ left: leftContent, right: rightContent });
+              // gzip returns Uint8Array
+              const gz = pako.gzip(snap);
+              const blob = new Blob([gz], { type: 'application/gzip' });
+              const filename = 'json_compair_snapshot.json.gz';
+
+              // Try to share the file via Web Share API if supported and can share files
+              try {
+                if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename)] })) {
+                  await navigator.share({ files: [new File([blob], filename)], title: 'json_compair snapshot' });
+                  const originalText = shareBtn.textContent;
+                  shareBtn.textContent = 'Shared';
+                  setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+                  return;
+                }
+              } catch (e) {
+                // ignore and fall back to download
+              }
+
+              // Trigger file download as fallback
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+
+              // Copy a small helper text to clipboard so the user can paste instructions along with the file
+              const helperText = 'Attached is a json_compair snapshot. Please open https://dipenparmar12.github.io/json_compair/ and use Import Snapshot to load it.';
+              try { await navigator.clipboard.writeText(helperText); } catch (e) { /* noop */ }
+
+              const originalText = shareBtn.textContent;
+              shareBtn.textContent = 'Downloaded';
+              setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+              return;
+            } else {
+              // No pako available: fallback to prompting user to copy compressed text (not ideal)
+              alert('Content is too large to encode in a URL and compression support is not available. Please use the Export Snapshot option to download a file and share it.');
+              return;
+            }
           } catch (err) {
-            // Fallback for browsers that don't support clipboard API
-            const textArea = document.createElement("textarea");
-            textArea.value = shareUrl;
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-      // show temporary button text change for fallback
-      const originalText = shareBtn.textContent;
-      shareBtn.textContent = 'Copied';
-      setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+            console.error('Share fallback error', err);
+            alert('Unable to create share link or snapshot. Please try exporting manually.');
           }
         };
     controls.insertBefore(shareBtn, sortKeysBtn.nextSibling);
+
+        // Add Import Snapshot button + hidden file input
+        const importBtn = document.createElement('button');
+        importBtn.className = 'toggle-button';
+        importBtn.textContent = 'Import Snapshot';
+        const importInput = document.createElement('input');
+        importInput.type = 'file';
+        importInput.accept = '.gz,.gzip,application/gzip,application/octet-stream,.json';
+        importInput.style.display = 'none';
+
+        importBtn.onclick = () => importInput.click();
+
+        importInput.onchange = async (e) => {
+          const f = importInput.files && importInput.files[0];
+          if (!f) return;
+          try {
+            const buf = await f.arrayBuffer();
+            let text = null;
+            // Try to ungzip using pako if available
+            if (window.pako) {
+              try {
+                const u8 = new Uint8Array(buf);
+                const decompressed = pako.ungzip(u8, { to: 'string' });
+                text = decompressed;
+              } catch (e) {
+                // Not gzipped or ungzip failed; fall through
+                text = null;
+              }
+            }
+            if (text === null) {
+              // Try to interpret as plain text
+              try { text = new TextDecoder().decode(new Uint8Array(buf)); } catch (e) { text = null; }
+            }
+            if (!text) {
+              alert('Failed to read snapshot file.');
+              return;
+            }
+            const snap = JSON.parse(text);
+            if (snap && (snap.left !== undefined || snap.right !== undefined)) {
+              leftEditor.setValue(snap.left || '');
+              rightEditor.setValue(snap.right || '');
+              try {
+                StorageManager.saveToStorage(snap.left || '', snap.right || '');
+              } catch (e) {
+                // localStorage synchronous set may throw - attempt async IndexedDB backup
+                console.warn('saveToStorage threw, attempting IndexedDB fallback', e && e.message ? e.message : e);
+                if (StorageManager.saveToIndexedDB) {
+                  StorageManager.saveToIndexedDB(snap.left || '', snap.right || '').catch((err) => {
+                    console.error('IndexedDB fallback failed', err);
+                  });
+                }
+              }
+              URLManager.saveToURL(snap.left || '', snap.right || '');
+              updateDiffStatus(mv);
+            } else {
+              alert('Snapshot file format not recognized.');
+            }
+          } catch (err) {
+            console.error('Import failed', err);
+            alert('Failed to import snapshot: ' + (err && err.message ? err.message : String(err)));
+          } finally {
+            importInput.value = '';
+          }
+        };
+
+        controls.appendChild(importBtn);
+        controls.appendChild(importInput);
 
         // Add template selector
         const templateSelect = document.createElement("select");
@@ -272,7 +396,13 @@
           rightEditor.setValue(template.right);
 
           // Save to storage and update URL when loading template
-          StorageManager.saveToStorage(template.left, template.right);
+          try {
+            StorageManager.saveToStorage(template.left, template.right);
+          } catch (e) {
+            if (StorageManager.saveToIndexedDB) {
+              StorageManager.saveToIndexedDB(template.left, template.right).catch((err) => console.error('IndexedDB save failed', err));
+            }
+          }
           URLManager.saveToURL(template.left, template.right);
         };
         controls.appendChild(templateSelect);
@@ -413,7 +543,14 @@
           const leftContent = leftEditor.getValue();
           const rightContent = rightEditor.getValue();
           
-          StorageManager.saveToStorage(leftContent, rightContent);
+          try {
+            StorageManager.saveToStorage(leftContent, rightContent);
+          } catch (e) {
+            console.warn('saveToStorage failed during autosave, attempting IndexedDB fallback', e && e.message ? e.message : e);
+            if (StorageManager.saveToIndexedDB) {
+              StorageManager.saveToIndexedDB(leftContent, rightContent).catch((err) => console.error('IndexedDB autosave failed', err));
+            }
+          }
           
           // Update URL parameters for sharing (debounced)
           clearTimeout(saveContent.urlUpdateTimer);
@@ -424,7 +561,7 @@
           updateClearButtonsVisibility();
         };
 
-        leftEditor.on("change", (instance, changeObj) => {
+  leftEditor.on("change", (instance, changeObj) => {
           if (changeObj.origin === "paste") {
             try {
               // Get pasted fragment (array of lines)
@@ -452,11 +589,11 @@
               // Ignore any unexpected errors during paste handling
             }
           }
-          saveContent();
+          try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
           updateDiffStatus(mv);
         });
 
-        rightEditor.on("change", (instance, changeObj) => {
+  rightEditor.on("change", (instance, changeObj) => {
           if (changeObj.origin === "paste") {
             try {
               const pastedText = (changeObj.text || []).join('\n');
@@ -480,7 +617,7 @@
               // Ignore unexpected errors
             }
           }
-          saveContent();
+          try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
           updateDiffStatus(mv);
         });
 
@@ -516,7 +653,11 @@
                 editor.setValue(JSON.stringify(jsonArray, null, 3));
 
                 // Save and update URL
-                StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                try {
+                  StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                } catch (e) {
+                  if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
+                }
                 URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
                 updateDiffStatus(mv);
               } catch (err) {
@@ -586,7 +727,11 @@
                   const jsonArray = window.CSVUtils.csvToJSON(clipboardText, { coerceTypes: true });
                   editor.setValue(JSON.stringify(jsonArray, null, 3));
                   // Update storage and URL
-                  StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                  try {
+                    StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                  } catch (e) {
+                    if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
+                  }
                   URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
                   updateDiffStatus(mv);
                 } catch (err) {
