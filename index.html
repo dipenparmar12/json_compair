@@ -703,6 +703,13 @@
         };
 
   leftEditor.on("change", (instance, changeObj) => {
+          // If this change was caused by a drop insertion we set a skip flag to avoid re-processing
+          if (instance.__skipDropProcessing) {
+            try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
+            updateDiffStatus(mv);
+            return;
+          }
+
           if (changeObj.origin === "paste") {
             try {
               // Get pasted fragment
@@ -758,6 +765,13 @@
         });
 
   rightEditor.on("change", (instance, changeObj) => {
+          // Avoid processing changes that were inserted by a drop handler
+          if (instance.__skipDropProcessing) {
+            try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
+            updateDiffStatus(mv);
+            return;
+          }
+
           if (changeObj.origin === "paste") {
             try {
               const pastedText = (changeObj.text || []).join('\n');
@@ -828,12 +842,45 @@
           reader.onload = function (e) {
             const text = e.target.result;
 
-            // If file is CSV (by type or extension) or starts with typical CSV header, try conversion
+            // Determine file type: JSON vs CSV vs other text
             const name = file.name || '';
+            const isJSONByName = name.toLowerCase().endsWith('.json');
             const isCSVByName = name.toLowerCase().endsWith('.csv');
             const looksLikeCSV = text && /[,;\t][^\n]*\n/.test(text);
+            // Try to detect JSON content but don't treat JSON as CSV even if it contains commas
+            let looksLikeJSON = false;
+            try {
+              if (text && typeof text === 'string') {
+                // A quick try-parse to detect JSON content
+                JSON.parse(text);
+                looksLikeJSON = true;
+              }
+            } catch (e) {
+              looksLikeJSON = false;
+            }
 
-            if (isCSVByName || looksLikeCSV) {
+            // If the file is explicitly JSON or the content parses as JSON, insert raw JSON text and skip CSV conversion
+            // Important: do NOT parse/format the JSON here — dropping JSON should insert the user's original text unmodified
+            if (isJSONByName || looksLikeJSON) {
+              try {
+                // Mark editor to skip automatic change-based conversions while we insert the dropped content
+                try { editor.__skipDropProcessing = true; } catch (err) { /* noop */ }
+                editor.setValue(text);
+                // Clear the flag on next tick to allow normal change handling afterwards
+                setTimeout(() => { try { editor.__skipDropProcessing = false; } catch (err) { /* noop */ } }, 0);
+                // Save and update URL (do not auto-sort or re-parse the JSON)
+                try {
+                  StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                } catch (e) {
+                  if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
+                }
+                URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                updateDiffStatus(mv);
+              } catch (err) {
+                console.error('Dropped JSON handling failed', err);
+                editor.setValue(text);
+              }
+            } else if (isCSVByName || looksLikeCSV) {
               try {
                 const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
                 // Replace editor content with formatted JSON
@@ -863,7 +910,7 @@
                 // Do not modify editor content on failure
               }
             } else {
-              // Not CSV - just paste the text into the editor
+              // Not JSON or CSV - just insert the raw text
               editor.setValue(text);
             }
           };
@@ -909,8 +956,7 @@
                   const conv = editor === leftEditor ? leftConversion : rightConversion;
                   if (conv) {
                     conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
-                    const isJSON = (() => { try { JSON.parse(text); return true; } catch { return false; }})();
-                    conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
+                    // Removed JSON parsing check for dropped content to avoid re-processing JSON data
                   }
                 }
               }
