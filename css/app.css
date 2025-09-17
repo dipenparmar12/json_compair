@@ -208,6 +208,24 @@ select.toggle-button {
     background-color: #e9ecef;
 }
 
+/* Dropdown menu for controls */
+.controls-dropdown {
+    display: inline-block;
+}
+.controls-menu {
+    border-radius: 6px;
+}
+.controls-menu > div, .controls-menu > button, .controls-menu > label, .controls-menu > select {
+    display: block;
+    margin: 6px 0;
+}
+
+/* Slightly adjust the dropdown button */
+.controls-dropdown > .toggle-button {
+    display: inline-flex;
+    align-items: center;
+}
+
 /* Add to your CSS or in a <style> tag */
 .CodeMirror-merge-pane .CodeMirror-line:empty::before {
     content: " ";

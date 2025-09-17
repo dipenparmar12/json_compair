@@ -194,6 +194,50 @@
     return loadSnapshotFromIDB(this.STORAGE_KEY);
   };
 
+  // Settings Manager: persists small UI settings in localStorage (with simple fallback)
+  const SettingsManager = {
+    KEY: 'json_compair_settings',
+    defaults: {
+      autoCsv: false,
+      autoSortOnPaste: true,
+      showOnlyDiffs: false
+    },
+
+    loadAll: function () {
+      try {
+        const raw = localStorage.getItem(this.KEY);
+        if (!raw) return Object.assign({}, this.defaults);
+        const parsed = JSON.parse(raw);
+        return Object.assign({}, this.defaults, parsed);
+      } catch (e) {
+        console.warn('Settings load failed, using defaults', e);
+        return Object.assign({}, this.defaults);
+      }
+    },
+
+    saveAll: function (obj) {
+      try {
+        const toSave = Object.assign({}, this.loadAll(), obj);
+        localStorage.setItem(this.KEY, JSON.stringify(toSave));
+        return true;
+      } catch (e) {
+        console.warn('Settings save failed', e);
+        return false;
+      }
+    },
+
+    get: function (key) {
+      const all = this.loadAll();
+      return all.hasOwnProperty(key) ? all[key] : this.defaults[key];
+    },
+
+    set: function (key, value) {
+      const all = this.loadAll();
+      all[key] = value;
+      return this.saveAll(all);
+    }
+  };
+
   // Default templates
   const DefaultTemplates = {
     simple: {
@@ -315,4 +359,5 @@
   window.DefaultTemplates = DefaultTemplates;
   window.sortJSONKeys = sortJSONKeys;
   window.sortJSONArray = sortJSONArray;
+  window.SettingsManager = SettingsManager;
 })();

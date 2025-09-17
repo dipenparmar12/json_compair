@@ -407,12 +407,112 @@
         };
         controls.appendChild(templateSelect);
 
-        // Add setting: auto CSV conversion (if enabled will keep old behavior)
+        // Add setting: auto CSV conversion (checkbox will be moved into dropdown)
         const autoCsvLabel = document.createElement('label');
         autoCsvLabel.style.marginLeft = '10px';
         autoCsvLabel.style.fontSize = '13px';
         autoCsvLabel.innerHTML = `<input type="checkbox" id="auto-csv-conversion" /> Auto CSV→JSON`;
         controls.appendChild(autoCsvLabel);
+
+        // Build hover dropdown menu (auto opens on hover) and move relevant controls into it
+        const dropdown = document.createElement('div');
+        dropdown.className = 'controls-dropdown';
+        dropdown.style.display = 'inline-block';
+        dropdown.style.position = 'relative';
+        dropdown.style.marginLeft = '8px';
+
+        const dropBtn = document.createElement('button');
+        dropBtn.className = 'toggle-button';
+        dropBtn.textContent = 'Options ▾';
+        dropBtn.style.cursor = 'pointer';
+        dropBtn.style.userSelect = 'none';
+        dropdown.appendChild(dropBtn);
+
+        const menu = document.createElement('div');
+        menu.className = 'controls-menu';
+        menu.style.position = 'absolute';
+        menu.style.top = '100%';
+        menu.style.right = '0';
+        menu.style.minWidth = '220px';
+        menu.style.background = '#fff';
+        menu.style.border = '1px solid #ddd';
+        menu.style.boxShadow = '0 4px 8px rgba(0,0,0,0.08)';
+        menu.style.padding = '8px';
+        menu.style.zIndex = 9999;
+        menu.style.display = 'none';
+
+        // Show menu on hover for better UX
+        dropdown.addEventListener('mouseenter', () => { menu.style.display = 'block'; });
+        dropdown.addEventListener('mouseleave', () => { menu.style.display = 'none'; });
+
+        // Move existing controls into the dropdown menu in a sensible order
+        // We'll move: shareBtn, showDiffsBtn, sortKeysBtn, importBtn (+input), templateSelect, autoCsvLabel, plus a new auto-sort setting
+        const moveIntoMenu = (node) => { if (!node) return; menu.appendChild(node); };
+        moveIntoMenu(shareBtn);
+        moveIntoMenu(showDiffsBtn);
+  // Keep Sort JSON Keys visible outside the dropdown for quick access
+  // (do not move sortKeysBtn into the menu)
+        moveIntoMenu(importBtn);
+        moveIntoMenu(importInput);
+        // Put templates inside menu as a labeled row
+        const tplRow = document.createElement('div');
+        tplRow.style.marginTop = '6px';
+        tplRow.style.marginBottom = '6px';
+        tplRow.appendChild(document.createTextNode('Examples: '));
+        tplRow.appendChild(templateSelect);
+        menu.appendChild(tplRow);
+        moveIntoMenu(autoCsvLabel);
+
+        // Add Auto Sort JSON Keys setting
+        const autoSortRow = document.createElement('div');
+        autoSortRow.style.marginTop = '6px';
+        autoSortRow.style.fontSize = '13px';
+        autoSortRow.innerHTML = `<label style="font-size:13px;"><input type="checkbox" id="auto-sort-on-paste" /> Auto Sort JSON Keys on Paste</label>`;
+        menu.appendChild(autoSortRow);
+
+  // Append the menu element into the dropdown and insert dropdown into controls
+  dropdown.appendChild(menu);
+  controls.appendChild(dropdown);
+
+        // Initialize setting states from SettingsManager (persistent)
+        try {
+          const s_autoCsv = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoCsv') : false;
+          const s_autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+          const s_showOnly = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('showOnlyDiffs') : false;
+
+          const autoCsvCheckbox = document.getElementById('auto-csv-conversion');
+          if (autoCsvCheckbox) {
+            autoCsvCheckbox.checked = !!s_autoCsv;
+            autoCsvCheckbox.addEventListener('change', (e) => {
+              try { SettingsManager.set('autoCsv', e.target.checked); } catch (er) { /* noop */ }
+            });
+          }
+
+          const autoSortCheckbox = document.getElementById('auto-sort-on-paste');
+          if (autoSortCheckbox) {
+            autoSortCheckbox.checked = !!s_autoSort;
+            autoSortCheckbox.addEventListener('change', (e) => {
+              try { SettingsManager.set('autoSortOnPaste', e.target.checked); } catch (er) { /* noop */ }
+            });
+          }
+
+          // Initialize show-only-diffs button state
+          if (showDiffsBtn) {
+            if (s_showOnly) {
+              showDiffsBtn.classList.add('active');
+              showDiffsBtn.onclick && showDiffsBtn.onclick();
+            }
+            // Persist when toggled
+            const oldShowClick = showDiffsBtn.onclick;
+            showDiffsBtn.onclick = function () {
+              oldShowClick && oldShowClick.apply(this, arguments);
+              try { SettingsManager.set('showOnlyDiffs', showDiffsBtn.classList.contains('active')); } catch (er) { /* noop */ }
+            };
+          }
+        } catch (e) {
+          // SettingsManager may not be available in older browsers; ignore
+          console.warn('Settings init failed', e);
+        }
 
         // Add Clear All button
         const clearAllBtn = document.createElement("button");
@@ -614,6 +714,16 @@
                 try {
                   const jsonArray = window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true });
                   instance.setValue(JSON.stringify(jsonArray, null, 3));
+                  // If auto-sort-on-paste is enabled, sort the newly inserted JSON
+                  try {
+                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                    if (autoSort) {
+                      let obj = parseFlexibleJSON(instance.getValue());
+                      if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                      else obj = sortJSONKeys(obj);
+                      instance.setValue(JSON.stringify(obj, null, 3));
+                    }
+                  } catch (esort) { /* ignore sort errors */ }
                 } catch (err) {
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                 }
@@ -625,6 +735,18 @@
                 if (conv) {
                   conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
                   conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
+                }
+                // If pasted content is JSON and auto-sort-on-paste is enabled, sort it
+                try {
+                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                  if (isJSON && autoSort) {
+                    let obj = parseFlexibleJSON(instance.getValue());
+                    if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                    else obj = sortJSONKeys(obj);
+                    instance.setValue(JSON.stringify(obj, null, 3));
+                  }
+                } catch (err2) {
+                  // ignore sorting errors
                 }
               }
             } catch (e) {
@@ -645,6 +767,16 @@
                 try {
                   const jsonArray = window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true });
                   instance.setValue(JSON.stringify(jsonArray, null, 3));
+                  // Auto-sort after CSV conversion when enabled
+                  try {
+                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                    if (autoSort) {
+                      let obj = parseFlexibleJSON(instance.getValue());
+                      if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                      else obj = sortJSONKeys(obj);
+                      instance.setValue(JSON.stringify(obj, null, 3));
+                    }
+                  } catch (esort) { /* noop */ }
                 } catch (err) {
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                 }
@@ -655,6 +787,17 @@
                 if (conv) {
                   conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
                   conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
+                }
+                try {
+                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                  if (isJSON && autoSort) {
+                    let obj = parseFlexibleJSON(instance.getValue());
+                    if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                    else obj = sortJSONKeys(obj);
+                    instance.setValue(JSON.stringify(obj, null, 3));
+                  }
+                } catch (err2) {
+                  // ignore
                 }
               }
             } catch (e) {
@@ -695,6 +838,16 @@
                 const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
                 // Replace editor content with formatted JSON
                 editor.setValue(JSON.stringify(jsonArray, null, 3));
+                // Auto-sort after CSV file conversion when enabled
+                try {
+                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                  if (autoSort) {
+                    let obj = parseFlexibleJSON(editor.getValue());
+                    if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                    else obj = sortJSONKeys(obj);
+                    editor.setValue(JSON.stringify(obj, null, 3));
+                  }
+                } catch (esort) { /* ignore */ }
 
                 // Save and update URL
                 try {
@@ -786,6 +939,16 @@
                   }
                   URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
                   updateDiffStatus(mv);
+                  // Auto-sort after clipboard CSV conversion when enabled
+                  try {
+                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                    if (autoSort) {
+                      let obj = parseFlexibleJSON(editor.getValue());
+                      if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                      else obj = sortJSONKeys(obj);
+                      editor.setValue(JSON.stringify(obj, null, 3));
+                    }
+                  } catch (esort) { /* noop */ }
                 } catch (err) {
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                 }
