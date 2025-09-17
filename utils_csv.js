@@ -102,4 +102,30 @@
     }
   };
   window.CSVUtils = CSVUtils;
+  // Async adapter: use PapaParse for large inputs when available (returns a Promise)
+  CSVUtils.csvToJSONAsync = function(csvText, options) {
+    options = options || {};
+    if (!csvText || !csvText.trim()) return Promise.resolve([]);
+
+    // If Papa is available and input is large, use it with worker:true
+    const size = csvText.length;
+    const USE_PAPA_THRESHOLD = 100 * 1024; // 100KB
+    if (window.Papa && size > USE_PAPA_THRESHOLD) {
+      return new Promise((resolve, reject) => {
+        try {
+          Papa.parse(csvText, {
+            header: true,
+            worker: true,
+            dynamicTyping: !!options.coerceTypes,
+            skipEmptyLines: true,
+            complete: function(results) { resolve(results.data || []); },
+            error: function(err) { reject(err); }
+          });
+        } catch (e) { reject(e); }
+      });
+    }
+
+    // Small payloads: run existing synchronous parser on next tick to avoid blocking UI
+    return Promise.resolve().then(() => CSVUtils.csvToJSON(csvText, options));
+  };
 })();

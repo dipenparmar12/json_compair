@@ -34,9 +34,45 @@
     <script src="./js/javascript.js"></script>
     <!-- pako for client-side gzip compression/decompression -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    <script src="./utils.js"></script>
-    <script src="./json_utils.js"></script>
-    <script src="./utils_csv.js"></script>
+  <script src="./utils.js"></script>
+  <script src="./json_utils.js"></script>
+  <script src="./utils_csv.js"></script>
+  <script src="./js/large_json_helpers.js"></script>
+    <!-- Optional: PapaParse (CSV) and Oboe (streaming JSON).
+         We try to load from CDN for convenience; you should download and save
+         these files into ./js/ (papaparse.min.js and oboe-browser.min.js) for offline use.
+    -->
+    <script>
+      // Dynamically inject CDN scripts but allow local copies to be used if present
+      (function(){
+        function loadOnce(src, localPath) {
+          return new Promise((resolve) => {
+            // If already loaded, resolve
+            const name = src.split('/').pop();
+            if (window[name] || window.Papa || window.oboe) { resolve(); return; }
+            // Try to load local copy first
+            var s = document.createElement('script');
+            s.src = localPath;
+            s.async = false;
+            s.onload = function(){ resolve(); };
+            s.onerror = function(){
+              // fallback to CDN if local copy not found
+              var s2 = document.createElement('script');
+              s2.src = src;
+              s2.async = false;
+              s2.onload = function(){ resolve(); };
+              s2.onerror = function(){ resolve(); };
+              document.head.appendChild(s2);
+            };
+            document.head.appendChild(s);
+          });
+        }
+        // PapaParse (latest stable 5.x recommended). Update version as needed.
+        loadOnce('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js','./js/papaparse.min.js');
+        // Oboe (streaming JSON parser). You may pin a version if needed.
+        loadOnce('https://unpkg.com/oboe@2.1.5/dist/oboe-browser.min.js','./js/oboe-browser.min.js');
+      })();
+    </script>
   </head>
 
   <body>
@@ -680,13 +716,24 @@
           csvToJsonBtn.onclick = (e) => {
             e.stopPropagation();
             const text = editor.getValue();
-            // Use worker for large CSV conversions to avoid blocking
-            window.LargeDataHelpers.runHeavyTask('csvToJsonString', { text }, () => {
-              const arr = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
-              return JSON.stringify(arr, null, 3);
-            }).then((res) => { editor.setValue(res); }).catch((err) => {
+            // Use async CSV parsing (PapaParse if available) then fallback to worker string conversion
+            try {
+              window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then((arr) => {
+                // Got parsed array, set editor
+                editor.setValue(JSON.stringify(arr, null, 3));
+                updateDiffStatus(mv);
+              }).catch((err) => {
+                // Fallback to existing worker-based conversion (keeps compatibility)
+                window.LargeDataHelpers.runHeavyTask('csvToJsonString', { text }, () => {
+                  const arr = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                  return JSON.stringify(arr, null, 3);
+                }).then((res) => { editor.setValue(res); updateDiffStatus(mv); }).catch((err2) => {
+                  showConversionError('CSV conversion failed: ' + (err2 && err2.message ? err2.message : String(err2)));
+                });
+              });
+            } catch (err) {
               showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-            });
+            }
             updateDiffStatus(mv);
           };
 
@@ -853,18 +900,21 @@
               const looksLikeCSV = pastedText && window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(pastedText);
               if (autoCsv && looksLikeCSV) {
                 try {
-                  const jsonArray = window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true });
-                  instance.setValue(JSON.stringify(jsonArray, null, 3));
-                  // Auto-sort after CSV conversion when enabled
-                  try {
-                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                    if (autoSort) {
-                      let obj = parseFlexibleJSON(instance.getValue());
-                      if (Array.isArray(obj)) obj = sortJSONArray(obj);
-                      else obj = sortJSONKeys(obj);
-                      instance.setValue(JSON.stringify(obj, null, 3));
-                    }
-                  } catch (esort) { /* noop */ }
+                  // Use async parser
+                  window.CSVUtils.csvToJSONAsync(pastedText, { coerceTypes: true }).then(jsonArray => {
+                    instance.setValue(JSON.stringify(jsonArray, null, 3));
+                    // Auto-sort after CSV conversion when enabled
+                    try {
+                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                      if (autoSort) {
+                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: instance.getValue() }, () => {
+                          const obj = parseFlexibleJSON(instance.getValue());
+                          const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                          return JSON.stringify(out, null, 3);
+                        }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
+                      }
+                    } catch (esort) { /* noop */ }
+                  }).catch(err => { showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err))); });
                 } catch (err) {
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                 }
@@ -956,9 +1006,35 @@
               }
             } else if (isCSVByName || looksLikeCSV) {
               try {
-                const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
-                // Replace editor content with formatted JSON
-                editor.setValue(JSON.stringify(jsonArray, null, 3));
+                // Use async CSV parser when available to avoid blocking
+                window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then((jsonArray) => {
+                  editor.setValue(JSON.stringify(jsonArray, null, 3));
+                  // Auto-sort after CSV file conversion when enabled
+                  try {
+                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                    if (autoSort) {
+                      window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: editor.getValue() }, () => {
+                        let obj = parseFlexibleJSON(editor.getValue());
+                        if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                        else obj = sortJSONKeys(obj);
+                        return JSON.stringify(obj, null, 3);
+                      }).then(sorted => { editor.setValue(sorted); }).catch(() => {});
+                    }
+                  } catch (esort) { /* ignore */ }
+
+                  // Save and update URL
+                  try {
+                    StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                  } catch (e) {
+                    if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
+                  }
+                  URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                  updateDiffStatus(mv);
+                }).catch((err) => {
+                  // Fallback to synchronous parser if async fails
+                  const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                  editor.setValue(JSON.stringify(jsonArray, null, 3));
+                });
                 // Auto-sort after CSV file conversion when enabled
                 try {
                   const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
@@ -1019,8 +1095,17 @@
                 const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
                 if (autoCsv && isCSV) {
                   try {
-                    const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
-                    editor.setValue(JSON.stringify(jsonArray, null, 3));
+                    window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then(jsonArray => {
+                      editor.setValue(JSON.stringify(jsonArray, null, 3));
+                    }).catch(err => {
+                      try {
+                        const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                        editor.setValue(JSON.stringify(jsonArray, null, 3));
+                      } catch (err2) {
+                        showConversionError('CSV conversion failed: ' + (err2 && err2.message ? err2.message : String(err2)));
+                        editor.setValue(text);
+                      }
+                    });
                   } catch (err) {
                     showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                     editor.setValue(text);
@@ -1049,26 +1134,31 @@
                 e.stopPropagation();
                 if (e.stopImmediatePropagation) e.stopImmediatePropagation();
                 try {
-                  const jsonArray = window.CSVUtils.csvToJSON(clipboardText, { coerceTypes: true });
-                  editor.setValue(JSON.stringify(jsonArray, null, 3));
-                  // Update storage and URL
-                  try {
-                    StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
-                  } catch (e) {
-                    if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
-                  }
-                  URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
-                  updateDiffStatus(mv);
-                  // Auto-sort after clipboard CSV conversion when enabled
-                  try {
-                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                    if (autoSort) {
-                      let obj = parseFlexibleJSON(editor.getValue());
-                      if (Array.isArray(obj)) obj = sortJSONArray(obj);
-                      else obj = sortJSONKeys(obj);
-                      editor.setValue(JSON.stringify(obj, null, 3));
+                  window.CSVUtils.csvToJSONAsync(clipboardText, { coerceTypes: true }).then((jsonArray) => {
+                    editor.setValue(JSON.stringify(jsonArray, null, 3));
+                    // Update storage and URL
+                    try {
+                      StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                    } catch (e) {
+                      if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
                     }
-                  } catch (esort) { /* noop */ }
+                    URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                    updateDiffStatus(mv);
+                    // Auto-sort after clipboard CSV conversion when enabled
+                    try {
+                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                      if (autoSort) {
+                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: editor.getValue() }, () => {
+                          let obj = parseFlexibleJSON(editor.getValue());
+                          if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                          else obj = sortJSONKeys(obj);
+                          return JSON.stringify(obj, null, 3);
+                        }).then(sorted => { editor.setValue(sorted); }).catch(() => {});
+                      }
+                    } catch (esort) { /* noop */ }
+                  }).catch((err) => {
+                    showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                  });
                 } catch (err) {
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                 }
