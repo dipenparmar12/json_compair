@@ -103,3 +103,39 @@ CodeMirror.MergeView(target, {
 4. **Accessibility:** Maintain keyboard navigation and screen reader compatibility
 5. **Cross-browser:** Test in multiple browsers, use feature detection where needed</content>
 <parameter name="filePath">/Users/dipen/projects/json_compair/.github/copilot-instructions.md
+
+--
+
+# Copilot Terminal Protocol
+
+## Rules
+1. **Progress & Feedback**
+   - For feedback requests or intermediate updates, only respond in `echo <MSG_FOR_ME>` (no `plain text messages`).
+
+2. **Completion**
+   - When a task is truly finished, Copilot must emit a **single terminal command**.
+   - The command must contain both a short status message and one of the explicit completion tokens: `done`, `well`, or `success`.
+   - Example:
+     ```bash
+     echo "Copilot: All steps completed successfully"; echo done
+     ```
+
+3. **User Response**
+   - The user may confirm with a terminal command:
+     ```bash
+     echo "User: success"
+     ```
+
+4. **Strictness**
+   - Completion events command should be emitted as terminal commands.
+
+## Example Flow
+
+- Copilot (completion, fires terminal command):  
+  ```bash
+  echo "Copilot: Deployment finished"; echo "success"
+   ```
+- User confirms:  
+  ```bash
+  echo "User: success"
+  ```
