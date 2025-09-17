@@ -67,7 +67,73 @@
     <script type="text/javascript">
     // Utilities are loaded from ./utils.js
 
-  // parseFlexibleJSON is provided by `utils.js` and exposed on window.parseFlexibleJSON
+  // parseFlexibleJSON is provided by `json_utils.js` and exposed on window.parseFlexibleJSON
+
+  // --- Large data handling helpers ---
+  (function(){
+    // Worker used for heavy operations when payloads are large
+    let largeDataWorker = null;
+    const WORKER_PATH = './js/large-data-worker.js';
+    const WORKER_SIZE_THRESHOLD = 150 * 1024; // 150 KB conservative threshold to offload to worker
+    const URL_UPDATE_DEBOUNCE = 1000; // ms
+
+    // Create worker lazily
+    function ensureWorker() {
+      if (largeDataWorker) return largeDataWorker;
+      try {
+        largeDataWorker = new Worker(WORKER_PATH);
+        largeDataWorker._nextId = 1;
+        largeDataWorker._pending = new Map();
+        largeDataWorker.addEventListener('message', function(e){
+          const msg = e.data || {};
+          const id = msg.id;
+          if (!id) return;
+          const p = largeDataWorker._pending.get(id);
+          if (!p) return;
+          largeDataWorker._pending.delete(id);
+          if (msg.ok) p.resolve(msg.result); else p.reject(new Error(msg.error || 'worker error'));
+        });
+      } catch (err) {
+        largeDataWorker = null; // worker not available
+      }
+      return largeDataWorker;
+    }
+
+    // Helper to run action in worker or fallback to local synchronous function
+    function runHeavyTask(action, payload, fallback) {
+      return new Promise((resolve, reject) => {
+        const text = (payload && payload.text) || '';
+        const useWorker = text && text.length > WORKER_SIZE_THRESHOLD && typeof Worker !== 'undefined';
+        if (useWorker) {
+          const w = ensureWorker();
+          if (!w) {
+            // worker couldn't be created - fallback
+            try { resolve(fallback()); } catch (e) { reject(e); }
+            return;
+          }
+          const id = (w._nextId++).toString();
+          w._pending.set(id, { resolve, reject });
+          w.postMessage({ id, action, payload });
+          // Add a conservative timeout to recover from hung worker
+          setTimeout(() => {
+            if (w._pending.has(id)) {
+              w._pending.delete(id);
+              try { resolve(fallback()); } catch (e) { reject(e); }
+            }
+          }, 30000);
+        } else {
+          // run fallback synchronously but in a microtask so UI can update
+          try { Promise.resolve().then(() => resolve(fallback())); } catch (e) { reject(e); }
+        }
+      });
+    }
+
+    // Expose helpers
+    window.LargeDataHelpers = {
+      runHeavyTask,
+      WORKER_SIZE_THRESHOLD
+    };
+  })();
 
       // Initialize enhanced merge view
       function initializeMergeView(target) {
@@ -176,31 +242,29 @@
         sortKeysBtn.textContent = "Sort JSON Keys";
         sortKeysBtn.onclick = () => {
           try {
-            // Parse and sort left editor content
-            let leftObj = parseFlexibleJSON(leftEditor.getValue());
-            if (Array.isArray(leftObj)) {
-              leftObj = sortJSONArray(leftObj);
-            } else {
-              leftObj = sortJSONKeys(leftObj);
-            }
-            leftEditor.setValue(JSON.stringify(leftObj, null, 3));
+            const leftText = leftEditor.getValue();
+            const rightText = rightEditor.getValue();
 
-            // Parse and sort right editor content
-            let rightObj = parseFlexibleJSON(rightEditor.getValue());
-            if (Array.isArray(rightObj)) {
-              rightObj = sortJSONArray(rightObj);
-            } else {
-              rightObj = sortJSONKeys(rightObj);
-            }
-            rightEditor.setValue(JSON.stringify(rightObj, null, 3));
-
-            // Realign chunks after sorting - fix the error
-            setTimeout(() => {
-              if (mv.alignChunks) {
-                mv.alignChunks();
-              }
+            // Run sorting possibly in worker for large inputs
+            Promise.all([
+              window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: leftText }, () => {
+                // fallback synchronous
+                const obj = parseFlexibleJSON(leftText);
+                const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                return JSON.stringify(out, null, 3);
+              }).catch((e) => { console.warn('left sort failed', e); return leftText; }),
+              window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: rightText }, () => {
+                const obj = parseFlexibleJSON(rightText);
+                const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                return JSON.stringify(out, null, 3);
+              }).catch((e) => { console.warn('right sort failed', e); return rightText; })
+            ]).then(([newLeft, newRight]) => {
+              leftEditor.setValue(newLeft);
+              rightEditor.setValue(newRight);
+              // Realign chunks after sorting
+              if (mv.alignChunks) mv.alignChunks();
               updateDiffStatus(mv);
-            }, 0);
+            }).catch((e) => { console.error('Sort failed', e); alert('Failed to sort JSON.'); });
           } catch (e) {
             console.error("Failed to sort JSON:", e);
             alert(
@@ -321,25 +385,25 @@
           try {
             const buf = await f.arrayBuffer();
             let text = null;
-            // Try to ungzip using pako if available
-            if (window.pako) {
-              try {
-                const u8 = new Uint8Array(buf);
-                const decompressed = pako.ungzip(u8, { to: 'string' });
-                text = decompressed;
-              } catch (e) {
-                // Not gzipped or ungzip failed; fall through
-                text = null;
-              }
+            // Try to ungzip using pako if available - large files should be uncompressed in a worker
+            if (window.pako && buf.byteLength > window.LargeDataHelpers?.WORKER_SIZE_THRESHOLD) {
+              // Offload decompression to a timeout so UI isn't blocked
+              text = await new Promise((res, rej) => {
+                setTimeout(() => {
+                  try {
+                    const u8 = new Uint8Array(buf);
+                    const decompressed = pako.ungzip(u8, { to: 'string' });
+                    res(decompressed);
+                  } catch (err) { rej(err); }
+                }, 0);
+              });
+            } else if (window.pako) {
+              try { const u8 = new Uint8Array(buf); text = pako.ungzip(u8, { to: 'string' }); } catch(err) { text = null; }
             }
             if (text === null) {
-              // Try to interpret as plain text
               try { text = new TextDecoder().decode(new Uint8Array(buf)); } catch (e) { text = null; }
             }
-            if (!text) {
-              alert('Failed to read snapshot file.');
-              return;
-            }
+            if (!text) { alert('Failed to read snapshot file.'); return; }
             const snap = JSON.parse(text);
             if (snap && (snap.left !== undefined || snap.right !== undefined)) {
               leftEditor.setValue(snap.left || '');
@@ -616,12 +680,13 @@
           csvToJsonBtn.onclick = (e) => {
             e.stopPropagation();
             const text = editor.getValue();
-            try {
-              const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
-              editor.setValue(JSON.stringify(jsonArray, null, 3));
-            } catch (err) {
+            // Use worker for large CSV conversions to avoid blocking
+            window.LargeDataHelpers.runHeavyTask('csvToJsonString', { text }, () => {
+              const arr = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+              return JSON.stringify(arr, null, 3);
+            }).then((res) => { editor.setValue(res); }).catch((err) => {
               showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-            }
+            });
             updateDiffStatus(mv);
           };
 
@@ -693,11 +758,14 @@
             }
           }
           
-          // Update URL parameters for sharing (debounced)
-          clearTimeout(saveContent.urlUpdateTimer);
-          saveContent.urlUpdateTimer = setTimeout(() => {
-            URLManager.saveToURL(leftContent, rightContent);
-          }, 1000); // 1 second delay to avoid too frequent URL updates
+          // Update URL parameters for sharing (debounced). Prefer idle callback to avoid blocking.
+          if (typeof window.requestIdleCallback === 'function') {
+            if (saveContent._idleHandle) cancelIdleCallback(saveContent._idleHandle);
+            saveContent._idleHandle = requestIdleCallback(() => { URLManager.saveToURL(leftContent, rightContent); }, { timeout: 1500 });
+          } else {
+            clearTimeout(saveContent.urlUpdateTimer);
+            saveContent.urlUpdateTimer = setTimeout(() => { URLManager.saveToURL(leftContent, rightContent); }, 1000);
+          }
           
           updateClearButtonsVisibility();
         };
@@ -719,18 +787,22 @@
               const looksLikeCSV = pastedText && window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(pastedText);
               if (autoCsv && looksLikeCSV) {
                 try {
-                  const jsonArray = window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true });
-                  instance.setValue(JSON.stringify(jsonArray, null, 3));
-                  // If auto-sort-on-paste is enabled, sort the newly inserted JSON
-                  try {
-                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                    if (autoSort) {
-                      let obj = parseFlexibleJSON(instance.getValue());
-                      if (Array.isArray(obj)) obj = sortJSONArray(obj);
-                      else obj = sortJSONKeys(obj);
-                      instance.setValue(JSON.stringify(obj, null, 3));
-                    }
-                  } catch (esort) { /* ignore sort errors */ }
+                  // If pasted text is large, offload CSV->JSON to worker
+                  const fallback = () => JSON.stringify(window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true }), null, 3);
+                  window.LargeDataHelpers.runHeavyTask('csvToJsonString', { text: pastedText }, fallback).then((jsonStr) => {
+                    instance.setValue(jsonStr);
+                    // Auto-sort if enabled (use worker if large)
+                    try {
+                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                      if (autoSort) {
+                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: jsonStr }, () => {
+                          const obj = parseFlexibleJSON(jsonStr);
+                          const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                          return JSON.stringify(out, null, 3);
+                        }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
+                      }
+                    } catch (esort) { /* ignore sort errors */ }
+                  }).catch((err) => { showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err))); });
                 } catch (err) {
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                 }
@@ -743,14 +815,16 @@
                   conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
                   conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
                 }
-                // If pasted content is JSON and auto-sort-on-paste is enabled, sort it
+                // If pasted content is JSON and auto-sort-on-paste is enabled, sort it (worker for large)
                 try {
                   const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
                   if (isJSON && autoSort) {
-                    let obj = parseFlexibleJSON(instance.getValue());
-                    if (Array.isArray(obj)) obj = sortJSONArray(obj);
-                    else obj = sortJSONKeys(obj);
-                    instance.setValue(JSON.stringify(obj, null, 3));
+                    const txt = instance.getValue();
+                    window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: txt }, () => {
+                      const obj = parseFlexibleJSON(txt);
+                      const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                      return JSON.stringify(out, null, 3);
+                    }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
                   }
                 } catch (err2) {
                   // ignore sorting errors
