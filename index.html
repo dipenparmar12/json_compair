@@ -407,6 +407,13 @@
         };
         controls.appendChild(templateSelect);
 
+        // Add setting: auto CSV conversion (if enabled will keep old behavior)
+        const autoCsvLabel = document.createElement('label');
+        autoCsvLabel.style.marginLeft = '10px';
+        autoCsvLabel.style.fontSize = '13px';
+        autoCsvLabel.innerHTML = `<input type="checkbox" id="auto-csv-conversion" /> Auto CSV→JSON`;
+        controls.appendChild(autoCsvLabel);
+
         // Add Clear All button
         const clearAllBtn = document.createElement("button");
         clearAllBtn.className = "toggle-button";
@@ -465,26 +472,15 @@
               // Request clipboard permission and get text
         const text = await navigator.clipboard.readText();
               if (text) {
-                // If it looks like CSV, convert and replace editor content
-                const looksLikeCSV = /[,;\t][^\n]*\n?/.test(text);
-                if (looksLikeCSV && window.CSVUtils) {
-                  try {
-                    const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
-                    editor.setValue(JSON.stringify(jsonArray, null, 3));
-                  } catch (err) {
-                    // Fallback to raw paste and show error
-                    editor.setValue(text);
-                    showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-                  }
-                } else {
-                  // Try to format if it's valid JSON
-                  try {
-                    const formatted = JSON.stringify(parseFlexibleJSON(text), null, 3);
-                    editor.setValue(formatted);
-                  } catch {
-                    // If not valid JSON, just paste as-is
-                    editor.setValue(text);
-                  }
+                // Paste text but do NOT auto-convert; instead show conversion buttons when applicable
+                editor.setValue(text);
+                // Detect CSV or JSON and show conversion buttons in that pane
+                const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(text);
+                const isJSON = (() => { try { JSON.parse(text); return true; } catch { return false; }})();
+                const conv = side === 'left' ? leftConversion : rightConversion;
+                if (conv) {
+                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
                 }
                 editor.focus();
                 updateDiffStatus(mv);
@@ -508,6 +504,51 @@
         // Add paste buttons to both editors
         const leftPasteBtn = addPasteButton(leftEditor, "left");
         const rightPasteBtn = addPasteButton(rightEditor, "right");
+
+        // Add CSV <-> JSON conversion buttons to each pane
+        function addConversionButtons(editor, side) {
+          const wrapper = editor.getWrapperElement();
+
+          const csvToJsonBtn = document.createElement('button');
+          csvToJsonBtn.className = `convert-btn convert-csv-to-json convert-${side}`;
+          csvToJsonBtn.textContent = 'CSV → JSON';
+          csvToJsonBtn.style.display = 'none';
+          csvToJsonBtn.onclick = (e) => {
+            e.stopPropagation();
+            const text = editor.getValue();
+            try {
+              const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+              editor.setValue(JSON.stringify(jsonArray, null, 3));
+            } catch (err) {
+              showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+            }
+            updateDiffStatus(mv);
+          };
+
+          const jsonToCsvBtn = document.createElement('button');
+          jsonToCsvBtn.className = `convert-btn convert-json-to-csv convert-${side}`;
+          jsonToCsvBtn.textContent = 'JSON → CSV';
+          jsonToCsvBtn.style.display = 'none';
+          jsonToCsvBtn.onclick = (e) => {
+            e.stopPropagation();
+            const text = editor.getValue();
+            try {
+              const csv = window.CSVUtils.jsonToCSV(text);
+              editor.setValue(csv);
+            } catch (err) {
+              showConversionError('JSON → CSV failed: ' + (err && err.message ? err.message : String(err)));
+            }
+            updateDiffStatus(mv);
+          };
+
+          wrapper.parentNode.appendChild(csvToJsonBtn);
+          wrapper.parentNode.appendChild(jsonToCsvBtn);
+
+          return { csvToJsonBtn, jsonToCsvBtn };
+        }
+
+        const leftConversion = addConversionButtons(leftEditor, 'left');
+        const rightConversion = addConversionButtons(rightEditor, 'right');
 
         // Function to update button visibility based on content
         function updateClearButtonsVisibility() {
@@ -564,25 +605,26 @@
   leftEditor.on("change", (instance, changeObj) => {
           if (changeObj.origin === "paste") {
             try {
-              // Get pasted fragment (array of lines)
+              // Get pasted fragment
               const pastedText = (changeObj.text || []).join('\n');
-              const looksLikeCSV = pastedText && /[,;\t][^\n]*\n?/.test(pastedText);
-              if (looksLikeCSV && window.CSVUtils) {
-                // Convert pasted CSV fragment to JSON and replace entire editor content
+              // If auto conversion is enabled, keep old behavior
+              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
+              const looksLikeCSV = pastedText && window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(pastedText);
+              if (autoCsv && looksLikeCSV) {
                 try {
                   const jsonArray = window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true });
                   instance.setValue(JSON.stringify(jsonArray, null, 3));
                 } catch (err) {
-                  // On conversion failure, leave the pasted CSV as-is and show error
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                 }
               } else {
-                // Try to format if it's JSON-like (existing behavior)
-                try {
-                  var formatted = JSON.stringify(parseFlexibleJSON(instance.getValue()), null, 3);
-                  instance.setValue(formatted);
-                } catch (e) {
-                  // Ignore parse errors
+                // Show conversion buttons when appropriate
+                const isCSV = looksLikeCSV;
+                const isJSON = (() => { try { JSON.parse(instance.getValue()); return true; } catch { return false; }})();
+                const conv = instance === leftEditor ? leftConversion : rightConversion;
+                if (conv) {
+                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
                 }
               }
             } catch (e) {
@@ -597,8 +639,9 @@
           if (changeObj.origin === "paste") {
             try {
               const pastedText = (changeObj.text || []).join('\n');
-              const looksLikeCSV = pastedText && /[,;\t][^\n]*\n?/.test(pastedText);
-              if (looksLikeCSV && window.CSVUtils) {
+              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
+              const looksLikeCSV = pastedText && window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(pastedText);
+              if (autoCsv && looksLikeCSV) {
                 try {
                   const jsonArray = window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true });
                   instance.setValue(JSON.stringify(jsonArray, null, 3));
@@ -606,11 +649,12 @@
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
                 }
               } else {
-                try {
-                  var formatted = JSON.stringify(parseFlexibleJSON(instance.getValue()), null, 3);
-                  instance.setValue(formatted);
-                } catch (e) {
-                  // Ignore parse errors
+                const isCSV = looksLikeCSV;
+                const isJSON = (() => { try { JSON.parse(instance.getValue()); return true; } catch { return false; }})();
+                const conv = instance === leftEditor ? leftConversion : rightConversion;
+                if (conv) {
+                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
                 }
               }
             } catch (e) {
@@ -694,11 +738,12 @@
             if (files && files.length) {
               handleEditorFileDrop(editor, files);
             } else {
-              // If plain text was dropped, read from dataTransfer and attempt conversion
+              // If plain text was dropped, read from dataTransfer and show conversion suggestion
               const text = e.dataTransfer.getData('text/plain');
               if (text) {
-                const looksLikeCSV = /[,;\t][^\n]*\n?/.test(text);
-                if (looksLikeCSV && window.CSVUtils) {
+                const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(text);
+                const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
+                if (autoCsv && isCSV) {
                   try {
                     const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
                     editor.setValue(JSON.stringify(jsonArray, null, 3));
@@ -708,6 +753,12 @@
                   }
                 } else {
                   editor.setValue(text);
+                  const conv = editor === leftEditor ? leftConversion : rightConversion;
+                  if (conv) {
+                    conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                    const isJSON = (() => { try { JSON.parse(text); return true; } catch { return false; }})();
+                    conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
+                  }
                 }
               }
             }
@@ -718,8 +769,9 @@
             try {
               const clipboardText = (e.clipboardData || window.clipboardData).getData('text/plain');
               if (!clipboardText) return;
-              const looksLikeCSV = /[,;\t][^\n]*\n?/.test(clipboardText);
-              if (looksLikeCSV && window.CSVUtils) {
+              const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(clipboardText);
+              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
+              if (isCSV && autoCsv) {
                 e.preventDefault();
                 e.stopPropagation();
                 if (e.stopImmediatePropagation) e.stopImmediatePropagation();
@@ -736,6 +788,14 @@
                   updateDiffStatus(mv);
                 } catch (err) {
                   showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                }
+              } else {
+                // Not auto-converting: show conversion buttons when appropriate
+                const conv = editor === leftEditor ? leftConversion : rightConversion;
+                if (conv) {
+                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                  const isJSON = (() => { try { JSON.parse(clipboardText); return true; } catch { return false; }})();
+                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
                 }
               }
             } catch (err) {
