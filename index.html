@@ -111,7 +111,6 @@
     let largeDataWorker = null;
     const WORKER_PATH = './js/large-data-worker.js';
     const WORKER_SIZE_THRESHOLD = 150 * 1024; // 150 KB conservative threshold to offload to worker
-    const URL_UPDATE_DEBOUNCE = 1000; // ms
 
     // Create worker lazily
     function ensureWorker() {
@@ -325,56 +324,71 @@
             return;
           }
 
-          // Try to create a short URL first
+          // Show loading state
+          const originalText = shareBtn.textContent;
+          shareBtn.textContent = '⏳ Processing...';
+          shareBtn.disabled = true;
+
           try {
+            // Generate the shareable URL
             const shareUrl = URLManager.generateShareableURL(leftContent, rightContent);
 
-            // Safe URL length threshold (conservative). If URL is short enough, copy it.
+            // Check if URL is within safe browser limits (most browsers support ~2000 chars)
             const MAX_SAFE_URL_LEN = 1800;
+
             if (shareUrl.length <= MAX_SAFE_URL_LEN) {
+              // URL is safe to use - copy to clipboard
               try {
                 await navigator.clipboard.writeText(shareUrl);
-                const originalText = shareBtn.textContent;
-                shareBtn.textContent = 'Copied';
-                setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+                shareBtn.textContent = '✅ URL Copied';
+                setTimeout(() => {
+                  shareBtn.textContent = originalText;
+                  shareBtn.disabled = false;
+                }, 2000);
                 return;
               } catch (err) {
+                // Fallback to old clipboard API
                 const textArea = document.createElement("textarea");
                 textArea.value = shareUrl;
                 document.body.appendChild(textArea);
                 textArea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
-                const originalText = shareBtn.textContent;
-                shareBtn.textContent = 'Copied';
-                setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+                shareBtn.textContent = '✅ URL Copied';
+                setTimeout(() => {
+                  shareBtn.textContent = originalText;
+                  shareBtn.disabled = false;
+                }, 2000);
                 return;
               }
             }
 
-            // If the URL would be too long, fall back to client-side snapshot file export.
-            // Build a compressed snapshot using pako (gzip).
+            // URL is too long - fall back to file download
             if (window.pako) {
               const snap = JSON.stringify({ left: leftContent, right: rightContent });
-              // gzip returns Uint8Array
               const gz = pako.gzip(snap);
               const blob = new Blob([gz], { type: 'application/gzip' });
               const filename = 'json_compair_snapshot.json.gz';
 
-              // Try to share the file via Web Share API if supported and can share files
+              // Try Web Share API first (mobile-friendly)
               try {
                 if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename)] })) {
-                  await navigator.share({ files: [new File([blob], filename)], title: 'json_compair snapshot' });
-                  const originalText = shareBtn.textContent;
-                  shareBtn.textContent = 'Shared';
-                  setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+                  await navigator.share({
+                    files: [new File([blob], filename)],
+                    title: 'JSON Compare Snapshot'
+                  });
+                  shareBtn.textContent = '📤 Shared';
+                  setTimeout(() => {
+                    shareBtn.textContent = originalText;
+                    shareBtn.disabled = false;
+                  }, 2000);
                   return;
                 }
               } catch (e) {
-                // ignore and fall back to download
+                // Fall back to download
               }
 
-              // Trigger file download as fallback
+              // Trigger file download
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
@@ -384,22 +398,32 @@
               a.remove();
               URL.revokeObjectURL(url);
 
-              // Copy a small helper text to clipboard so the user can paste instructions along with the file
-              const helperText = 'Attached is a json_compair snapshot. Please open https://dipenparmar12.github.io/json_compair/ and use Import Snapshot to load it.';
-              try { await navigator.clipboard.writeText(helperText); } catch (e) { /* noop */ }
+              // Copy helper text to clipboard
+              const helperText = '📎 JSON Compare snapshot attached. Open https://dipenparmar12.github.io/json_compair/ and use "Import Snapshot" to load it.';
+              try {
+                await navigator.clipboard.writeText(helperText);
+              } catch (e) {
+                // Ignore clipboard errors
+              }
 
-              const originalText = shareBtn.textContent;
-              shareBtn.textContent = 'Downloaded';
-              setTimeout(() => { shareBtn.textContent = originalText; }, 2000);
+              shareBtn.textContent = '📥 Downloaded';
+              setTimeout(() => {
+                shareBtn.textContent = originalText;
+                shareBtn.disabled = false;
+              }, 2000);
               return;
             } else {
-              // No pako available: fallback to prompting user to copy compressed text (not ideal)
-              alert('Content is too large to encode in a URL and compression support is not available. Please use the Export Snapshot option to download a file and share it.');
+              // No compression available
+              alert('Content is too large for URL sharing and compression is not available. Please use the Export option to save a file manually.');
+              shareBtn.textContent = originalText;
+              shareBtn.disabled = false;
               return;
             }
           } catch (err) {
-            console.error('Share fallback error', err);
-            alert('Unable to create share link or snapshot. Please try exporting manually.');
+            console.error('Share error:', err);
+            alert('Unable to create share link. Please try again or use Export manually.');
+            shareBtn.textContent = originalText;
+            shareBtn.disabled = false;
           }
         };
     controls.insertBefore(shareBtn, sortKeysBtn.nextSibling);
@@ -455,7 +479,7 @@
                   });
                 }
               }
-              URLManager.saveToURL(snap.left || '', snap.right || '');
+              
               updateDiffStatus(mv);
             } else {
               alert('Snapshot file format not recognized.');
@@ -791,11 +815,11 @@
         // Set initial button visibility based on initial content
         updateClearButtonsVisibility();
 
-        // Auto-save content changes and update URL
+        // Auto-save content changes to storage only (no URL tracking for performance)
         const saveContent = () => {
           const leftContent = leftEditor.getValue();
           const rightContent = rightEditor.getValue();
-          
+
           try {
             StorageManager.saveToStorage(leftContent, rightContent);
           } catch (e) {
@@ -804,16 +828,7 @@
               StorageManager.saveToIndexedDB(leftContent, rightContent).catch((err) => console.error('IndexedDB autosave failed', err));
             }
           }
-          
-          // Update URL parameters for sharing (debounced). Prefer idle callback to avoid blocking.
-          if (typeof window.requestIdleCallback === 'function') {
-            if (saveContent._idleHandle) cancelIdleCallback(saveContent._idleHandle);
-            saveContent._idleHandle = requestIdleCallback(() => { URLManager.saveToURL(leftContent, rightContent); }, { timeout: 1500 });
-          } else {
-            clearTimeout(saveContent.urlUpdateTimer);
-            saveContent.urlUpdateTimer = setTimeout(() => { URLManager.saveToURL(leftContent, rightContent); }, 1000);
-          }
-          
+
           updateClearButtonsVisibility();
         };
 
@@ -998,7 +1013,7 @@
                 } catch (e) {
                   if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
                 }
-                URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                
                 updateDiffStatus(mv);
               } catch (err) {
                 console.error('Dropped JSON handling failed', err);
@@ -1052,7 +1067,7 @@
                 } catch (e) {
                   if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
                 }
-                URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                
                 updateDiffStatus(mv);
               } catch (err) {
                 console.error('CSV -> JSON conversion failed', err);
@@ -1142,7 +1157,7 @@
                     } catch (e) {
                       if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
                     }
-                    URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                    
                     updateDiffStatus(mv);
                     // Auto-sort after clipboard CSV conversion when enabled
                     try {
