@@ -481,6 +481,10 @@
               }
               
               updateDiffStatus(mv);
+
+              // Clear URL parameters after successful import (keep URL clean)
+              URLManager.clearURL();
+              console.log('URL parameters cleared after importing snapshot');
             } else {
               alert('Snapshot file format not recognized.');
             }
@@ -1220,6 +1224,13 @@
         };
 
         updateDiffStatus(mv);
+
+        // Clear URL parameters if content was loaded from URL (keep URL clean)
+        if (urlContent) {
+          URLManager.clearURL();
+          console.log('URL parameters cleared after loading content from URL');
+        }
+
         return mv;
       }
 

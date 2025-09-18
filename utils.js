@@ -69,6 +69,12 @@
         (params.toString() ? "?" + params.toString() : "")
       );
     },
+
+    clearURL: function () {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, "", cleanUrl);
+      return cleanUrl;
+    },
   };
 
   // Storage Manager Implementation
