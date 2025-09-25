@@ -37,167 +37,210 @@ json-compare-tool/
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JSON Compare Tool</title>
+    
+    <!-- TailwindCSS CDN with Offline Fallback -->
+    <script>
+        // Load TailwindCSS from CDN with fallback
+        const loadTailwind = () => {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://cdn.tailwindcss.com';
+            link.onerror = () => {
+                // Fallback to local TailwindCSS
+                const fallback = document.createElement('link');
+                fallback.rel = 'stylesheet';
+                fallback.href = 'css/tailwindcss_3.3.6.css';
+                document.head.appendChild(fallback);
+            };
+            document.head.appendChild(link);
+        };
+        loadTailwind();
+    </script>
+    
+    <!-- Custom app styles (built on top of Tailwind) -->
     <link rel="stylesheet" href="css/app.css">
-    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
 </head>
-<body>
+<body class="min-h-screen bg-gray-50 flex flex-col">
     <!-- Header Section -->
-    <header class="app-header">
-        <div class="header-content">
-            <h1 class="app-title">JSON Compare Tool</h1>
-            <div class="header-controls">
-                <button class="theme-toggle" title="Toggle Theme">🌙</button>
-                <button class="fullscreen-toggle" title="Fullscreen">⛶</button>
-                <button class="help-button" title="Help">❓</button>
+    <header class="bg-gray-800 text-white px-4 py-2 flex-shrink-0">
+        <div class="flex justify-between items-center max-w-screen-xl mx-auto">
+            <h1 class="text-xl font-semibold">JSON Compare Tool</h1>
+            <div class="flex items-center space-x-2">
+                <button class="p-2 hover:bg-gray-700 rounded-md transition-colors" title="Toggle Theme">
+                    🌙
+                </button>
+                <button class="p-2 hover:bg-gray-700 rounded-md transition-colors" title="Fullscreen">
+                    ⛶
+                </button>
+                <button class="p-2 hover:bg-gray-700 rounded-md transition-colors" title="Help">
+                    ❓
+                </button>
             </div>
         </div>
     </header>
 
     <!-- Main Toolbar -->
-    <div class="main-toolbar">
-        <!-- File Operations -->
-        <div class="toolbar-section">
-            <button class="btn btn-primary file-upload-btn">
-                📁 Upload Files
-            </button>
-            <button class="btn btn-secondary clear-btn">
-                🗑️ Clear
-            </button>
-            <button class="btn btn-secondary swap-btn">
-                ⇄ Swap
-            </button>
-        </div>
+    <div class="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
+        <div class="max-w-screen-xl mx-auto">
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- File Operations -->
+                <div class="flex items-center space-x-2">
+                    <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        📁 Upload Files
+                    </button>
+                    <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        🗑️ Clear
+                    </button>
+                    <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        ⇄ Swap
+                    </button>
+                </div>
 
-        <!-- Comparison Options -->
-        <div class="toolbar-section">
-            <label for="comparison-mode">Compare Mode:</label>
-            <select id="comparison-mode" class="comparison-mode-select">
-                <option value="full">All Keys</option>
-                <option value="left-only">Left Keys Only</option>
-                <option value="right-only">Right Keys Only</option>
-                <option value="intersection">Common Keys Only</option>
-            </select>
-        </div>
+                <!-- Comparison Options -->
+                <div class="flex items-center space-x-2">
+                    <label for="comparison-mode" class="text-sm font-medium text-gray-700">Compare Mode:</label>
+                    <select id="comparison-mode" class="block w-48 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                        <option value="full">All Keys</option>
+                        <option value="left-only">Left Keys Only</option>
+                        <option value="right-only">Right Keys Only</option>
+                        <option value="intersection">Common Keys Only</option>
+                    </select>
+                </div>
 
-        <!-- View Options -->
-        <div class="toolbar-section">
-            <button class="btn btn-toggle view-toggle" data-view="side-by-side">
-                📄 Side by Side
-            </button>
-            <button class="btn btn-toggle view-toggle" data-view="unified">
-                📋 Unified
-            </button>
-            <button class="btn btn-toggle differences-only">
-                🎯 Differences Only
-            </button>
-        </div>
+                <!-- View Options -->
+                <div class="flex items-center space-x-1 border border-gray-200 rounded-md">
+                    <button class="px-3 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                        📄 Side by Side
+                    </button>
+                    <button class="px-3 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                        📋 Unified
+                    </button>
+                    <button class="px-3 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 rounded-r-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                        🎯 Differences Only
+                    </button>
+                </div>
 
-        <!-- Format Options -->
-        <div class="toolbar-section">
-            <button class="btn btn-secondary format-json">
-                ✨ Format JSON
-            </button>
-            <button class="btn btn-secondary minify-json">
-                📦 Minify
-            </button>
-            <button class="btn btn-secondary sort-keys">
-                🔤 Sort Keys
-            </button>
-        </div>
+                <!-- Format Options -->
+                <div class="flex items-center space-x-2">
+                    <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        ✨ Format JSON
+                    </button>
+                    <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        📦 Minify
+                    </button>
+                    <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        🔤 Sort Keys
+                    </button>
+                </div>
 
-        <!-- Share & Export -->
-        <div class="toolbar-section">
-            <button class="btn btn-secondary share-url">
-                🔗 Share URL
-            </button>
-            <button class="btn btn-secondary export-diff">
-                💾 Export
-            </button>
+                <!-- Share & Export -->
+                <div class="flex items-center space-x-2">
+                    <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        🔗 Share URL
+                    </button>
+                    <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        💾 Export
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Comparison Statistics -->
-    <div class="stats-bar">
-        <div class="stat-item">
-            <span class="stat-label">Total Keys:</span>
-            <span class="stat-value" id="total-keys">0</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-label">Compared:</span>
-            <span class="stat-value" id="compared-keys">0</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-label">Added:</span>
-            <span class="stat-value added" id="added-count">0</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-label">Modified:</span>
-            <span class="stat-value modified" id="modified-count">0</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-label">Removed:</span>
-            <span class="stat-value removed" id="removed-count">0</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-label">Hidden:</span>
-            <span class="stat-value hidden" id="hidden-count">0</span>
+    <div class="bg-gray-100 border-b border-gray-200 px-4 py-2 flex-shrink-0">
+        <div class="max-w-screen-xl mx-auto">
+            <div class="flex flex-wrap items-center gap-4 text-sm">
+                <div class="flex items-center">
+                    <span class="text-gray-600">Total Keys:</span>
+                    <span class="ml-1 font-semibold text-gray-900" id="total-keys">0</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-600">Compared:</span>
+                    <span class="ml-1 font-semibold text-gray-900" id="compared-keys">0</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-600">Added:</span>
+                    <span class="ml-1 font-semibold text-green-600" id="added-count">0</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-600">Modified:</span>
+                    <span class="ml-1 font-semibold text-blue-600" id="modified-count">0</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-600">Removed:</span>
+                    <span class="ml-1 font-semibold text-red-600" id="removed-count">0</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-600">Hidden:</span>
+                    <span class="ml-1 font-semibold text-gray-500" id="hidden-count">0</span>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Main Content Area -->
-    <main class="main-content">
+    <main class="flex-1 flex flex-col overflow-hidden">
         <!-- Editor Container -->
-        <div class="editor-container" id="editor-container">
+        <div class="flex-1 flex overflow-hidden" id="editor-container">
             <!-- Left Editor Panel -->
-            <div class="editor-panel left-panel">
-                <div class="panel-header">
-                    <h3 class="panel-title">Left (Original)</h3>
-                    <div class="panel-controls">
-                        <button class="btn-icon upload-left" title="Upload file">📁</button>
-                        <button class="btn-icon paste-left" title="Paste from clipboard">📋</button>
-                        <button class="btn-icon clear-left" title="Clear content">🗑️</button>
+            <div class="flex-1 flex flex-col min-w-0 border-r border-gray-200">
+                <div class="bg-gray-50 border-b border-gray-200 px-4 py-2 flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Left (Original)</h3>
+                    <div class="flex items-center space-x-1">
+                        <button class="p-1 hover:bg-gray-200 rounded" title="Upload file">📁</button>
+                        <button class="p-1 hover:bg-gray-200 rounded" title="Paste from clipboard">📋</button>
+                        <button class="p-1 hover:bg-gray-200 rounded" title="Clear content">🗑️</button>
                     </div>
                 </div>
-                <div class="editor-wrapper">
-                    <div class="file-info">
-                        <span class="file-name" id="left-file-name">No file selected</span>
-                        <span class="file-size" id="left-file-size"></span>
+                <div class="flex-1 flex flex-col">
+                    <div class="bg-gray-50 px-3 py-1 text-xs text-gray-600 border-b border-gray-100">
+                        <span id="left-file-name" class="font-medium">No file selected</span>
+                        <span id="left-file-size" class="ml-2"></span>
                     </div>
-                    <div class="editor-area" id="left-editor">
+                    <div class="flex-1 relative overflow-hidden" id="left-editor">
                         <!-- CodeMirror will be initialized here -->
                     </div>
                 </div>
             </div>
 
-            <!-- Center Gutter (for navigation and controls) -->
-            <div class="center-gutter">
-                <div class="diff-navigation">
-                    <button class="nav-btn prev-diff" title="Previous difference">↑</button>
-                    <span class="diff-counter">0 / 0</span>
-                    <button class="nav-btn next-diff" title="Next difference">↓</button>
+            <!-- Center Gutter -->
+            <div class="w-16 bg-gray-100 border-r border-gray-200 flex flex-col justify-center items-center space-y-4">
+                <div class="flex flex-col items-center space-y-2">
+                    <button class="p-2 hover:bg-gray-200 rounded-md transition-colors" title="Previous difference">
+                        ↑
+                    </button>
+                    <span class="text-xs text-gray-600 text-center">0 / 0</span>
+                    <button class="p-2 hover:bg-gray-200 rounded-md transition-colors" title="Next difference">
+                        ↓
+                    </button>
                 </div>
-                <div class="merge-controls">
-                    <button class="merge-btn left-to-right" title="Copy left to right">→</button>
-                    <button class="merge-btn right-to-left" title="Copy right to left">←</button>
+                <div class="flex flex-col items-center space-y-2">
+                    <button class="p-2 hover:bg-gray-200 rounded-md transition-colors" title="Copy left to right">
+                        →
+                    </button>
+                    <button class="p-2 hover:bg-gray-200 rounded-md transition-colors" title="Copy right to left">
+                        ←
+                    </button>
                 </div>
             </div>
 
             <!-- Right Editor Panel -->
-            <div class="editor-panel right-panel">
-                <div class="panel-header">
-                    <h3 class="panel-title">Right (Comparison)</h3>
-                    <div class="panel-controls">
-                        <button class="btn-icon upload-right" title="Upload file">📁</button>
-                        <button class="btn-icon paste-right" title="Paste from clipboard">📋</button>
-                        <button class="btn-icon clear-right" title="Clear content">🗑️</button>
+            <div class="flex-1 flex flex-col min-w-0">
+                <div class="bg-gray-50 border-b border-gray-200 px-4 py-2 flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Right (Comparison)</h3>
+                    <div class="flex items-center space-x-1">
+                        <button class="p-1 hover:bg-gray-200 rounded" title="Upload file">📁</button>
+                        <button class="p-1 hover:bg-gray-200 rounded" title="Paste from clipboard">📋</button>
+                        <button class="p-1 hover:bg-gray-200 rounded" title="Clear content">🗑️</button>
                     </div>
                 </div>
-                <div class="editor-wrapper">
-                    <div class="file-info">
-                        <span class="file-name" id="right-file-name">No file selected</span>
-                        <span class="file-size" id="right-file-size"></span>
+                <div class="flex-1 flex flex-col">
+                    <div class="bg-gray-50 px-3 py-1 text-xs text-gray-600 border-b border-gray-100">
+                        <span id="right-file-name" class="font-medium">No file selected</span>
+                        <span id="right-file-size" class="ml-2"></span>
                     </div>
-                    <div class="editor-area" id="right-editor">
+                    <div class="flex-1 relative overflow-hidden" id="right-editor">
                         <!-- CodeMirror will be initialized here -->
                     </div>
                 </div>
@@ -205,51 +248,57 @@ json-compare-tool/
         </div>
 
         <!-- Unified View (Hidden by default) -->
-        <div class="unified-view" id="unified-view" style="display: none;">
-            <div class="unified-header">
-                <h3>Unified Diff View</h3>
+        <div class="flex-1 hidden" id="unified-view">
+            <div class="bg-gray-50 border-b border-gray-200 px-4 py-2">
+                <h3 class="text-lg font-medium text-gray-900">Unified Diff View</h3>
             </div>
-            <div class="unified-content">
+            <div class="flex-1 overflow-auto p-4">
                 <!-- Unified diff content will be generated here -->
             </div>
         </div>
     </main>
 
     <!-- Status Bar -->
-    <footer class="status-bar">
-        <div class="status-left">
-            <span class="processing-indicator" id="processing-indicator" style="display: none;">
-                ⏳ Processing...
-            </span>
-            <span class="file-format" id="file-format">JSON</span>
-        </div>
-        <div class="status-center">
-            <span class="comparison-status" id="comparison-status">Ready to compare</span>
-        </div>
-        <div class="status-right">
-            <span class="performance-info" id="performance-info"></span>
+    <footer class="bg-gray-800 text-white px-4 py-2 flex-shrink-0">
+        <div class="max-w-screen-xl mx-auto flex justify-between items-center text-sm">
+            <div class="flex items-center space-x-4">
+                <span class="hidden processing-indicator" id="processing-indicator">
+                    ⏳ Processing...
+                </span>
+                <span class="text-gray-300" id="file-format">JSON</span>
+            </div>
+            <div>
+                <span id="comparison-status">Ready to compare</span>
+            </div>
+            <div>
+                <span class="text-gray-300" id="performance-info"></span>
+            </div>
         </div>
     </footer>
 
     <!-- Modal for URL Sharing -->
-    <div class="modal" id="share-modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Share Comparison</h3>
-                <button class="modal-close">&times;</button>
+    <div class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" id="share-modal">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Share Comparison</h3>
+                <button class="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="share-url-input">Shareable URL:</label>
-                    <div class="url-input-group">
-                        <input type="text" id="share-url-input" readonly>
-                        <button class="btn btn-primary copy-url">Copy</button>
-                    </div>
+            <div class="mb-4">
+                <label for="share-url-input" class="block text-sm font-medium text-gray-700 mb-2">
+                    Shareable URL:
+                </label>
+                <div class="flex rounded-md shadow-sm">
+                    <input type="text" id="share-url-input" readonly 
+                           class="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-l-md border-gray-300 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    <button class="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 rounded-r-md bg-gray-50 text-gray-500 text-sm hover:bg-gray-100">
+                        Copy
+                    </button>
                 </div>
-                <div class="share-options">
-                    <label>
-                        <input type="checkbox" id="compress-url" checked>
-                        Compress URL (shorter links)
+                <div class="mt-3">
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" id="compress-url" checked 
+                               class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                        <span class="ml-2 text-sm text-gray-700">Compress URL (shorter links)</span>
                     </label>
                 </div>
             </div>
@@ -257,78 +306,94 @@ json-compare-tool/
     </div>
 
     <!-- Modal for Export Options -->
-    <div class="modal" id="export-modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Export Comparison</h3>
-                <button class="modal-close">&times;</button>
+    <div class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" id="export-modal">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Export Comparison</h3>
+                <button class="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
-            <div class="modal-body">
-                <div class="export-options">
-                    <div class="form-group">
-                        <label for="export-format">Export Format:</label>
-                        <select id="export-format">
-                            <option value="json">JSON Diff</option>
-                            <option value="html">HTML Report</option>
-                            <option value="csv">CSV Report</option>
-                            <option value="text">Text Diff</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Include:</label>
-                        <div class="checkbox-group">
-                            <label><input type="checkbox" id="include-unchanged" checked> Unchanged values</label>
-                            <label><input type="checkbox" id="include-metadata" checked> Metadata</label>
-                            <label><input type="checkbox" id="include-stats" checked> Statistics</label>
-                        </div>
+            <div class="mb-4">
+                <div class="mb-3">
+                    <label for="export-format" class="block text-sm font-medium text-gray-700 mb-2">
+                        Export Format:
+                    </label>
+                    <select id="export-format" class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="json">JSON Diff</option>
+                        <option value="html">HTML Report</option>
+                        <option value="csv">CSV Report</option>
+                        <option value="text">Text Diff</option>
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <span class="block text-sm font-medium text-gray-700 mb-2">Include:</span>
+                    <div class="space-y-2">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="include-unchanged" checked 
+                                   class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                            <span class="ml-2 text-sm text-gray-700">Unchanged values</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="include-metadata" checked 
+                                   class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                            <span class="ml-2 text-sm text-gray-700">Metadata</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="include-stats" checked 
+                                   class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                            <span class="ml-2 text-sm text-gray-700">Statistics</span>
+                        </label>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary cancel-export">Cancel</button>
-                    <button class="btn btn-primary confirm-export">Export</button>
+                <div class="flex justify-end space-x-2">
+                    <button class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                        Export
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Help Panel (Slide-out) -->
-    <div class="help-panel" id="help-panel" style="transform: translateX(100%);">
-        <div class="help-header">
-            <h3>Quick Help</h3>
-            <button class="help-close">&times;</button>
+    <div class="fixed inset-y-0 right-0 max-w-sm w-full bg-white shadow-xl transform translate-x-full transition-transform duration-300 ease-in-out z-40" id="help-panel">
+        <div class="flex items-center justify-between p-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Quick Help</h3>
+            <button class="text-gray-400 hover:text-gray-600">&times;</button>
         </div>
-        <div class="help-content">
-            <div class="help-section">
-                <h4>Getting Started</h4>
-                <ul>
-                    <li>Upload JSON files or paste content directly</li>
-                    <li>Choose comparison mode for selective key matching</li>
-                    <li>Use toolbar buttons to format and navigate</li>
+        <div class="p-4 space-y-6 overflow-y-auto h-full">
+            <div>
+                <h4 class="text-sm font-semibold text-gray-900 mb-2">Getting Started</h4>
+                <ul class="text-sm text-gray-600 space-y-1">
+                    <li>• Upload JSON files or paste content directly</li>
+                    <li>• Choose comparison mode for selective key matching</li>
+                    <li>• Use toolbar buttons to format and navigate</li>
                 </ul>
             </div>
-            <div class="help-section">
-                <h4>Comparison Modes</h4>
-                <ul>
-                    <li><strong>All Keys:</strong> Compare all properties</li>
-                    <li><strong>Left Keys Only:</strong> Compare only left-side keys</li>
-                    <li><strong>Right Keys Only:</strong> Compare only right-side keys</li>
-                    <li><strong>Common Keys:</strong> Compare shared properties only</li>
+            <div>
+                <h4 class="text-sm font-semibold text-gray-900 mb-2">Comparison Modes</h4>
+                <ul class="text-sm text-gray-600 space-y-1">
+                    <li>• <strong>All Keys:</strong> Compare all properties</li>
+                    <li>• <strong>Left Keys Only:</strong> Compare only left-side keys</li>
+                    <li>• <strong>Right Keys Only:</strong> Compare only right-side keys</li>
+                    <li>• <strong>Common Keys:</strong> Compare shared properties only</li>
                 </ul>
             </div>
-            <div class="help-section">
-                <h4>Keyboard Shortcuts</h4>
-                <ul>
-                    <li><kbd>Ctrl/Cmd + V</kbd> - Paste content</li>
-                    <li><kbd>F11</kbd> - Toggle fullscreen</li>
-                    <li><kbd>Ctrl/Cmd + F</kbd> - Find in editor</li>
+            <div>
+                <h4 class="text-sm font-semibold text-gray-900 mb-2">Keyboard Shortcuts</h4>
+                <ul class="text-sm text-gray-600 space-y-1">
+                    <li>• <kbd class="px-2 py-1 text-xs bg-gray-100 rounded">Ctrl/Cmd + V</kbd> Paste content</li>
+                    <li>• <kbd class="px-2 py-1 text-xs bg-gray-100 rounded">F11</kbd> Toggle fullscreen</li>
+                    <li>• <kbd class="px-2 py-1 text-xs bg-gray-100 rounded">Ctrl/Cmd + F</kbd> Find in editor</li>
                 </ul>
             </div>
         </div>
     </div>
 
     <!-- Hidden file input for uploads -->
-    <input type="file" id="file-input-left" accept=".json,.csv,.txt" style="display: none;">
-    <input type="file" id="file-input-right" accept=".json,.csv,.txt" style="display: none;">
+    <input type="file" id="file-input-left" accept=".json,.csv,.txt" class="hidden">
+    <input type="file" id="file-input-right" accept=".json,.csv,.txt" class="hidden">
 
     <!-- Scripts (will be added in later phases) -->
     <script src="js/app.js"></script>
@@ -336,160 +401,163 @@ json-compare-tool/
 </html>
 ```
 
-### 1.3 Basic CSS Layout (Responsive Design)
+### 1.3 TailwindCSS Integration Strategy
 ```css
-/* css/layout.css - Core layout styles */
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+/* css/app.css - Custom components built on Tailwind base */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Custom component classes using Tailwind utilities */
+@layer components {
+  .diff-added {
+    @apply bg-green-100 text-green-800 border-l-4 border-green-500;
+  }
+  
+  .diff-removed {
+    @apply bg-red-100 text-red-800 border-l-4 border-red-500;
+  }
+  
+  .diff-modified {
+    @apply bg-blue-100 text-blue-800 border-l-4 border-blue-500;
+  }
+  
+  .editor-line-number {
+    @apply text-gray-500 text-xs font-mono bg-gray-50 px-2 py-1 border-r border-gray-200;
+  }
+  
+  .json-key {
+    @apply text-purple-600 font-medium;
+  }
+  
+  .json-string {
+    @apply text-green-600;
+  }
+  
+  .json-number {
+    @apply text-blue-600;
+  }
+  
+  .json-boolean {
+    @apply text-orange-600;
+  }
+  
+  .json-null {
+    @apply text-gray-500 italic;
+  }
 }
 
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    height: 100vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+/* Dark theme variations */
+@layer utilities {
+  .dark .diff-added {
+    @apply bg-green-900 text-green-200 border-green-400;
+  }
+  
+  .dark .diff-removed {
+    @apply bg-red-900 text-red-200 border-red-400;
+  }
+  
+  .dark .diff-modified {
+    @apply bg-blue-900 text-blue-200 border-blue-400;
+  }
 }
+```
 
-.app-header {
-    background: #2d3748;
-    color: white;
-    padding: 0.5rem 1rem;
-    flex-shrink: 0;
-}
-
-.header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.main-toolbar {
-    background: #f7fafc;
-    border-bottom: 1px solid #e2e8f0;
-    padding: 0.5rem 1rem;
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-    flex-shrink: 0;
-}
-
-.toolbar-section {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.stats-bar {
-    background: #edf2f7;
-    border-bottom: 1px solid #e2e8f0;
-    padding: 0.25rem 1rem;
-    display: flex;
-    gap: 1rem;
-    flex-shrink: 0;
-    font-size: 0.875rem;
-}
-
-.main-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.editor-container {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-}
-
-.editor-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.panel-header {
-    background: #f7fafc;
-    border-bottom: 1px solid #e2e8f0;
-    padding: 0.5rem 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.editor-wrapper {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-}
-
-.file-info {
-    background: #f8f9fa;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.75rem;
-    color: #6c757d;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.editor-area {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-}
-
-.center-gutter {
-    width: 60px;
-    background: #f1f5f9;
-    border-left: 1px solid #e2e8f0;
-    border-right: 1px solid #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 1rem;
-}
-
-.status-bar {
-    background: #2d3748;
-    color: white;
-    padding: 0.25rem 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.75rem;
-    flex-shrink: 0;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .main-toolbar {
-        flex-direction: column;
-        gap: 0.5rem;
+### 1.4 Dependency Loading Strategy with TailwindCSS
+```javascript
+// js/app.js - Enhanced dependency loading
+class DependencyManager {
+    constructor() {
+        this.loadedDependencies = new Set();
+        this.fallbackEnabled = true;
     }
     
-    .toolbar-section {
-        justify-content: center;
+    async loadAllDependencies() {
+        // Load TailwindCSS first (already loaded in HTML head)
+        console.log('TailwindCSS loaded from CDN or fallback');
+        
+        // Load other dependencies with fallbacks
+        await this.loadWithFallback({
+            name: 'codemirror',
+            cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.css',
+            fallback: 'css/codemirror_5.65.3.css',
+            type: 'css'
+        });
+        
+        await this.loadWithFallback({
+            name: 'codemirror-js',
+            cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.js',
+            fallback: 'js/codemirror_5.65.3.js',
+            type: 'js'
+        });
+        
+        await this.loadWithFallback({
+            name: 'diff_match_patch',
+            cdn: 'https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/diff_match_patch.min.js',
+            fallback: 'js/diff_match_patch_1.0.5.js',
+            type: 'js'
+        });
+        
+        await this.loadWithFallback({
+            name: 'pako',
+            cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js',
+            fallback: 'js/pako_2.1.0.js',
+            type: 'js'
+        });
     }
     
-    .stats-bar {
-        flex-direction: column;
-        gap: 0.25rem;
+    async loadWithFallback({ name, cdn, fallback, type }) {
+        try {
+            await this.loadResource(cdn, type);
+            console.log(`✓ ${name} loaded from CDN`);
+        } catch (error) {
+            console.warn(`⚠ CDN failed for ${name}, loading fallback`);
+            await this.loadResource(fallback, type);
+            console.log(`✓ ${name} loaded from local fallback`);
+        }
+        this.loadedDependencies.add(name);
     }
     
-    .editor-container {
-        flex-direction: column;
-    }
-    
-    .center-gutter {
-        width: 100%;
-        height: 60px;
-        flex-direction: row;
+    loadResource(url, type) {
+        return new Promise((resolve, reject) => {
+            if (type === 'css') {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = url;
+                link.onload = resolve;
+                link.onerror = reject;
+                document.head.appendChild(link);
+            } else if (type === 'js') {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            }
+        });
     }
 }
+```
+
+### 1.5 Directory Structure Update for TailwindCSS
+```bash
+json-compare-tool/
+├── index.html                 # Main application with TailwindCSS CDN + fallback
+├── css/
+│   ├── app.css               # Custom Tailwind components and utilities
+│   ├── components.css        # Reusable UI components
+│   └── offline/              # Offline fallback assets
+│       ├── tailwindcss_3.3.6.css    # Local TailwindCSS fallback
+│       ├── codemirror_5.65.3.css    # CodeMirror offline fallback  
+│       └── merge_5.65.3.css          # Merge view offline fallback
+├── js/
+│   ├── app.js                # Main application with dependency management
+│   ├── components/           # Reusable JS components
+│   └── offline/              # Offline fallback scripts
+│       ├── codemirror_5.65.3.js         # CodeMirror offline fallback
+│       ├── diff_match_patch_1.0.5.js   # diff_match_patch offline fallback
+│       ├── pako_2.1.0.js               # Pako offline fallback
+│       └── papaparse_5.4.1.js         # PapaParse offline fallback
 ```
 
 ### 1.4 Basic JavaScript Stub (No Functionality)
@@ -530,22 +598,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
 ## Phase 2: Core Dependencies & Editor Setup (Week 3)
 
-### 2.1 Library Integration Strategy
+### 2.1 Library Integration Strategy with TailwindCSS
 ```javascript
-// Approach: CDN first, local fallback
+// Enhanced dependency management including TailwindCSS
 const DEPENDENCIES = {
+    tailwind: {
+        cdn: 'https://cdn.tailwindcss.com',
+        fallback: 'css/offline/tailwindcss_3.3.6.css',
+        type: 'css',
+        critical: true  // Must load before other components
+    },
     codemirror: {
-        css: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.css',
-        js: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.js',
+        css: [
+            {
+                cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.css',
+                fallback: 'css/offline/codemirror_5.65.3.css'
+            },
+            {
+                cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/merge/merge.min.css',
+                fallback: 'css/offline/merge_5.65.3.css'
+            }
+        ],
+        js: [
+            {
+                cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.js',
+                fallback: 'js/offline/codemirror_5.65.3.js'
+            }
+        ],
         modes: [
-            'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/mode/javascript/javascript.min.js'
+            {
+                cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/mode/javascript/javascript.min.js',
+                fallback: 'js/offline/codemirror-mode-javascript_5.65.3.js'
+            }
         ],
         addons: [
-            'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/merge/merge.min.js'
+            {
+                cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/merge/merge.min.js',
+                fallback: 'js/offline/codemirror-merge_5.65.3.js'
+            }
         ]
     },
-    diff_match_patch: 'https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/diff_match_patch.min.js',
-    pako: 'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js'
+    diff_match_patch: {
+        cdn: 'https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/diff_match_patch.min.js',
+        fallback: 'js/offline/diff_match_patch_1.0.5.js'
+    },
+    pako: {
+        cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js',
+        fallback: 'js/offline/pako_2.1.0.js'
+    },
+    papaparse: {
+        cdn: 'https://cdnjs.cloudflare.com/ajax/libs/Papa-parse/5.4.1/papaparse.min.js',
+        fallback: 'js/offline/papaparse_5.4.1.js'
+    }
 };
 ```
 

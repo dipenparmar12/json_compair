@@ -24,17 +24,22 @@ JSON Compare Tool is a client-side-only web application designed for comparing, 
 - **`utils_csv.js`**: CSV auto-detection, parsing, and conversion capabilities
 - **`large_json_helpers.js`**: Performance optimization for large data processing
 
-### 3. UI Components
-- **`js/button-events.js`**: File upload handlers and legacy UI interactions
-- **CSS Stylesheets**: Application styling, CodeMirror themes, responsive layouts
-- **Dynamic Controls**: JavaScript-generated buttons, dropdowns, and interaction elements
+### 3. UI Components & Styling
+- **TailwindCSS 3.3.6**: Utility-first CSS framework for consistent, responsive UI design
+  - CDN delivery with offline fallback (css/offline/tailwindcss_3.3.6.css)
+  - Custom components built on Tailwind utilities (diff highlighting, JSON syntax)
+  - Dark mode support with 'dark:' variant classes
+- **`js/button-events.js`**: File upload handlers and UI interaction management
+- **Custom CSS Components**: Diff visualization, syntax highlighting, responsive layouts
+- **Dynamic Controls**: JavaScript-generated UI elements using Tailwind utility classes
 
 ### 4. Third-Party Integration
-- **CodeMirror 5.65.3**: Text editor with syntax highlighting and merge view
-- **diff_match_patch**: Google's difference calculation library
-- **Pako 2.1.0**: Client-side gzip compression for URL sharing
-- **PapaParse 5.4.1**: High-performance CSV parsing (optional)
-- **Oboe 2.1.5**: Streaming JSON parser (optional)
+- **TailwindCSS 3.3.6**: Primary styling framework (CDN + offline fallback)
+- **CodeMirror 5.65.3**: Text editor with syntax highlighting and merge view (CDN + offline fallback)
+- **diff_match_patch**: Google's difference calculation library (CDN + offline fallback)
+- **Pako 2.1.0**: Client-side gzip compression for URL sharing (CDN + offline fallback)
+- **PapaParse 5.4.1**: High-performance CSV parsing (CDN + offline fallback)
+- **Oboe 2.1.5**: Streaming JSON parser for large files (optional)
 
 ## Data Flow Architecture
 

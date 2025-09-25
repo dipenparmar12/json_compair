@@ -1,28 +1,144 @@
 # Third-Party Library Dependencies
 
-## 1. CodeMirror Text Editor
+## Core Frontend Dependencies
 
-### 1.1 Version and Source
-- **Version**: 5.65.3
+### 1. TailwindCSS 3.3.6 (CSS Framework)
+- **Purpose**: Primary UI styling framework with utility-first approach for consistent, responsive design
+- **Implementation**: CDN delivery with offline fallback for development environment
+- **CDN Source**: https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js
+- **Local Fallback**: js/offline/pako_2.1.0.js
+- **Local Fallback**: css/offline/tailwindcss_3.3.6.css
+- **Bundle Size**: ~100KB (base utilities only, tree-shaken in production)
 - **License**: MIT License
-- **Source**: Local file (`js/codemirror.js`)
-- **CDN Alternative**: Not currently used, local-only deployment
-- **Size**: Approximately 580KB minified
+- **Last Updated**: November 2023 (actively maintained)
 
-### 1.2 Core Components
-**Primary Libraries**:
-- `codemirror.js`: Main editor library
-- `merge.js`: Merge view functionality for side-by-side comparison
-- `codemirror.css`: Base editor styling
-- `merge.css`: Merge view specific styling
+**Key Features**:
+- Responsive design utilities (sm:, md:, lg:, xl:, 2xl: breakpoints)
+- Dark mode support with 'dark:' variant prefix
+- Comprehensive color palette with semantic naming
+- Spacing system based on 0.25rem increments
+- Built-in accessibility features and ARIA support
+- Component composition through utility classes
 
-**Language Modules**:
-- JavaScript mode support (built-in)
-- JSON syntax highlighting
-- Bracket matching
-- Auto-completion foundation
+**Integration Strategy**:
+```html
+<!-- CDN with fallback loading -->
+<script>
+  const loadTailwind = () => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://cdn.tailwindcss.com';
+    link.onerror = () => {
+      // Fallback to local TailwindCSS
+      const fallback = document.createElement('link');
+      fallback.rel = 'stylesheet';
+      fallback.href = 'css/offline/tailwindcss_3.3.6.css';
+      document.head.appendChild(fallback);
+    };
+    document.head.appendChild(link);
+  };
+  loadTailwind();
+</script>
+```
 
-### 1.3 Configuration Options
+**Custom Components for JSON Comparison**:
+```css
+/* css/app.css - Built on TailwindCSS utilities */
+@layer components {
+  .diff-added {
+    @apply bg-green-100 text-green-800 border-l-4 border-green-500 dark:bg-green-900 dark:text-green-200;
+  }
+  .diff-removed {
+    @apply bg-red-100 text-red-800 border-l-4 border-red-500 dark:bg-red-900 dark:text-red-200;
+  }
+  .diff-modified {
+    @apply bg-blue-100 text-blue-800 border-l-4 border-blue-500 dark:bg-blue-900 dark:text-blue-200;
+  }
+  .json-key {
+    @apply text-purple-600 font-medium dark:text-purple-400;
+  }
+  .json-string {
+    @apply text-green-600 dark:text-green-400;
+  }
+  .json-number {
+    @apply text-blue-600 dark:text-blue-400;
+  }
+}
+```
+
+### 2. CodeMirror 5.65.3 (Text Editor)
+
+### 2.1 Version and Source
+- **Version**: 5.65.3 (Stable, widely adopted version)
+- **License**: MIT License  
+- **CDN Source**: https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/
+- **Local Fallback**: js/offline/codemirror_5.65.3.js, css/offline/codemirror_5.65.3.css
+- **Bundle Size**: ~580KB minified (core + merge addon + modes)
+- **Browser Support**: All modern browsers, IE 8+
+
+### 2.2 Core Components
+**Required Files with CDN + Fallback**:
+```javascript
+// Core CodeMirror files
+{
+  cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.css',
+  fallback: 'css/offline/codemirror_5.65.3.css'
+},
+{
+  cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.js',
+  fallback: 'js/offline/codemirror_5.65.3.js'
+}
+
+// Merge view addon
+{
+  cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/merge/merge.min.css',
+  fallback: 'css/offline/merge_5.65.3.css'
+},
+{
+  cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/merge/merge.min.js',
+  fallback: 'js/offline/codemirror-merge_5.65.3.js'
+}
+
+// JSON mode support  
+{
+  cdn: 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/mode/javascript/javascript.min.js',
+  fallback: 'js/offline/codemirror-mode-javascript_5.65.3.js'
+}
+```
+
+### 2.3 Integration with TailwindCSS
+CodeMirror integrates seamlessly with TailwindCSS through custom component classes:
+
+```css
+/* CodeMirror styling enhanced with Tailwind utilities */
+.CodeMirror {
+  @apply border border-gray-300 rounded-md font-mono text-sm;
+  @apply focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500;
+}
+
+.CodeMirror-merge {
+  @apply border-0; /* Remove default border, handled by container */
+}
+
+.CodeMirror-merge-pane {
+  @apply border-r border-gray-200 last:border-r-0;
+}
+
+.CodeMirror-merge-gap {
+  @apply bg-gray-100;
+}
+
+/* Dark mode support */
+.dark .CodeMirror {
+  @apply bg-gray-900 text-gray-100 border-gray-700;
+}
+
+.dark .CodeMirror-merge-gap {
+  @apply bg-gray-800;
+}
+```
+
+### 2.4 Configuration Options
 **Editor Configuration**:
 - **Mode**: `"application/json"` for JSON syntax highlighting
 - **Line Numbers**: Enabled by default
@@ -56,7 +172,8 @@
 ### 2.1 Version and Source
 - **Version**: Not explicitly versioned (Google's reference implementation)
 - **License**: Apache License 2.0
-- **Source**: Local file (`js/diff_match_patch.js`)
+- **CDN Source**: https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/diff_match_patch.min.js
+- **Local Fallback**: js/offline/diff_match_patch_1.0.5.js
 - **Origin**: Google's official diff-match-patch library
 - **Language**: JavaScript implementation
 
