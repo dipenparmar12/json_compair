@@ -91,6 +91,14 @@ Semantic JSON comparison that ignores formatting differences:
 - Machine-readable diff output with structured results
 - Tree view visualization of semantic changes
 
+### [14-csv-python-parsing.md](14-csv-python-parsing.md)
+Comprehensive CSV to JSON conversion with Python literal support:
+- Explicit Boolean/None handling: 'None'→null, 'True'→true, 'False'→false
+- String preservation: lowercase 'true' stays string, only exact matches convert
+- Whitespace management: preserve original, strip only for comparison
+- Empty cell processing: configurable null vs empty string behavior
+- Complex structure support: ast.literal_eval equivalent for compound objects
+
 ## Technical Specifications
 
 ### Core Technologies
