@@ -76,14 +76,20 @@ Development evolution and alternative implementations:
 - Alternative implementation approaches and trade-offs
 - Future development guidance based on historical context
 
-### [08-technical-reference.md](08-technical-reference.md)
-Comprehensive technical API documentation:
-- Complete API reference for all global objects and methods
-- Data structures and internal formats
-- Error handling patterns and validation approaches
-- Performance optimization strategies and thresholds
-- Security considerations and best practices
-- Extension points and customization guidance
+### [12-smart-json-detection.md](12-smart-json-detection.md)
+Smart JSON detection and parsing within stringified values:
+- Automatic JSON structure detection in string fields
+- Python syntax support (True/False/None, single quotes)
+- Configurable parsing options and error handling
+- Performance optimization with caching strategies
+
+### [13-semantic-json-diffing.md](13-semantic-json-diffing.md)  
+Semantic JSON comparison that ignores formatting differences:
+- Structure-based comparison vs text-based diffing
+- Key order normalization and canonicalization
+- Configurable comparison rules (ignore paths, fuzzy tolerance)
+- Machine-readable diff output with structured results
+- Tree view visualization of semantic changes
 
 ## Technical Specifications
 
