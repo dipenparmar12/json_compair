@@ -175,6 +175,22 @@
 4. Data type change identification
 5. Structural change analysis (added/removed properties)
 
+### 4.3 Fragmented View Comparison
+**Git-Style Path Alignment**:
+1. Load valid JSON into both panels
+2. Click "Fragmented View" button in controls
+3. JSON automatically flattened to path-value pairs (e.g., `user.name = "Alice"`)
+4. Both panels show aligned paths with blanks for missing keys
+5. Visual differences highlight changes in a Git-like split view
+6. Click "Exit Fragmented View" to return to original JSON format
+
+**Path-Based Analysis**:
+1. Review differences by logical structure rather than line position
+2. Missing properties appear as blank lines on the opposite side
+3. Nested objects and arrays represented with dot/index notation
+4. Easy identification of structural differences
+5. Toggle back to standard view for detailed editing
+
 ## 5. Sharing and Collaboration Workflows
 
 ### 5.1 URL Sharing Workflow

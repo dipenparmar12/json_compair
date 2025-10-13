@@ -22,6 +22,7 @@
 - **Array Element Matching**: Intelligent matching of array elements
 - **Whitespace Handling**: Configurable whitespace sensitivity
 - **Case Sensitivity**: Optional case-sensitive/insensitive comparison
+- **Fragmented View**: Toggle to align JSON content by flattened paths (e.g., `user.name = "value"`) for Git-like split diffs, showing blanks for missing keys on either side
 
 ## 2. JSON Processing and Formatting
 
