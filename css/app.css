@@ -208,6 +208,39 @@ select.toggle-button {
     background-color: #e9ecef;
 }
 
+/* Copy button styling (shown on hover) */
+.copy-btn {
+    position: absolute;
+    top: 5px;
+    right: 90px; /* leave space for Clear/Paste at right:10px */
+    z-index: 100;
+    background-color: #f8f9fa;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0;              /* hidden by default */
+    pointer-events: none;     /* don't block hover when hidden */
+    transition: opacity 0.2s, background-color 0.2s;
+}
+
+.copy-btn:hover {
+    background-color: #e9ecef;
+}
+
+/* Reveal copy button when hovering over a pane */
+.CodeMirror-merge-pane:hover .copy-btn {
+    opacity: 0.9;
+    pointer-events: auto;
+}
+
+/* Success feedback */
+.copy-btn.copied {
+    background-color: #28a745;
+    color: #fff;
+}
+
 /* Dropdown menu for controls */
 .controls-dropdown {
     display: inline-block;
