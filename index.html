@@ -598,9 +598,9 @@
         autoSortRow.innerHTML = `<label style="font-size:13px;"><input type="checkbox" id="auto-sort-on-paste" /> Auto Sort JSON Keys on Paste</label>`;
         menu.appendChild(autoSortRow);
 
-  // Append the menu element into the dropdown and insert dropdown into controls
-  dropdown.appendChild(menu);
-  controls.appendChild(dropdown);
+        // Append the menu element into the dropdown and insert dropdown into controls
+        dropdown.appendChild(menu);
+        controls.appendChild(dropdown);
 
         // Initialize setting states from SettingsManager (persistent)
         try {
@@ -733,6 +733,62 @@
         const leftPasteBtn = addPasteButton(leftEditor, "left");
         const rightPasteBtn = addPasteButton(rightEditor, "right");
 
+        // Add copy buttons to each pane (shown on hover via CSS)
+        function addCopyButton(editor, side) {
+          const wrapper = editor.getWrapperElement();
+          const copyBtn = document.createElement('button');
+          copyBtn.className = `copy-btn copy-btn-${side}`;
+          copyBtn.textContent = 'Copy';
+          copyBtn.type = 'button';
+          copyBtn.title = `Copy ${side} content`;
+          copyBtn.onclick = async (e) => {
+            e.stopPropagation();
+            const text = editor.getValue();
+            const original = copyBtn.textContent;
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+              } else {
+                // Fallback for older browsers
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.top = '-1000px';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+              }
+              copyBtn.classList.add('copied');
+              copyBtn.textContent = 'Copied';
+              setTimeout(() => {
+                copyBtn.classList.remove('copied');
+                copyBtn.textContent = original;
+              }, 1200);
+            } catch (err) {
+              console.warn('Copy failed', err);
+              copyBtn.textContent = 'Copy failed';
+              setTimeout(() => { copyBtn.textContent = original; }, 1200);
+            }
+          };
+
+          // Ensure the pane container is positioned for absolute children
+          wrapper.parentNode.style.position = wrapper.parentNode.style.position || 'relative';
+          wrapper.parentNode.appendChild(copyBtn);
+          return copyBtn;
+        }
+
+        const leftCopyBtn = addCopyButton(leftEditor, 'left');
+        const rightCopyBtn = addCopyButton(rightEditor, 'right');
+        // Initialize copy buttons visibility based on content state
+        (function(){
+          const leftHas = leftEditor.getValue().trim().length > 0;
+          const rightHas = rightEditor.getValue().trim().length > 0;
+          leftCopyBtn.style.display = leftHas ? 'block' : 'none';
+          rightCopyBtn.style.display = rightHas ? 'block' : 'none';
+        })();
+
         // Add CSV <-> JSON conversion buttons to each pane
         function addConversionButtons(editor, side) {
           const wrapper = editor.getWrapperElement();
@@ -809,6 +865,14 @@
           } else {
             rightClearBtn.style.display = "none";
             rightPasteBtn.style.display = "block";
+          }
+
+          // Copy buttons only visible when there's content (still hover-revealed via CSS)
+          if (typeof leftCopyBtn !== 'undefined' && leftCopyBtn) {
+            leftCopyBtn.style.display = leftContent ? 'block' : 'none';
+          }
+          if (typeof rightCopyBtn !== 'undefined' && rightCopyBtn) {
+            rightCopyBtn.style.display = rightContent ? 'block' : 'none';
           }
 
           // Clear All button - only visible if at least one editor has content
