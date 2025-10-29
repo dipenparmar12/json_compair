@@ -56,16 +56,7 @@
       * {
         box-sizing: border-box;
       }
-      body,
-      html {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        overflow: hidden;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          sans-serif;
-      }
-
+      
       #container {
         display: flex;
         flex-direction: column;
@@ -73,7 +64,7 @@
       }
 
       .intro {
-        padding: 10px;
+        padding: 5px;
         background: #f8f9fa;
         border-bottom: 1px solid #ddd;
         flex-shrink: 0;
@@ -87,77 +78,6 @@
         overflow: hidden;
         position: relative;
         min-height: 0; /* Important for flex child scrolling */
-      }
-
-      /* CodeMirror 6 base styles */
-      .cm-editor {
-        height: 100% !important;
-        font-size: 13px;
-        font-family: "Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace;
-      }
-
-      .cm-scroller {
-        overflow: auto !important; /* Enable scrolling */
-        font-family: "Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace;
-      }
-
-      /* Merge view layout */
-      .cm-merge-view {
-        height: 100%;
-        display: flex;
-        background: #fff;
-      }
-
-      .cm-merge-a,
-      .cm-merge-b {
-        flex: 1;
-        overflow: auto; /* Enable scrolling on panes */
-        position: relative;
-        border: 1px solid #ddd;
-        min-height: 0; /* Important for flex child scrolling */
-      }
-
-      .cm-merge-gap {
-        width: 60px;
-        flex-shrink: 0;
-        background: #f5f5f5;
-        position: relative;
-        border-top: 1px solid #ddd;
-        border-bottom: 1px solid #ddd;
-      }
-
-      /* Git-style diff highlighting with proper colors */
-      .cm-deletedChunk {
-        background-color: rgba(255, 200, 200, 0.3) !important;
-        border-left: 3px solid #ff4444;
-      }
-
-      .cm-insertedChunk {
-        background-color: rgba(200, 255, 200, 0.3) !important;
-        border-left: 3px solid #44ff44;
-      }
-
-      .cm-changedChunk {
-        background-color: rgba(255, 230, 180, 0.3) !important;
-        border-left: 3px solid #ffaa44;
-      }
-
-      .cm-deletedLine {
-        background-color: #ffdddd !important;
-      }
-
-      .cm-insertedLine {
-        background-color: #ddffdd !important;
-      }
-
-      /* Diff status bar */
-      #diff-status {
-        padding: 8px 16px;
-        background: #fff;
-        border-top: 1px solid #ddd;
-        text-align: center;
-        font-size: 14px;
-        color: #333;
       }
 
       /* Button styles */
@@ -201,10 +121,6 @@
         display: none;
       }
 
-      .cm-merge-a:hover .copy-btn,
-      .cm-merge-b:hover .copy-btn {
-        display: block;
-      }
     </style>
   </head>
 
