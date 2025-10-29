@@ -45,19 +45,19 @@
 
 /* Make chunk borders more visible for better alignment perception */
 .CodeMirror-merge-r-chunk-start {
-  border-top: 2px solid #ff9999 !important;
+  border-top: 0.5px solid #ff9999 !important;
 }
 
 .CodeMirror-merge-r-chunk-end {
-  border-bottom: 2px solid #ff9999 !important;
+  border-bottom: 0.5px solid #ff9999 !important;
 }
 
 .CodeMirror-merge-l-chunk-start {
-  border-top: 2px solid #88e !important;
+  border-top: 0.5px solid #88e !important;
 }
 
 .CodeMirror-merge-l-chunk-end {
-  border-bottom: 2px solid #88e !important;
+  border-bottom: 0.5px solid #88e !important;
 }
 
 /* ====================================================================
