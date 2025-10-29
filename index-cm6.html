@@ -66,14 +66,14 @@
         min-height: 0; /* Important for flex child scrolling */
       }
       
-      /* CodeMirror 6 base styles */
+      /* CodeMirror 6 base styles - Critical for scrolling */
       .cm-editor { 
-        height: 100% !important; 
+        height: 100%; 
         font-size: 13px;
         font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
       }
       
-      .cm-scroller { 
+      .cm-editor .cm-scroller { 
         overflow: auto !important; /* Enable scrolling */
         font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
       }
@@ -81,6 +81,7 @@
       /* Merge view layout */
       .cm-merge-view { 
         height: 100%; 
+        width: 100%;
         display: flex;
         background: #fff;
       }
@@ -88,10 +89,16 @@
       .cm-merge-a, 
       .cm-merge-b { 
         flex: 1; 
-        overflow: auto; /* Enable scrolling on panes */
+        overflow: hidden; /* Let cm-scroller handle scrolling */
         position: relative;
         border: 1px solid #ddd;
         min-height: 0; /* Important for flex child scrolling */
+      }
+      
+      /* Ensure editor containers fill their panes */
+      .cm-merge-a > .cm-editor,
+      .cm-merge-b > .cm-editor {
+        height: 100%;
       }
       
       .cm-merge-gap { 
@@ -247,7 +254,15 @@
           ...completionKeymap,
           ...lintKeymap
         ])
-      ];      let mergeView;
+      ];
+      
+      // Theme for proper scrolling behavior
+      const scrollableTheme = EditorView.theme({
+        "&": { height: "100%" },
+        ".cm-scroller": { overflow: "auto" }
+      });
+      
+      let mergeView;
       
       // Initialize application
       document.addEventListener('DOMContentLoaded', () => {
@@ -271,10 +286,7 @@
               basicSetup,
               json(),
               EditorView.lineWrapping,
-              EditorView.theme({
-                "&": { height: "100%" },
-                ".cm-scroller": { overflow: "auto" }
-              }),
+              scrollableTheme,
               EditorView.updateListener.of(update => {
                 if (update.docChanged) {
                   handleChange();
@@ -288,10 +300,7 @@
               basicSetup,
               json(),
               EditorView.lineWrapping,
-              EditorView.theme({
-                "&": { height: "100%" },
-                ".cm-scroller": { overflow: "auto" }
-              }),
+              scrollableTheme,
               EditorView.updateListener.of(update => {
                 if (update.docChanged) {
                   handleChange();
