@@ -20,24 +20,9 @@
       }
     },
 
-    saveToURL: function (leftContent, rightContent) {
-      const params = new URLSearchParams();
-
-      if (leftContent.trim()) {
-        params.set("left", this.compress(leftContent));
-      }
-      if (rightContent.trim()) {
-        params.set("right", this.compress(rightContent));
-      }
-
-      const newUrl =
-        window.location.origin +
-        window.location.pathname +
-        (params.toString() ? "?" + params.toString() : "");
-
-      window.history.replaceState({}, "", newUrl);
-
-      return newUrl;
+      // This function is intentionally left empty to prevent real-time URL updates.
+    saveToURL: function (left, right) {
+      // No-op. URL is now only generated on-demand.
     },
 
     loadFromURL: function () {

@@ -531,7 +531,6 @@
               StorageManager.saveToIndexedDB(template.left, template.right).catch((err) => console.error('IndexedDB save failed', err));
             }
           }
-          URLManager.saveToURL(template.left, template.right);
         };
         controls.appendChild(templateSelect);
 
@@ -645,17 +644,14 @@
         // Add Clear All button
         const clearAllBtn = document.createElement("button");
         clearAllBtn.className = "toggle-button";
-        clearAllBtn.textContent = "Clear All";
+          clearAllBtn.textContent = "Clear All";
         clearAllBtn.style.display = "none"; // Initially hidden
         clearAllBtn.onclick = () => {
           leftEditor.setValue("");
           rightEditor.setValue("");
-          URLManager.saveToURL("", ""); // Clear URL parameters
           updateDiffStatus(mv);
         };
-        controls.appendChild(clearAllBtn);
-
-        // Add individual clear buttons to each pane
+        controls.appendChild(clearAllBtn);        // Add individual clear buttons to each pane
         function addClearButton(editor, side) {
           const wrapper = editor.getWrapperElement();
           const clearBtn = document.createElement("button");
@@ -666,10 +662,6 @@
             e.stopPropagation();
             editor.setValue("");
             editor.focus(); // Focus the editor after clearing
-            // Update URL when clearing individual editor
-            setTimeout(() => {
-              URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
-            }, 0);
             updateDiffStatus(mv);
           };
 
