@@ -63,22 +63,11 @@
         flex: 1; 
         overflow: hidden; 
         position: relative;
-        min-height: 0; /* Important for flex child scrolling */
+        min-height: 0;
+        display: flex;
       }
       
-      /* CodeMirror 6 base styles - Critical for scrolling */
-      .cm-editor { 
-        height: 100%; 
-        font-size: 13px;
-        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
-      }
-      
-      .cm-editor .cm-scroller { 
-        overflow: auto !important; /* Enable scrolling */
-        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
-      }
-      
-      /* Merge view layout */
+      /* Merge view layout - CRITICAL: must have height set */
       .cm-merge-view { 
         height: 100%; 
         width: 100%;
@@ -89,16 +78,25 @@
       .cm-merge-a, 
       .cm-merge-b { 
         flex: 1; 
-        overflow: hidden; /* Let cm-scroller handle scrolling */
         position: relative;
         border: 1px solid #ddd;
-        min-height: 0; /* Important for flex child scrolling */
+        min-height: 0;
+        min-width: 0;
+        height: 100%;
       }
       
-      /* Ensure editor containers fill their panes */
-      .cm-merge-a > .cm-editor,
-      .cm-merge-b > .cm-editor {
-        height: 100%;
+      /* CodeMirror 6 editor - MUST have fixed height */
+      .cm-merge-a .cm-editor,
+      .cm-merge-b .cm-editor {
+        height: 100% !important;
+      }
+      
+      /* CodeMirror 6 scroller - MUST have overflow auto */
+      .cm-merge-a .cm-scroller,
+      .cm-merge-b .cm-scroller {
+        overflow: auto !important;
+        font-size: 13px;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
       }
       
       .cm-merge-gap { 
@@ -258,8 +256,18 @@
       
       // Theme for proper scrolling behavior
       const scrollableTheme = EditorView.theme({
-        "&": { height: "100%" },
-        ".cm-scroller": { overflow: "auto" }
+        "&": { 
+          height: "100%",
+          maxHeight: "100%" 
+        },
+        ".cm-scroller": { 
+          overflow: "auto",
+          maxHeight: "100%"
+        },
+        ".cm-content": {
+          fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace",
+          fontSize: "13px"
+        }
       });
       
       let mergeView;
