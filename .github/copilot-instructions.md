@@ -10,10 +10,17 @@ This is a **client-side-only** web application for JSON comparison and formattin
 - `utils_csv.js` - CSV auto-detection and conversion to JSON
 - `js/button-events.js` - File upload and UI interaction handlers
 
-**Key Libraries:**
-- CodeMirror (text editing with merge view)
-- diff_match_patch (difference calculation)
-- Pako (gzip compression for URL sharing)
+**Key Libraries (Updated October 2025):**
+- CodeMirror 5.65.20 (latest stable v5) - text editing with merge view
+- diff_match_patch (latest) - difference calculation
+- Pako 2.1.0 - gzip compression for URL sharing
+- PapaParse 5.4.1 - CSV parsing
+- Oboe.js 2.1.5 - streaming JSON parser
+
+**CSS Architecture:**
+- `css/merge.css` - Base CodeMirror merge styles (from CDN, updated with library)
+- `css/merge-custom.css` - Custom overrides (red/green diff colors, preserved across updates)
+- IMPORTANT: Always load `merge-custom.css` AFTER `merge.css` in HTML
 
 ## Development Workflow
 **Local Development:**
@@ -85,9 +92,22 @@ CodeMirror.MergeView(target, {
 
 ## File Organization
 - `src/` contains alternative implementations and experiments
-- `js/` holds third-party libraries (CodeMirror, diff_match_patch)
-- `css/` contains stylesheets (app-specific + CodeMirror themes)
+- `js/` holds third-party libraries (CodeMirror, diff_match_patch, etc.)
+- `css/` contains stylesheets:
+  - `app.css` - Application-specific styles
+  - `codemirror.css` - Base CodeMirror styles (from CDN)
+  - `merge.css` - Base merge view styles (from CDN, can be safely updated)
+  - `merge-custom.css` - Custom overrides (preserved across library updates)
+  - `ccsiteV6.css` - Site-wide styles
+- `docs/` contains documentation and update logs
 - Root level has active application files
+
+## Library Update Guidelines
+- Base library files (codemirror.js, merge.css, etc.) can be updated from CDN
+- Custom styles MUST be kept in separate files (e.g., merge-custom.css)
+- Always create backups before updating libraries (`.backup` extension)
+- Document all version changes in `docs/LIBRARY_UPDATES_*.md`
+- Test all features after updates (see testing checklist in docs)
 
 ## Testing Approach
 - Manual testing by opening `index.html` in browser

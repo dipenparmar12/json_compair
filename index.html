@@ -25,15 +25,22 @@
     />
     <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
     <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <!-- CodeMirror 5.65.20 (latest stable v5, Oct 2025) -->
     <link rel="stylesheet" type="text/css" href="./css/codemirror.css" />
     <link rel="stylesheet" type="text/css" href="./css/merge.css" />
+    <!-- Custom merge view styles - loaded after base merge.css -->
+    <link rel="stylesheet" type="text/css" href="./css/merge-custom.css" />
     <link rel="stylesheet" type="text/css" href="./css/app.css" />
+    <!-- CodeMirror 5.65.20 core and addons -->
     <script src="./js/codemirror.js"></script>
+    <!-- diff-match-patch (latest from jsDelivr) -->
     <script src="./js/diff_match_patch.js"></script>
+    <!-- CodeMirror 5.65.20 merge addon -->
     <script src="./js/merge.js"></script>
+    <!-- CodeMirror 5.65.20 JavaScript mode -->
     <script src="./js/javascript.js"></script>
-    <!-- pako for client-side gzip compression/decompression -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-giedl6V2CsRUwviHqAInbg+h/aNVr2gn3//FaTWUDPv6d3Pv2wvPWiMKV71RvdMGHE3OcQP9qFLOKD+ZntBdlw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="./utils.js"></script>
   <script src="./json_utils.js"></script>
   <script src="./utils_csv.js"></script>
@@ -45,7 +52,7 @@
     <script>
       // Dynamically inject CDN scripts but allow local copies to be used if present
       (function(){
-        function loadOnce(src, localPath) {
+        function loadOnce(src, localPath, integrity) {
           return new Promise((resolve) => {
             // If already loaded, resolve
             const name = src.split('/').pop();
@@ -60,6 +67,10 @@
               var s2 = document.createElement('script');
               s2.src = src;
               s2.async = false;
+              if (integrity) {
+                s2.integrity = integrity;
+                s2.crossOrigin = 'anonymous';
+              }
               s2.onload = function(){ resolve(); };
               s2.onerror = function(){ resolve(); };
               document.head.appendChild(s2);
@@ -67,10 +78,18 @@
             document.head.appendChild(s);
           });
         }
-        // PapaParse (latest stable 5.x recommended). Update version as needed.
-        loadOnce('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js','./js/papaparse.min.js');
-        // Oboe (streaming JSON parser). You may pin a version if needed.
-        loadOnce('https://unpkg.com/oboe@2.1.5/dist/oboe-browser.min.js','./js/oboe-browser.min.js');
+        // PapaParse 5.4.1 (latest stable) - CSV parsing
+        loadOnce(
+          'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js',
+          './js/papaparse.min.js',
+          'sha512-dfX5uYVXzyU8+KHqj8bjo7UkOdg18PaOtpa48djpNbZHwExddghZ+ZmzWT06R5v6NSk3ZUfsH6FNEDepLx9hPQ=='
+        );
+        // Oboe 2.1.5 (latest) - streaming JSON parser
+        loadOnce(
+          'https://cdnjs.cloudflare.com/ajax/libs/oboe.js/2.1.5/oboe-browser.min.js',
+          './js/oboe-browser.min.js',
+          'sha512-Vd/k3BhEhDPdRz3ERWi8eN5GDo0F3f9oJE/w0zIzYqv/ZdbiLhToLss7EzQCByGBA8MjX9TZqtGn1SWuwlNP/g=='
+        );
       })();
     </script>
   </head>
@@ -178,6 +197,7 @@
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
 
         // Create merge view with enhanced options
+        // Using 'align' connection to show empty blocks for unmatched lines (like Git diff)
         const mv = CodeMirror.MergeView(target, {
           value: initialContent.left,
           origLeft: null,
@@ -185,12 +205,12 @@
           lineNumbers: true,
           mode: "application/json",
           showDifferences: true,
-          connect: "align",
-          collapseIdentical: false,
-          revertButtons: true,
-          allowEditingOriginals: true,
-          highlightDifferences: true,
-          lineWrapping: true,
+          connect: "align",              // Show aligned blocks with empty spaces for unmatched lines
+          collapseIdentical: false,      // Keep all unchanged lines visible
+          revertButtons: true,           // Show revert buttons between chunks
+          allowEditingOriginals: true,   // Allow editing both sides
+          highlightDifferences: true,    // Highlight character-level differences
+          lineWrapping: false,           // Disable line wrapping for better diff alignment
           styleActiveLine: true,
           chunkClassLocation: ["background", "wrap", "gutter"],
         });
