@@ -1,6 +1,18 @@
 # JSON Compare Tool
 
-A browser-based tool for comparing and formatting JSON data. This tool allows you to:
+A browser-based tool for comparing and formatting JSON data with **CodeMirror 6** support.
+
+## 🆕 CodeMirror 6 Version Available!
+
+We now offer **two versions**:
+- **`index.html`** - CodeMirror 5.65.20 (stable, all features)
+- **`index-cm6.html`** - CodeMirror 6 (modern, Git-style alignment) ⭐ NEW
+
+See [CM6 Upgrade Guide](docs/CM6_UPGRADE_GUIDE.md) for migration details.
+
+## Features
+
+This tool allows you to:
 
 - Format and compare two JSON objects side by side
 - Highlight differences between the objects with red/green color coding
@@ -33,12 +45,18 @@ A browser-based tool for comparing and formatting JSON data. This tool allows yo
 
 ## Technology Stack
 
-**Latest library versions as of October 2025:**
+**CodeMirror 5 Version (index.html):**
 - **CodeMirror 5.65.20** - Code editor with merge view
 - **Pako 2.1.0** - Gzip compression for URL sharing
 - **PapaParse 5.4.1** - CSV parsing
 - **Oboe.js 2.1.5** - Streaming JSON parser
 - **diff-match-patch (latest)** - Google's diff algorithm
+
+**CodeMirror 6 Version (index-cm6.html):** ⭐ NEW
+- **CodeMirror 6.0.1** - Modern modular editor
+- **@codemirror/merge 6.7.2** - Enhanced merge view with Git-style alignment
+- **@codemirror/lang-json 6.0.1** - JSON syntax support
+- Same utility libraries as CM5 version
 
 All dependencies are loaded with SRI (Subresource Integrity) hashes for security.
 

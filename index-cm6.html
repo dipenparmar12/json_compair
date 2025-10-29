@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="theme-color" content="#08C988" />
+    <title>Compare JSON files online - CodeMirror 6</title>
+    <meta name="Description" content="FREE two-way JSON format, diff and merge tool with CodeMirror 6" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+    <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
+    <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <link rel="stylesheet" type="text/css" href="./css/app.css" />
+    
+    <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-giedl6V2CsRUwviHqAInbg+h/aNVr2gn3//FaTWUDPv6d3Pv2wvPWiMKV71RvdMGHE3OcQP9qFLOKD+ZntBdlw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <!-- Utility scripts -->
+    <script src="./utils.js"></script>
+    <script src="./json_utils.js"></script>
+    <script src="./utils_csv.js"></script>
+    
+    <!-- ES Module Import Map for CodeMirror 6 -->
+    <script type="importmap">
+      {
+        "imports": {
+          "codemirror": "https://cdn.jsdelivr.net/npm/codemirror@6.0.1/+esm",
+          "@codemirror/state": "https://cdn.jsdelivr.net/npm/@codemirror/state@6.4.1/+esm",
+          "@codemirror/view": "https://cdn.jsdelivr.net/npm/@codemirror/view@6.34.1/+esm",
+          "@codemirror/lang-json": "https://cdn.jsdelivr.net/npm/@codemirror/lang-json@6.0.1/+esm",
+          "@codemirror/commands": "https://cdn.jsdelivr.net/npm/@codemirror/commands@6.7.1/+esm",
+          "@codemirror/merge": "https://cdn.jsdelivr.net/npm/@codemirror/merge@6.7.2/+esm"
+        }
+      }
+    </script>
+    
+    <style>
+      * { box-sizing: border-box; }
+      body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      
+      #container { display: flex; flex-direction: column; height: 100vh; }
+      
+      .intro { 
+        padding: 10px; 
+        background: #f8f9fa; 
+        border-bottom: 1px solid #ddd; 
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      
+      #view-container { 
+        flex: 1; 
+        overflow: hidden; 
+        position: relative; 
+      }
+      
+      /* CodeMirror 6 base styles */
+      .cm-editor { 
+        height: 100% !important; 
+        font-size: 13px;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+      }
+      
+      .cm-scroller { 
+        overflow: auto; 
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+      }
+      
+      /* Merge view layout */
+      .cm-merge-view { 
+        height: 100%; 
+        display: flex;
+        background: #fff;
+      }
+      
+      .cm-merge-a, 
+      .cm-merge-b { 
+        flex: 1; 
+        overflow: hidden; 
+        position: relative;
+        border: 1px solid #ddd;
+      }
+      
+      .cm-merge-gap { 
+        width: 60px; 
+        flex-shrink: 0; 
+        background: #f5f5f5; 
+        position: relative;
+        border-top: 1px solid #ddd;
+        border-bottom: 1px solid #ddd;
+      }
+      
+      /* Git-style diff highlighting with proper colors */
+      .cm-deletedChunk { 
+        background-color: rgba(255, 200, 200, 0.3) !important;
+        border-left: 3px solid #ff4444;
+      }
+      
+      .cm-insertedChunk { 
+        background-color: rgba(200, 255, 200, 0.3) !important;
+        border-left: 3px solid #44ff44;
+      }
+      
+      .cm-changedChunk { 
+        background-color: rgba(255, 230, 180, 0.3) !important;
+        border-left: 3px solid #ffaa44;
+      }
+      
+      .cm-deletedLine { 
+        background-color: #ffdddd !important; 
+      }
+      
+      .cm-insertedLine { 
+        background-color: #ddffdd !important; 
+      }
+      
+      /* Diff status bar */
+      #diff-status { 
+        padding: 8px 16px; 
+        background: #fff; 
+        border-top: 1px solid #ddd; 
+        text-align: center;
+        font-size: 14px;
+        color: #333;
+      }
+      
+      /* Button styles */
+      button { 
+        padding: 6px 14px; 
+        background: #fff; 
+        border: 1px solid #ddd; 
+        border-radius: 4px; 
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.2s;
+      }
+      
+      button:hover { 
+        background: #f5f5f5;
+        border-color: #999;
+      }
+      
+      button.active { 
+        background: #08C988; 
+        color: white; 
+        border-color: #08C988; 
+      }
+      
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      
+      /* Pane-specific buttons */
+      .pane-btn { 
+        position: absolute; 
+        top: 10px; 
+        right: 10px; 
+        z-index: 10; 
+        font-size: 12px;
+        padding: 4px 10px;
+      }
+      
+      .copy-btn {
+        display: none;
+      }
+      
+      .cm-merge-a:hover .copy-btn,
+      .cm-merge-b:hover .copy-btn {
+        display: block;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="container">
+      <div class="intro">
+        <button id="btn-format">Format JSON</button>
+        <button id="btn-sort">Sort Keys</button>
+        <button id="btn-share">📋 Share URL</button>
+        <button id="btn-templates">Examples</button>
+        <button id="btn-clear-all" style="display: none;">Clear All</button>
+        <span style="margin-left: auto; font-size: 13px; color: #666;">
+          <strong>CodeMirror 6</strong> - Enhanced Git-style diff alignment
+        </span>
+      </div>
+      
+      <div id="view-container"></div>
+      
+      <div id="diff-status">Ready to compare JSON</div>
+    </div>
+
+    <script type="module">
+      import { EditorView, basicSetup } from 'codemirror';
+      import { EditorState } from '@codemirror/state';
+      import { json } from '@codemirror/lang-json';
+      import { MergeView } from '@codemirror/merge';
+      
+      let mergeView;
+      
+      // Initialize application
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('🚀 Initializing CodeMirror 6 Merge View...');
+        
+        // Load initial content from various sources
+        const urlContent = window.URLManager?.loadFromURL();
+        const savedContent = window.StorageManager?.loadFromStorage();
+        const defaultContent = window.DefaultTemplates?.simple || { 
+          left: '{\n  "name": "Left JSON",\n  "value": 123\n}', 
+          right: '{\n  "name": "Right JSON",\n  "value": 456\n}' 
+        };
+        
+        const initialContent = urlContent || savedContent || defaultContent;
+        
+        // Create merge view with CodeMirror 6
+        mergeView = new MergeView({
+          a: {
+            doc: initialContent.left,
+            extensions: [
+              basicSetup,
+              json(),
+              EditorView.lineWrapping,
+              EditorView.updateListener.of(update => {
+                if (update.docChanged) {
+                  handleChange();
+                }
+              })
+            ]
+          },
+          b: {
+            doc: initialContent.right,
+            extensions: [
+              basicSetup,
+              json(),
+              EditorView.lineWrapping,
+              EditorView.updateListener.of(update => {
+                if (update.docChanged) {
+                  handleChange();
+                }
+              })
+            ]
+          },
+          parent: document.getElementById('view-container'),
+          gutter: true,
+          highlightChanges: true,
+          syntaxHighlightDeletions: true
+        });
+        
+        console.log('✅ MergeView initialized', mergeView);
+        
+        // Clear URL parameters after loading
+        if (urlContent && window.URLManager?.clearURL) {
+          window.URLManager.clearURL();
+          console.log('🧹 URL parameters cleared');
+        }
+        
+        // Setup UI buttons
+        setupButtons();
+        
+        // Add pane buttons
+        addPaneButtons();
+        
+        // Initial update
+        handleChange();
+      });
+      
+      // Handle content changes
+      function handleChange() {
+        const leftContent = mergeView.a.state.doc.toString();
+        const rightContent = mergeView.b.state.doc.toString();
+        
+        // Save to storage
+        if (window.StorageManager?.saveToStorage) {
+          try {
+            window.StorageManager.saveToStorage(leftContent, rightContent);
+          } catch (e) {
+            console.warn('💾 Storage save failed:', e);
+          }
+        }
+        
+        // Update diff status
+        updateDiffStatus(leftContent, rightContent);
+        
+        // Update button visibility
+        const hasContent = leftContent.trim() || rightContent.trim();
+        document.getElementById('btn-clear-all').style.display = hasContent ? 'inline-block' : 'none';
+      }
+      
+      // Update diff status display
+      function updateDiffStatus(left, right) {
+        const statusEl = document.getElementById('diff-status');
+        
+        if (!left.trim() || !right.trim()) {
+          statusEl.textContent = 'Enter content in both editors to compare';
+          return;
+        }
+        
+        // Simple line-by-line diff count
+        const leftLines = left.split('\n');
+        const rightLines = right.split('\n');
+        let diffs = 0;
+        
+        const maxLen = Math.max(leftLines.length, rightLines.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (leftLines[i] !== rightLines[i]) {
+            diffs++;
+          }
+        }
+        
+        statusEl.textContent = `Found ${diffs} difference${diffs !== 1 ? 's' : ''}`;
+      }
+      
+      // Setup main toolbar buttons
+      function setupButtons() {
+        // Format JSON
+        document.getElementById('btn-format').onclick = () => {
+          try {
+            const parseJSON = window.parseFlexibleJSON || JSON.parse;
+            
+            const leftText = mergeView.a.state.doc.toString().trim();
+            const rightText = mergeView.b.state.doc.toString().trim();
+            
+            if (!leftText || !rightText) {
+              alert('Please enter content in both editors');
+              return;
+            }
+            
+            const leftParsed = parseJSON(leftText);
+            const rightParsed = parseJSON(rightText);
+            
+            setContent(mergeView.a, JSON.stringify(leftParsed, null, 2));
+            setContent(mergeView.b, JSON.stringify(rightParsed, null, 2));
+            
+            console.log('✨ JSON formatted');
+          } catch (e) {
+            alert('Invalid JSON: ' + e.message);
+            console.error('❌ Format error:', e);
+          }
+        };
+        
+        // Sort JSON keys
+        document.getElementById('btn-sort').onclick = () => {
+          try {
+            const sortKeys = obj => {
+              if (Array.isArray(obj)) return obj.map(sortKeys);
+              if (obj !== null && typeof obj === 'object') {
+                return Object.keys(obj).sort().reduce((res, key) => {
+                  res[key] = sortKeys(obj[key]);
+                  return res;
+                }, {});
+              }
+              return obj;
+            };
+            
+            const parseJSON = window.parseFlexibleJSON || JSON.parse;
+            
+            const leftText = mergeView.a.state.doc.toString().trim();
+            const rightText = mergeView.b.state.doc.toString().trim();
+            
+            if (leftText) {
+              const leftParsed = parseJSON(leftText);
+              setContent(mergeView.a, JSON.stringify(sortKeys(leftParsed), null, 2));
+            }
+            
+            if (rightText) {
+              const rightParsed = parseJSON(rightText);
+              setContent(mergeView.b, JSON.stringify(sortKeys(rightParsed), null, 2));
+            }
+            
+            console.log('🔤 Keys sorted');
+          } catch (e) {
+            alert('Invalid JSON: ' + e.message);
+            console.error('❌ Sort error:', e);
+          }
+        };
+        
+        // Share URL
+        document.getElementById('btn-share').onclick = async () => {
+          const left = mergeView.a.state.doc.toString();
+          const right = mergeView.b.state.doc.toString();
+          
+          if (!left.trim() && !right.trim()) {
+            alert('Nothing to share - enter some content first');
+            return;
+          }
+          
+          if (window.URLManager?.generateShareURL) {
+            try {
+              const url = await window.URLManager.generateShareURL(left, right);
+              await navigator.clipboard.writeText(url);
+              alert('✅ Share URL copied to clipboard!');
+              console.log('📋 Share URL:', url);
+            } catch (e) {
+              alert('Failed to generate share URL: ' + e.message);
+              console.error('❌ Share error:', e);
+            }
+          } else {
+            alert('URL sharing not available - utils.js may not be loaded');
+          }
+        };
+        
+        // Clear all
+        document.getElementById('btn-clear-all').onclick = () => {
+          if (confirm('Clear all content?')) {
+            setContent(mergeView.a, '');
+            setContent(mergeView.b, '');
+            console.log('🧹 Content cleared');
+          }
+        };
+        
+        // Templates/Examples
+        document.getElementById('btn-templates').onclick = () => {
+          const templates = window.DefaultTemplates || {
+            simple: {
+              left: '{\n  "name": "Simple Left",\n  "value": 123,\n  "active": true\n}',
+              right: '{\n  "name": "Simple Right",\n  "value": 456,\n  "active": false\n}'
+            },
+            complex: {
+              left: '{\n  "users": [\n    {"id": 1, "name": "Alice"},\n    {"id": 2, "name": "Bob"}\n  ]\n}',
+              right: '{\n  "users": [\n    {"id": 1, "name": "Alice"},\n    {"id": 3, "name": "Charlie"}\n  ]\n}'
+            }
+          };
+          
+          const choice = prompt('Load example:\n1 - Simple\n2 - Complex\n\nEnter 1 or 2:');
+          
+          if (choice === '1') {
+            setContent(mergeView.a, templates.simple.left);
+            setContent(mergeView.b, templates.simple.right);
+            console.log('📝 Loaded simple template');
+          } else if (choice === '2') {
+            setContent(mergeView.a, templates.complex.left);
+            setContent(mergeView.b, templates.complex.right);
+            console.log('📝 Loaded complex template');
+          }
+        };
+      }
+      
+      // Add copy/paste buttons to editor panes
+      function addPaneButtons() {
+        const leftPane = document.querySelector('.cm-merge-a');
+        const rightPane = document.querySelector('.cm-merge-b');
+        
+        // Left copy button
+        const leftCopy = document.createElement('button');
+        leftCopy.className = 'pane-btn copy-btn';
+        leftCopy.textContent = 'Copy';
+        leftCopy.onclick = async () => {
+          const text = mergeView.a.state.doc.toString();
+          try {
+            await navigator.clipboard.writeText(text);
+            leftCopy.textContent = 'Copied!';
+            setTimeout(() => leftCopy.textContent = 'Copy', 1200);
+          } catch (e) {
+            alert('Failed to copy');
+          }
+        };
+        leftPane.appendChild(leftCopy);
+        
+        // Right copy button
+        const rightCopy = document.createElement('button');
+        rightCopy.className = 'pane-btn copy-btn';
+        rightCopy.textContent = 'Copy';
+        rightCopy.onclick = async () => {
+          const text = mergeView.b.state.doc.toString();
+          try {
+            await navigator.clipboard.writeText(text);
+            rightCopy.textContent = 'Copied!';
+            setTimeout(() => rightCopy.textContent = 'Copy', 1200);
+          } catch (e) {
+            alert('Failed to copy');
+          }
+        };
+        rightPane.appendChild(rightCopy);
+      }
+      
+      // Helper: Set editor content
+      function setContent(view, text) {
+        view.dispatch({
+          changes: { 
+            from: 0, 
+            to: view.state.doc.length, 
+            insert: text 
+          }
+        });
+      }
+      
+      // Expose for debugging
+      window.mergeView = mergeView;
+      window.setContent = setContent;
+    </script>
+  </body>
+</html>
