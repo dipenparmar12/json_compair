@@ -21,6 +21,46 @@
 }
 
 /* ====================================================================
+   DIFF ALIGNMENT - Enhanced visualization for unmatched lines
+   Make empty blocks more visible like Git/GitHub diff view
+   ==================================================================== */
+
+/* Make the connection SVG more visible */
+.CodeMirror-merge-gap svg {
+  opacity: 0.8 !important;
+}
+
+/* Style for the connecting lines between diff chunks */
+.CodeMirror-merge-r-connect,
+.CodeMirror-merge-l-connect {
+  opacity: 0.6 !important;
+}
+
+/* Ensure gap is visible and properly styled */
+.CodeMirror-merge-gap {
+  background: #f8f8f8 !important;
+  border-left: 1px solid #ddd !important;
+  border-right: 1px solid #ddd !important;
+}
+
+/* Make chunk borders more visible for better alignment perception */
+.CodeMirror-merge-r-chunk-start {
+  border-top: 2px solid #ff9999 !important;
+}
+
+.CodeMirror-merge-r-chunk-end {
+  border-bottom: 2px solid #ff9999 !important;
+}
+
+.CodeMirror-merge-l-chunk-start {
+  border-top: 2px solid #88e !important;
+}
+
+.CodeMirror-merge-l-chunk-end {
+  border-bottom: 2px solid #88e !important;
+}
+
+/* ====================================================================
    CUSTOM DIFF HIGHLIGHTING COLORS
    Red/Green color scheme instead of default yellow
    ==================================================================== */

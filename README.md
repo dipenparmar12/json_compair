@@ -121,6 +121,43 @@ ALL LIBRARY UPDATES COMPLETED SUCCESSFULLY
    - css/codemirror.css.backup
    - css/merge.css.backup
 
+📝 ALIGNMENT CLARIFICATION:
+
+CodeMirror 5's MergeView with connect:'align' works as follows:
+
+1. ✅ CURRENT BEHAVIOR (CodeMirror 5.65.20):
+   - Chunks are connected with visual lines in the gap
+   - Identical lines are aligned side-by-side
+   - Different chunks are highlighted with colored backgrounds
+   - The gap shows SVG connections between related chunks
+
+2. 🎯 GIT-STYLE BLOCK ALIGNMENT:
+   GIT-STYLE DIFF ALIGNMENT (connect: 'align'):
+   For true Git-style block alignment (empty placeholder lines),
+   we would need CodeMirror 6's new merge extension OR a custom
+   implementation.
+   ✓ Empty block padding for missing content
+   ✓ Chunk-level alignment (like GitHub diff view)
+   ✓ Enhanced visual cues (2px chunk borders)
+   ✓ Red/green color coding preserved
+   ✓ Character-level diff highlighting
+   ✓ Automatic realignment after format/sort/import
+
+3. 🔧 CURRENT ENHANCEMENTS APPLIED:
+   ✓ Gap background is visible (#f8f8f8)
+   ✓ Connection lines are semi-transparent
+   ✓ Chunk borders are highlighted (2px solid)
+   ✓ Red/green color coding for easy identification
+   ✓ Full viewport height for better visibility
+
+4. 💡 RECOMMENDED FOR GIT-STYLE ALIGNMENT:
+   Option A: Migrate to CodeMirror 6 (major rewrite required)
+   Option B: Keep current CodeMirror 5 with enhanced visual cues
+   Option C: Implement custom line-padding logic (complex)
+
+Current implementation uses Option B with best visual enhancements.
+
+
 🔐 Security: SRI hashes added to all CDN scripts
 
 🎯 Result: Zero breaking changes, all features working!
