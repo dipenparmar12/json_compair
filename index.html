@@ -240,34 +240,46 @@
           showDiffsBtn.classList.toggle("active");
           const showOnlyDiffs = showDiffsBtn.classList.contains("active");
 
-          const leftPane = leftEditor.getWrapperElement().parentNode;
-          const rightPane = rightEditor.getWrapperElement().parentNode;
+          // Use a timeout to allow the UI to update before heavy work
+          setTimeout(() => {
+            const leftPane = leftEditor.getWrapperElement().parentNode;
+            const rightPane = rightEditor.getWrapperElement().parentNode;
 
-          leftPane.classList.toggle("show-diffs-only", showOnlyDiffs);
-          rightPane.classList.toggle("show-diffs-only", showOnlyDiffs);
+            leftPane.classList.toggle("show-diffs-only", showOnlyDiffs);
+            rightPane.classList.toggle("show-diffs-only", showOnlyDiffs);
 
-          // If showing diffs, ensure chunks are expanded
-          if (showOnlyDiffs) {
-            // Get all collapsed markers
-            const markers = leftEditor.getAllMarks();
-            markers.forEach((marker) => {
-              if (marker.collapsed) {
-                marker.clear();
+            // If showing diffs, ensure chunks are expanded
+            if (showOnlyDiffs) {
+              // Process markers in chunks to avoid freezing on large documents
+              const markers = leftEditor.getAllMarks();
+              let i = 0;
+              function processNextChunk() {
+                const end = Math.min(i + 200, markers.length);
+                for (; i < end; i++) {
+                  if (markers[i].collapsed) {
+                    markers[i].clear();
+                  }
+                }
+                if (i < markers.length) {
+                  setTimeout(processNextChunk, 0);
+                } else {
+                  // All markers processed, now refresh and scroll
+                  leftEditor.refresh();
+                  rightEditor.refresh();
+                  const chunks = mv.rightChunks();
+                  if (chunks && chunks.length > 0) {
+                    leftEditor.scrollIntoView({ line: chunks[0].from, ch: 0 }, 100);
+                  }
+                }
               }
-            });
-          }
-
-          // Refresh both editors
-          leftEditor.refresh();
-          rightEditor.refresh();
-
-          // Adjust viewport to show first diff if exists
-          if (showOnlyDiffs) {
-            const chunks = mv.rightChunks();
-            if (chunks && chunks.length > 0) {
-              leftEditor.scrollIntoView({ line: chunks[0].from, ch: 0 }, 100);
+              processNextChunk();
+              return; // Return to avoid synchronous refresh
             }
-          }
+
+            // Refresh both editors when turning off "show only diffs"
+            leftEditor.refresh();
+            rightEditor.refresh();
+          }, 10); // Small delay to ensure button state has updated
         };
         controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
 
