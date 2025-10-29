@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Compare Tool - Choose Version</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .versions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+        
+        .version-card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .version-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        
+        .version-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #08C988;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        
+        .version-badge.new {
+            background: #FF6B6B;
+        }
+        
+        .version-card h2 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .version-card .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+        }
+        
+        .features {
+            margin: 20px 0;
+        }
+        
+        .features h3 {
+            font-size: 1rem;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .features ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .features li {
+            padding: 6px 0;
+            color: #555;
+            font-size: 0.9rem;
+        }
+        
+        .features li:before {
+            content: "✓ ";
+            color: #08C988;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: #667eea;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+        
+        .btn:hover {
+            background: #5568d3;
+        }
+        
+        .btn.primary {
+            background: #08C988;
+        }
+        
+        .btn.primary:hover {
+            background: #07b377;
+        }
+        
+        .comparison-table {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-top: 40px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .comparison-table h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        th {
+            background: #f5f5f5;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        td {
+            color: #555;
+        }
+        
+        .check { color: #08C988; font-weight: bold; }
+        .cross { color: #FF6B6B; font-weight: bold; }
+        
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .version-card { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 JSON Compare Tool</h1>
+            <p>Choose your preferred version</p>
+        </div>
+        
+        <div class="versions">
+            <div class="version-card">
+                <span class="version-badge">STABLE</span>
+                <h2>CodeMirror 5</h2>
+                <p class="subtitle">Classic version with all features</p>
+                
+                <div class="features">
+                    <h3>Features:</h3>
+                    <ul>
+                        <li>All features fully implemented</li>
+                        <li>CSV auto-conversion</li>
+                        <li>Drag-and-drop file upload</li>
+                        <li>Snapshot import/export</li>
+                        <li>Show Only Differences mode</li>
+                        <li>Tested and battle-proven</li>
+                        <li>Wide browser support (IE11+)</li>
+                    </ul>
+                </div>
+                
+                <a href="index.html" class="btn">Launch CM5 Version</a>
+            </div>
+            
+            <div class="version-card">
+                <span class="version-badge new">NEW ⭐</span>
+                <h2>CodeMirror 6</h2>
+                <p class="subtitle">Modern version with enhanced diff alignment</p>
+                
+                <div class="features">
+                    <h3>Features:</h3>
+                    <ul>
+                        <li>Git-style block alignment</li>
+                        <li>Better performance (immutable state)</li>
+                        <li>Modern ES6 architecture</li>
+                        <li>Improved accessibility</li>
+                        <li>Enhanced diff visualization</li>
+                        <li>Smaller bundle size</li>
+                        <li>Modern browsers only (Chrome 89+)</li>
+                    </ul>
+                </div>
+                
+                <a href="index-cm6.html" class="btn primary">Launch CM6 Version</a>
+            </div>
+        </div>
+        
+        <div class="comparison-table">
+            <h2>Feature Comparison</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th style="text-align: center;">CM5</th>
+                        <th style="text-align: center;">CM6</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>JSON Formatting</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Key Sorting</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Share URL</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Templates</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                    </tr>
+                    <tr>
+                        <td>Git-Style Alignment</td>
+                        <td style="text-align: center;">Basic</td>
+                        <td style="text-align: center;" class="check">Enhanced</td>
+                    </tr>
+                    <tr>
+                        <td>CSV Auto-Conversion</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                        <td style="text-align: center;" class="cross">✗</td>
+                    </tr>
+                    <tr>
+                        <td>File Drag-and-Drop</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                        <td style="text-align: center;" class="cross">✗</td>
+                    </tr>
+                    <tr>
+                        <td>Snapshot Import/Export</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                        <td style="text-align: center;" class="cross">✗</td>
+                    </tr>
+                    <tr>
+                        <td>Show Only Differences</td>
+                        <td style="text-align: center;" class="check">✓</td>
+                        <td style="text-align: center;" class="cross">✗</td>
+                    </tr>
+                    <tr>
+                        <td>Performance (Large Files)</td>
+                        <td style="text-align: center;">Good</td>
+                        <td style="text-align: center;" class="check">Better</td>
+                    </tr>
+                    <tr>
+                        <td>Browser Support</td>
+                        <td style="text-align: center;">Excellent</td>
+                        <td style="text-align: center;">Modern Only</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px; color: white; opacity: 0.8;">
+            <p>
+                <strong>Recommendation:</strong> Use CM5 for full feature set, CM6 for modern browsers with better diff visualization
+            </p>
+            <p style="margin-top: 10px; font-size: 0.9rem;">
+                View source on <a href="https://github.com/dipenparmar12/json_compair" style="color: white;">GitHub</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

@@ -11,7 +11,7 @@
     <link rel="stylesheet" type="text/css" href="./css/app.css" />
     
     <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-giedl6V2CsRUwviHqAInbg+h/aNVr2gn3//FaTWUDPv6d3Pv2wvPWiMKV71RvdMGHE3OcQP9qFLOKD+ZntBdlw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" crossorigin="anonymous"></script>
     
     <!-- Utility scripts -->
     <script src="./utils.js"></script>
@@ -22,12 +22,21 @@
     <script type="importmap">
       {
         "imports": {
-          "codemirror": "https://cdn.jsdelivr.net/npm/codemirror@6.0.1/+esm",
-          "@codemirror/state": "https://cdn.jsdelivr.net/npm/@codemirror/state@6.4.1/+esm",
-          "@codemirror/view": "https://cdn.jsdelivr.net/npm/@codemirror/view@6.34.1/+esm",
-          "@codemirror/lang-json": "https://cdn.jsdelivr.net/npm/@codemirror/lang-json@6.0.1/+esm",
-          "@codemirror/commands": "https://cdn.jsdelivr.net/npm/@codemirror/commands@6.7.1/+esm",
-          "@codemirror/merge": "https://cdn.jsdelivr.net/npm/@codemirror/merge@6.7.2/+esm"
+          "@codemirror/state": "https://esm.sh/@codemirror/state@6.4.1",
+          "@codemirror/view": "https://esm.sh/@codemirror/view@6.34.1",
+          "@codemirror/language": "https://esm.sh/@codemirror/language@6.10.3",
+          "@codemirror/commands": "https://esm.sh/@codemirror/commands@6.7.1",
+          "@codemirror/lang-json": "https://esm.sh/@codemirror/lang-json@6.0.1",
+          "@codemirror/merge": "https://esm.sh/@codemirror/merge@6.7.2",
+          "@codemirror/search": "https://esm.sh/@codemirror/search@6.5.6",
+          "@codemirror/autocomplete": "https://esm.sh/@codemirror/autocomplete@6.18.1",
+          "@codemirror/lint": "https://esm.sh/@codemirror/lint@6.8.2",
+          "@lezer/common": "https://esm.sh/@lezer/common@1.2.2",
+          "@lezer/highlight": "https://esm.sh/@lezer/highlight@1.2.1",
+          "codemirror": "https://esm.sh/codemirror@6.0.1",
+          "crelt": "https://esm.sh/crelt@1.0.6",
+          "style-mod": "https://esm.sh/style-mod@4.1.2",
+          "w3c-keyname": "https://esm.sh/w3c-keyname@2.2.8"
         }
       }
     </script>
@@ -191,12 +200,50 @@
     </div>
 
     <script type="module">
-      import { EditorView, basicSetup } from 'codemirror';
+      // Import CodeMirror 6 core and extensions
+      import { EditorView } from '@codemirror/view';
       import { EditorState } from '@codemirror/state';
       import { json } from '@codemirror/lang-json';
       import { MergeView } from '@codemirror/merge';
+      import { lineNumbers, highlightActiveLineGutter, highlightSpecialChars, 
+               drawSelection, dropCursor, rectangularSelection, crosshairCursor, 
+               highlightActiveLine, keymap } from '@codemirror/view';
+      import { foldGutter, indentOnInput, syntaxHighlighting, 
+               defaultHighlightStyle, bracketMatching, foldKeymap } from '@codemirror/language';
+      import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
+      import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
+      import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
+      import { lintKeymap } from '@codemirror/lint';
       
-      let mergeView;
+      // Create basicSetup equivalent
+      const basicSetup = [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightSpecialChars(),
+        history(),
+        foldGutter(),
+        drawSelection(),
+        dropCursor(),
+        EditorState.allowMultipleSelections.of(true),
+        indentOnInput(),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        bracketMatching(),
+        closeBrackets(),
+        autocompletion(),
+        rectangularSelection(),
+        crosshairCursor(),
+        highlightActiveLine(),
+        highlightSelectionMatches(),
+        keymap.of([
+          ...closeBracketsKeymap,
+          ...defaultKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
+          ...foldKeymap,
+          ...completionKeymap,
+          ...lintKeymap
+        ])
+      ];      let mergeView;
       
       // Initialize application
       document.addEventListener('DOMContentLoaded', () => {
