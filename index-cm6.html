@@ -331,65 +331,101 @@
           <option value="complex">Complex Template</option>
         </select>
         <div class="settings-dropdown" style="position: relative; display: inline-block;">
-          <button id="btn-settings" style="font-size: 13px;">⚙️ Diff Settings</button>
-          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 12px; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; margin-top: 4px;">
-            <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee;">Editor Settings</div>
+          <button id="btn-settings" style="font-size: 13px; font-weight: 400;">⚙️ Diff Settings</button>
+          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 16px; min-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 1000; margin-top: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;">
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">EDITOR SETTINGS</div>
             
-            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
-              <input type="checkbox" id="setting-word-wrap" checked /> Word Wrap
-              <div style="color: #666; font-size: 11px; margin-left: 20px;">Wrap long lines to fit editor width</div>
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-word-wrap" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Word Wrap</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Wrap long lines to fit editor width</div>
+              </div>
             </label>
             
-            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
-              <input type="checkbox" id="setting-scroll-lock" checked /> Synchronized Scrolling
-              <div style="color: #666; font-size: 11px; margin-left: 20px;">Lock scroll between left and right panels</div>
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-scroll-lock" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Synchronized Scrolling</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Lock scroll between left and right panels</div>
+              </div>
             </label>
             
-            <label style="display: block; margin-bottom: 12px; font-size: 12px;">
-              <input type="checkbox" id="auto-csv-conversion" /> Auto CSV→JSON
-              <div style="color: #666; font-size: 11px; margin-left: 20px;">Automatically convert CSV to JSON on paste/drop</div>
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="auto-csv-conversion" style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Auto CSV→JSON</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically convert CSV to JSON on paste/drop</div>
+              </div>
             </label>
             
-            <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 8px; padding-top: 8px; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">Diff View Settings</div>
-            
-            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
-              <input type="checkbox" id="setting-highlight-changes" checked /> Highlight Changes
-              <div style="color: #666; font-size: 11px; margin-left: 20px;">Show character-level diffs in chunks</div>
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="auto-format-json" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Auto Format JSON</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically format JSON on paste/drop</div>
+              </div>
             </label>
             
-            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
-              <input type="checkbox" id="setting-gutter" checked /> Show Gutter Markers
-              <div style="color: #666; font-size: 11px; margin-left: 20px;">Display markers next to changed lines</div>
+            <label style="display: flex; align-items: flex-start; margin-bottom: 14px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="auto-sort-keys" style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Auto Sort Keys</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically sort JSON keys on paste/drop</div>
+              </div>
             </label>
             
-            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
-              <input type="checkbox" id="setting-collapse-unchanged" /> Collapse Unchanged
-              <div style="color: #666; font-size: 11px; margin-left: 20px;">Fold long sections of identical lines</div>
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF VIEW SETTINGS</div>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-highlight-changes" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Highlight Changes</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Show character-level diffs in chunks</div>
+              </div>
             </label>
             
-            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-gutter" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Show Gutter Markers</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Display markers next to changed lines</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 12px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-collapse-unchanged" style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Collapse Unchanged</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Fold long sections of identical lines</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: center; margin-bottom: 10px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
               Orientation:
-              <select id="setting-orientation" style="margin-left: 8px; font-size: 11px; padding: 2px 4px;">
+              <select id="setting-orientation" style="margin-left: 10px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
                 <option value="a-b">A-B (Left-Right)</option>
                 <option value="b-a">B-A (Right-Left)</option>
               </select>
             </label>
             
-            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+            <label style="display: flex; align-items: center; margin-bottom: 14px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
               Revert Controls:
-              <select id="setting-revert-controls" style="margin-left: 8px; font-size: 11px; padding: 2px 4px;">
+              <select id="setting-revert-controls" style="margin-left: 10px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
                 <option value="none">None</option>
                 <option value="a-to-b">A → B</option>
                 <option value="b-to-a">B → A</option>
               </select>
             </label>
             
-            <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; font-weight: bold; margin-bottom: 8px;">Diff Algorithm</div>
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF ALGORITHM</div>
             
-            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
-              Scan Limit:
-              <input type="number" id="setting-scan-limit" value="500" min="100" max="10000" step="100" style="width: 80px; margin-left: 8px; font-size: 11px; padding: 2px 4px;" />
-              <div style="color: #666; font-size: 11px; margin-left: 20px;">Max characters to scan (higher = slower)</div>
+            <label style="display: flex; align-items: flex-start; margin-bottom: 8px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
+              <div style="flex: 1;">
+                Scan Limit:
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-weight: 400; font-family: 'Segoe UI', system-ui, sans-serif;">Max characters to scan (higher = slower)</div>
+              </div>
+              <input type="number" id="setting-scan-limit" value="500" min="100" max="10000" step="100" style="width: 90px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: 'Segoe UI', system-ui, sans-serif;" />
             </label>
           </div>
         </div>

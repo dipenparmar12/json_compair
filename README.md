@@ -325,3 +325,15 @@ DIFF ALGORITHM:
 ✅ Settings panel auto-closes when clicking outside
 ✅ Apply button recreates merge view with new settings
 ✅ Removed standalone Word Wrap and Scroll Lock buttons - consolidated in dropdown"
+
+
+✅ Enhanced visual design with:
+   - Modern system font stack (-apple-system, BlinkMacSystemFont, Segoe UI, Roboto)
+   - Flexbox layout for better alignment
+   - Hover effects on all options (subtle gray background)
+   - Section headers with accent color borders (#08c988)
+   - Better spacing and padding (16px panel padding)
+   - Rounded corners (6px border-radius)
+   - Enhanced shadows for depth
+   - Letter-spacing for headers (0.3px)
+   - Color hierarchy (headings: #333, labels: #222, descriptions: #6c757d)
