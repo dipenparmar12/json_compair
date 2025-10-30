@@ -78,6 +78,8 @@
         overflow: hidden;
         position: relative;
         min-height: 0; /* Important for flex child scrolling */
+        display: flex;
+        flex-direction: row;
       }
 
       /* Button styles */
@@ -135,15 +137,30 @@
       /* Merge view styling */
       .cm-mergeView {
         height: 100%;
+        width: 100%;
         display: flex;
         gap: 2px;
+        flex: 1;
       }
 
       .cm-mergeView .cm-mergeViewEditor {
         flex: 1;
         border: 1px solid #ddd;
         border-radius: 4px;
-        overflow: hidden;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      .cm-mergeView .cm-editor {
+        flex: 1;
+        overflow: auto;
+      }
+
+      .cm-mergeView .cm-scroller {
+        flex: 1;
+        overflow: auto !important;
       }
 
       /* Diff highlighting (similar to CM5 red/green scheme) */
@@ -382,6 +399,9 @@
         // Add per-pane control buttons
         addPaneControls();
 
+        // Setup synchronized scrolling
+        setupSynchronizedScrolling();
+
         // Set up button event handlers
         setupButtons();
 
@@ -482,6 +502,54 @@
         
         paneElement.style.position = 'relative';
         paneElement.appendChild(controls);
+      }
+
+      // Setup synchronized scrolling
+      function setupSynchronizedScrolling() {
+        let scrollLocked = true;
+        let isScrolling = false;
+
+        // Get scroll containers
+        const leftScroller = mergeView.a.scrollDOM;
+        const rightScroller = mergeView.b.scrollDOM;
+
+        // Sync scroll from left to right
+        leftScroller.addEventListener('scroll', () => {
+          if (!scrollLocked || isScrolling) return;
+          isScrolling = true;
+          rightScroller.scrollTop = leftScroller.scrollTop;
+          rightScroller.scrollLeft = leftScroller.scrollLeft;
+          setTimeout(() => { isScrolling = false; }, 10);
+        });
+
+        // Sync scroll from right to left
+        rightScroller.addEventListener('scroll', () => {
+          if (!scrollLocked || isScrolling) return;
+          isScrolling = true;
+          leftScroller.scrollTop = rightScroller.scrollTop;
+          leftScroller.scrollLeft = rightScroller.scrollLeft;
+          setTimeout(() => { isScrolling = false; }, 10);
+        });
+
+        // Add scroll lock toggle button
+        const scrollLockBtn = document.createElement('button');
+        scrollLockBtn.textContent = '🔗 Scroll Lock';
+        scrollLockBtn.className = 'active';
+        scrollLockBtn.title = 'Toggle synchronized scrolling';
+        scrollLockBtn.onclick = () => {
+          scrollLocked = !scrollLocked;
+          scrollLockBtn.classList.toggle('active');
+          scrollLockBtn.textContent = scrollLocked ? '🔗 Scroll Lock' : '🔓 Scroll Unlocked';
+        };
+
+        // Add to intro controls
+        const intro = document.querySelector('.intro');
+        const clearBtn = document.getElementById('btn-clear-all');
+        if (clearBtn) {
+          intro.insertBefore(scrollLockBtn, clearBtn);
+        } else {
+          intro.appendChild(scrollLockBtn);
+        }
       }
 
       // Setup button handlers
@@ -886,10 +954,39 @@
           return;
         }
 
-        // Count differences (simplified - CM6 doesn't expose chunk count as easily)
         if (leftContent === rightContent) {
           statusDiv.textContent = "No differences found";
-        } else {
+          return;
+        }
+
+        // Calculate actual differences using diff_match_patch
+        try {
+          if (typeof diff_match_patch !== 'undefined') {
+            const dmp = new diff_match_patch();
+            const diffs = dmp.diff_main(leftContent, rightContent);
+            dmp.diff_cleanupSemantic(diffs);
+            
+            // Count number of diff chunks (ignoring DIFF_EQUAL)
+            let diffCount = 0;
+            let inDiffChunk = false;
+            
+            for (let i = 0; i < diffs.length; i++) {
+              const [op, text] = diffs[i];
+              if (op !== 0) { // DIFF_INSERT or DIFF_DELETE
+                if (!inDiffChunk) {
+                  diffCount++;
+                  inDiffChunk = true;
+                }
+              } else {
+                inDiffChunk = false;
+              }
+            }
+            
+            statusDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''}`;
+          } else {
+            statusDiv.textContent = "Differences detected";
+          }
+        } catch (err) {
           statusDiv.textContent = "Differences detected";
         }
       }
