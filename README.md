@@ -348,3 +348,17 @@ DIFF ALGORITHM:
    - Hint to use ⚙️ Diff Settings
    - Modern design with system fonts
    - Auto-hides when content is added
+
+✅ Theme selection feature successfully implemented! Available themes:
+- Default (Light) - CodeMirror's default theme
+- Basic Light - Custom light theme with subtle colors
+- Basic Dark - Custom dark theme
+- One Dark - Official CodeMirror One Dark theme
+
+Changes made:
+1. Added @codemirror/theme-one-dark to import map
+2. Imported oneDark theme in script
+3. Updated theme selector with One Dark option
+4. Enhanced getThemeExtension() to support oneDark
+5. Updated theme name display in status messages
+6. All themes use Compartment for live switching (no page reload needed)

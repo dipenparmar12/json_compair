@@ -195,6 +195,7 @@
       showOnlyDiffs: false,
       wordWrap: true,       // Default word wrap enabled
       scrollLock: true,     // Default scroll lock enabled
+      theme: "default",     // default, light, or dark
       // Merge view settings
       highlightChanges: true,
       gutter: true,

@@ -375,6 +375,15 @@
               </div>
             </label>
             
+            <label style="display: flex; align-items: center; margin-bottom: 14px; padding: 6px; font-size: 12px; font-weight: 500; color: #222;">
+              Theme:
+              <select id="setting-theme" style="margin-left: 10px; flex: 1; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
+                <option value="default">Default (Light)</option>
+                <option value="light">Basic Light</option>
+                <option value="dark">Basic Dark</option>
+              </select>
+            </label>
+            
             <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF VIEW SETTINGS</div>
             
             <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
@@ -504,9 +513,74 @@
       // Word wrap compartment for dynamic reconfiguration
       const wordWrapCompartment = new Compartment();
       
+      // Theme compartment for dynamic theme switching
+      const themeCompartment = new Compartment();
+      
+      // Define theme extensions
+      const lightTheme = EditorView.theme({
+        "&": {
+          backgroundColor: "#ffffff",
+          color: "#000000"
+        },
+        ".cm-content": {
+          caretColor: "#000000"
+        },
+        "&.cm-focused .cm-cursor": {
+          borderLeftColor: "#000000"
+        },
+        ".cm-activeLine": {
+          backgroundColor: "#f0f0f0"
+        },
+        ".cm-selectionBackground, ::selection": {
+          backgroundColor: "#d7d4f0"
+        },
+        ".cm-gutters": {
+          backgroundColor: "#f5f5f5",
+          color: "#999",
+          border: "none"
+        }
+      }, { dark: false });
+
+      const darkTheme = EditorView.theme({
+        "&": {
+          backgroundColor: "#1e1e1e",
+          color: "#d4d4d4"
+        },
+        ".cm-content": {
+          caretColor: "#ffffff"
+        },
+        "&.cm-focused .cm-cursor": {
+          borderLeftColor: "#ffffff"
+        },
+        ".cm-activeLine": {
+          backgroundColor: "#2a2a2a"
+        },
+        ".cm-selectionBackground, ::selection": {
+          backgroundColor: "#3a3d41"
+        },
+        ".cm-gutters": {
+          backgroundColor: "#252526",
+          color: "#858585",
+          border: "none"
+        }
+      }, { dark: true });
+
+      // Function to get theme extension based on setting
+      function getThemeExtension(themeName) {
+        switch (themeName) {
+          case "light":
+            return lightTheme;
+          case "dark":
+            return darkTheme;
+          default:
+            return []; // Default (no custom theme)
+        }
+      }
+      
       // Load settings from localStorage
       let wordWrapEnabled = SettingsManager.get('wordWrap');
       let scrollLocked = SettingsManager.get('scrollLock');
+      let currentTheme = SettingsManager.get('theme');
 
       // Basic editor extensions for both sides
       const basicSetup = [
@@ -558,11 +632,11 @@
         mergeView = new MergeView({
           a: {
             doc: initialContent.left,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
           },
           b: {
             doc: initialContent.right,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
           },
           parent: container,
           // Apply saved merge settings
@@ -626,6 +700,7 @@
         const settings = loadMergeSettings();
         document.getElementById('setting-word-wrap').checked = wordWrapEnabled;
         document.getElementById('setting-scroll-lock').checked = scrollLocked;
+        document.getElementById('setting-theme').value = currentTheme;
         document.getElementById('setting-highlight-changes').checked = settings.highlightChanges;
         document.getElementById('setting-gutter').checked = settings.gutter;
         document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
@@ -649,6 +724,7 @@
         // Add live change listeners to all settings
         document.getElementById('setting-word-wrap').addEventListener('change', applyWordWrap);
         document.getElementById('setting-scroll-lock').addEventListener('change', applyScrollLock);
+        document.getElementById('setting-theme').addEventListener('change', applyTheme);
         document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-collapse-unchanged').addEventListener('change', applyMergeSettings);
@@ -680,6 +756,25 @@
         scrollLocked = document.getElementById('setting-scroll-lock').checked;
         SettingsManager.set('scrollLock', scrollLocked);
         updateStatus(scrollLocked ? 'Scroll lock enabled' : 'Scroll lock disabled');
+      }
+
+      // Apply theme setting (live, no recreation needed)
+      function applyTheme() {
+        currentTheme = document.getElementById('setting-theme').value;
+        SettingsManager.set('theme', currentTheme);
+        
+        const themeExtension = getThemeExtension(currentTheme);
+        
+        mergeView.a.dispatch({
+          effects: themeCompartment.reconfigure(themeExtension)
+        });
+        
+        mergeView.b.dispatch({
+          effects: themeCompartment.reconfigure(themeExtension)
+        });
+        
+        const themeNames = { default: 'Default', light: 'Light', dark: 'Dark' };
+        updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
       }
 
       // Apply merge settings and recreate merge view
@@ -722,11 +817,11 @@
         mergeView = new MergeView({
           a: {
             doc: leftContent,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
           },
           b: {
             doc: rightContent,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
           },
           parent: container,
           orientation: newSettings.orientation,
