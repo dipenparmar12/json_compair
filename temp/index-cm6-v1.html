@@ -22,6 +22,12 @@
       crossorigin="anonymous"
     ></script>
 
+    <!-- diff_match_patch for accurate diff counting -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.min.js"
+      crossorigin="anonymous"
+    ></script>
+
     <!-- Utility scripts -->
     <script src="./utils.js"></script>
     <script src="./json_utils.js"></script>
@@ -134,42 +140,64 @@
         overflow: auto;
       }
 
-      /* Merge view styling */
+      /* Merge view styling - Fixed to match actual DOM structure */
       .cm-mergeView {
-        height: 100%;
-        width: 100%;
-        display: flex;
+        height: 100% !important;
+        width: 100% !important;
+        display: flex !important;
+        flex-direction: row !important;
+        flex: 1;
+      }
+
+      /* The wrapper that contains both editors */
+      .cm-mergeViewEditors {
+        display: flex !important;
+        flex-direction: row !important;
+        width: 100% !important;
+        height: 100% !important;
         gap: 2px;
         flex: 1;
       }
 
-      .cm-mergeView .cm-mergeViewEditor {
-        flex: 1 1 50%; /* Force equal 50% width for both panels */
-        min-width: 0; /* Allow flex shrinking below content size */
-        max-width: 50%; /* Prevent expanding beyond 50% */
-        width: 50%; /* Explicit width */
+      /* Force each editor to be exactly 50% */
+      .cm-mergeViewEditor {
+        flex: 1 1 50% !important;
+        width: 50% !important;
+        max-width: 50% !important;
+        min-width: 0 !important; /* Critical: allows shrinking below content size */
         border: 1px solid #ddd;
         border-radius: 4px;
-        overflow: auto;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
+        overflow: hidden !important; /* Prevent overflow from breaking layout */
+        position: relative;
       }
 
+      /* Editor container within each panel */
       .cm-mergeView .cm-editor {
-        flex: 1;
-        overflow: auto;
-        width: 100%; /* Force editor to fill parent width */
+        height: 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
       }
 
+      /* Scroller must respect parent constraints */
       .cm-mergeView .cm-scroller {
-        flex: 1;
         overflow: auto !important;
-        min-width: 0; /* Allow horizontal scrolling for long lines */
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        height: 100% !important;
       }
 
+      /* Prevent content from forcing panel expansion */
       .cm-mergeView .cm-content {
-        min-width: fit-content; /* Allow content to expand within scroller */
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+
+      /* Ensure lines don't stretch the container */
+      .cm-mergeView .cm-line {
+        max-width: 100% !important;
       }
 
       /* Diff highlighting (similar to CM5 red/green scheme) */
@@ -955,7 +983,6 @@
       function updateDiffStatus() {
         const leftContent = mergeView.a.state.doc.toString().trim();
         const rightContent = mergeView.b.state.doc.toString().trim();
-
         const statusDiv = document.getElementById("diff-status");
         
         if (!leftContent || !rightContent) {
@@ -968,36 +995,37 @@
           return;
         }
 
-        // Calculate actual differences using diff_match_patch
-        try {
-          if (typeof diff_match_patch !== 'undefined') {
+        // Calculate actual differences using diff_match_patch if available
+        if (typeof diff_match_patch !== 'undefined') {
+          try {
             const dmp = new diff_match_patch();
             const diffs = dmp.diff_main(leftContent, rightContent);
             dmp.diff_cleanupSemantic(diffs);
             
-            // Count number of diff chunks (ignoring DIFF_EQUAL)
+            // Count number of diff chunks (contiguous blocks of changes)
             let diffCount = 0;
             let inDiffChunk = false;
             
-            for (let i = 0; i < diffs.length; i++) {
-              const [op, text] = diffs[i];
-              if (op !== 0) { // DIFF_INSERT or DIFF_DELETE
+            for (const [op, text] of diffs) {
+              if (op !== 0) { // DIFF_INSERT (-1) or DIFF_DELETE (1)
                 if (!inDiffChunk) {
                   diffCount++;
                   inDiffChunk = true;
                 }
-              } else {
+              } else { // DIFF_EQUAL (0)
                 inDiffChunk = false;
               }
             }
             
             statusDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''}`;
-          } else {
-            statusDiv.textContent = "Differences detected";
+            return;
+          } catch (err) {
+            console.warn('Diff calculation failed:', err);
           }
-        } catch (err) {
-          statusDiv.textContent = "Differences detected";
         }
+
+        // Fallback if diff_match_patch not available
+        statusDiv.textContent = "Differences detected";
       }
 
       // Update status message

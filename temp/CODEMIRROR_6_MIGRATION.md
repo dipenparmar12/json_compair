@@ -286,3 +286,30 @@ The CodeMirror 6 implementation successfully recreates all core features of the 
 - **Merge View Package**: https://codemirror.net/docs/ref/#merge
 - **Original Implementation**: `index.html`
 - **PRD Documentation**: `docs/PRD/`
+
+---
+
+### "Copilot: Critical fixes applied successfully!
+
+✅ Fixed Panel Width Issue:
+- Identified actual DOM structure: .cm-mergeView > .cm-mergeViewEditors > .cm-mergeViewEditor
+- Applied strict CSS constraints to .cm-mergeViewEditors wrapper
+- Forced 50%-50% split with flex: 1 1 50% and max-width: 50%
+- Added min-width: 0 to allow shrinking below content size
+- Constrained .cm-scroller, .cm-content, and .cm-line to prevent expansion
+
+✅ Fixed Diff Count Display:
+- Added diff_match_patch library from CDN
+- Improved diff counting logic with proper error handling
+- Now shows accurate count: 'Found X difference(s)'
+
+🔧 CSS Changes:
+- Targeted .cm-mergeViewEditors wrapper (was missing)
+- Added overflow: hidden to prevent layout breaks
+- Constrained all nested elements (editor, scroller, content, line)
+- Ensured 100% width propagation with max-width limits
+
+📊 Result:
+- Panels will always be exactly 50%-50% regardless of content
+- Long lines will scroll horizontally within each panel
+- Diff count displays correctly (e.g., 'Found 3 differences')
