@@ -46,6 +46,7 @@
           "@codemirror/search": "https://unpkg.com/@codemirror/search@6.5.6/dist/index.js",
           "@codemirror/autocomplete": "https://unpkg.com/@codemirror/autocomplete@6.18.1/dist/index.js",
           "@codemirror/lint": "https://unpkg.com/@codemirror/lint@6.8.2/dist/index.js",
+          "@codemirror/theme-one-dark": "https://unpkg.com/@codemirror/theme-one-dark@6.1.3/dist/index.js",
           "@lezer/common": "https://unpkg.com/@lezer/common@1.2.2/dist/index.js",
           "@lezer/highlight": "https://unpkg.com/@lezer/highlight@1.2.1/dist/index.js",
           "@lezer/lr": "https://unpkg.com/@lezer/lr@1.4.2/dist/index.js",
@@ -381,6 +382,7 @@
                 <option value="default">Default (Light)</option>
                 <option value="light">Basic Light</option>
                 <option value="dark">Basic Dark</option>
+                <option value="oneDark">One Dark</option>
               </select>
             </label>
             
@@ -460,6 +462,7 @@
       import { EditorState } from "@codemirror/state";
       import { json } from "@codemirror/lang-json";
       import { MergeView } from "@codemirror/merge";
+      import { oneDark } from "@codemirror/theme-one-dark";
       import {
         lineNumbers,
         highlightActiveLineGutter,
@@ -572,6 +575,8 @@
             return lightTheme;
           case "dark":
             return darkTheme;
+          case "oneDark":
+            return oneDark;
           default:
             return []; // Default (no custom theme)
         }
@@ -773,7 +778,12 @@
           effects: themeCompartment.reconfigure(themeExtension)
         });
         
-        const themeNames = { default: 'Default', light: 'Light', dark: 'Dark' };
+        const themeNames = { 
+          default: 'Default', 
+          light: 'Basic Light', 
+          dark: 'Basic Dark',
+          oneDark: 'One Dark'
+        };
         updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
       }
 
