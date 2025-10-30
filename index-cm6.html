@@ -585,6 +585,9 @@
 
         // Set up button event handlers
         setupButtons();
+        
+        // Add placeholders to guide users
+        addPlaceholders();
 
         // Update diff status initially
         updateDiffStatus();
@@ -743,8 +746,79 @@
         // Re-setup synchronized scrolling
         setupSynchronizedScrolling();
         
+        // Re-add placeholders
+        addPlaceholders();
+        
         updateStatus('Settings applied successfully');
         updateDiffStatus();
+      }
+
+      // Add placeholder overlays to empty editors
+      function addPlaceholders() {
+        const editors = document.querySelectorAll('.cm-mergeViewEditor');
+        
+        if (editors.length >= 2) {
+          addPlaceholderToPane(editors[0], 'left');
+          addPlaceholderToPane(editors[1], 'right');
+        }
+        
+        // Update placeholder visibility based on content
+        updatePlaceholders();
+      }
+
+      function addPlaceholderToPane(paneElement, side) {
+        const placeholder = document.createElement('div');
+        placeholder.className = `placeholder-overlay placeholder-${side}`;
+        placeholder.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          pointer-events: none;
+          background: #f8f9fa;
+          z-index: 1;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+        
+        placeholder.innerHTML = `
+          <div style="text-align: center; color: #6c757d; padding: 40px;">
+            <div style="font-size: 48px; margin-bottom: 20px; opacity: 0.3;">📝</div>
+            <div style="font-size: 16px; font-weight: 500; margin-bottom: 12px; color: #495057;">
+              ${side === 'left' ? 'Left Panel' : 'Right Panel'}
+            </div>
+            <div style="font-size: 13px; line-height: 1.6; max-width: 280px;">
+              <div style="margin-bottom: 8px;">✏️ <strong>Paste</strong> JSON/CSV content</div>
+              <div style="margin-bottom: 8px;">📁 <strong>Drag & drop</strong> files here</div>
+              <div style="margin-bottom: 8px;">⌨️ Start <strong>typing</strong> directly</div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #dee2e6; font-size: 12px; opacity: 0.8;">
+                Use <strong>⚙️ Diff Settings</strong> for auto-format options
+              </div>
+            </div>
+          </div>
+        `;
+        
+        paneElement.appendChild(placeholder);
+      }
+
+      // Update placeholder visibility
+      function updatePlaceholders() {
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+        
+        const leftPlaceholder = document.querySelector('.placeholder-left');
+        const rightPlaceholder = document.querySelector('.placeholder-right');
+        
+        if (leftPlaceholder) {
+          leftPlaceholder.style.display = leftContent ? 'none' : 'flex';
+        }
+        
+        if (rightPlaceholder) {
+          rightPlaceholder.style.display = rightContent ? 'none' : 'flex';
+        }
       }
 
       // Add per-pane control buttons
@@ -768,6 +842,7 @@
         const copyBtn = document.createElement('button');
         copyBtn.textContent = '📋 Copy';
         copyBtn.title = 'Copy content';
+        copyBtn.className = 'copy-clear-btn'; // Add class for easy selection
         copyBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
           const text = editor.state.doc.toString();
@@ -817,12 +892,14 @@
         const clearBtn = document.createElement('button');
         clearBtn.textContent = '🗑 Clear';
         clearBtn.title = 'Clear content';
+        clearBtn.className = 'copy-clear-btn'; // Add class for easy selection
         clearBtn.onclick = () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: "" }
           });
           updateDiffStatus();
+          updatePaneButtonVisibility();
         };
 
         controls.appendChild(copyBtn);
@@ -831,6 +908,32 @@
         
         paneElement.style.position = 'relative';
         paneElement.appendChild(controls);
+        
+        // Initial visibility update
+        updatePaneButtonVisibility();
+      }
+
+      // Update visibility of copy/clear buttons based on content
+      function updatePaneButtonVisibility() {
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+        
+        // Find all pane controls
+        const paneControls = document.querySelectorAll('.pane-controls');
+        
+        if (paneControls.length >= 2) {
+          // Left panel buttons
+          const leftButtons = paneControls[0].querySelectorAll('.copy-clear-btn');
+          leftButtons.forEach(btn => {
+            btn.style.display = leftContent ? 'inline-block' : 'none';
+          });
+          
+          // Right panel buttons
+          const rightButtons = paneControls[1].querySelectorAll('.copy-clear-btn');
+          rightButtons.forEach(btn => {
+            btn.style.display = rightContent ? 'inline-block' : 'none';
+          });
+        }
       }
 
       // Setup synchronized scrolling
@@ -1243,6 +1346,8 @@
 
         updateClearButtonVisibility();
         updateDiffStatus();
+        updatePlaceholders();
+        updatePaneButtonVisibility();
       }
 
       // Update diff status

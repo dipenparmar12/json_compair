@@ -337,3 +337,14 @@ DIFF ALGORITHM:
    - Enhanced shadows for depth
    - Letter-spacing for headers (0.3px)
    - Color hierarchy (headings: #333, labels: #222, descriptions: #6c757d)
+
+✅ Added helpful placeholder overlays to empty editors:
+   - Shows on empty panels with guidance icons
+   - Left/Right panel labels
+   - Clear instructions:
+     • Paste JSON/CSV content
+     • Drag & drop files
+     • Start typing directly
+   - Hint to use ⚙️ Diff Settings
+   - Modern design with system fonts
+   - Auto-hides when content is added
