@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Nested Object Test Case</title>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    .test-case { margin: 20px 0; padding: 15px; border: 2px solid #ddd; }
+    .side-by-side { display: flex; gap: 20px; }
+    .panel { flex: 1; background: #f5f5f5; padding: 10px; }
+    .panel h3 { margin: 0 0 10px 0; }
+    pre { margin: 0; white-space: pre; }
+    .placeholder { background: repeating-linear-gradient(45deg, #e3f5ef, #e3f5ef 8px, #d1efe3 8px, #d1efe3 16px); padding: 5px; border-left: 3px solid #7ed6b5; }
+    .note { background: #fff9e6; padding: 10px; margin-top: 10px; border-left: 4px solid #ffc107; }
+  </style>
+</head>
+<body>
+  <h1>Test Case: Nested Object Expansion</h1>
+  
+  <div class="test-case">
+    <h2>Scenario 1: Empty Object → Filled Object</h2>
+    <p><strong>Issue:</strong> When comparing an empty object <code>{}</code> with a filled object <code>{ "id": 123 }</code>, the placeholder should appear inside the braces.</p>
+    
+    <div class="side-by-side">
+      <div class="panel">
+        <h3>LEFT (Original)</h3>
+        <pre>{
+  "answers_blue_badge": {},
+  "answers_green_badge": {},
+  "base_bldg_desc": {
+    "AC": 21.098
+  }
+}</pre>
+      </div>
+      <div class="panel">
+        <h3>RIGHT (Modified)</h3>
+        <pre>{
+  "answers_blue_badge": {},
+  "answers_green_badge": {
+    "cooling": "ac",
+    "heating": "natgas"
+  },
+  "base_bldg_desc": {
+    "AC": 21.098
+  }
+}</pre>
+      </div>
+    </div>
+    
+    <div class="note">
+      <strong>Current Behavior:</strong> Line 3 on RIGHT has 2 extra lines.<br>
+      <strong>Expected Placeholders:</strong><br>
+      • LEFT line 3: <span class="placeholder">⟨ 2 lines added on right ⟩</span><br>
+      • The placeholder should be BETWEEN the opening brace of "answers_green_badge" and the next property
+    </div>
+  </div>
+
+  <div class="test-case">
+    <h2>Scenario 2: Array with Different Items</h2>
+    <div class="side-by-side">
+      <div class="panel">
+        <h3>LEFT</h3>
+        <pre>{
+  "users": [
+    {"id": 1, "name": "Alice"},
+    {"id": 2, "name": "Bob"}
+  ]
+}</pre>
+      </div>
+      <div class="panel">
+        <h3>RIGHT</h3>
+        <pre>{
+  "users": [
+    {"id": 1, "name": "Alice"},
+    {"id": 3, "name": "Charlie"}
+  ]
+}</pre>
+      </div>
+    </div>
+    
+    <div class="note">
+      <strong>Expected:</strong> Line 4 shows both a deletion (Bob) and insertion (Charlie).<br>
+      Should show placeholders on both sides at line 4.
+    </div>
+  </div>
+
+  <div class="test-case">
+    <h2>Line-by-Line Analysis</h2>
+    <table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%;">
+      <thead>
+        <tr>
+          <th>Line #</th>
+          <th>LEFT</th>
+          <th>RIGHT</th>
+          <th>Diff Type</th>
+          <th>Placeholder Location</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>{</td>
+          <td>{</td>
+          <td>Equal</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>"answers_blue_badge": {},</td>
+          <td>"answers_blue_badge": {},</td>
+          <td>Equal</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>"answers_green_badge": {},</td>
+          <td>"answers_green_badge": {</td>
+          <td>Different</td>
+          <td>Changed line</td>
+        </tr>
+        <tr style="background: #e3f5ef;">
+          <td>4</td>
+          <td><strong>[PLACEHOLDER]</strong></td>
+          <td>"cooling": "ac",</td>
+          <td>Insert</td>
+          <td>GREEN on LEFT</td>
+        </tr>
+        <tr style="background: #e3f5ef;">
+          <td>5</td>
+          <td><strong>[PLACEHOLDER]</strong></td>
+          <td>"heating": "natgas"</td>
+          <td>Insert</td>
+          <td>GREEN on LEFT</td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td>"base_bldg_desc": {</td>
+          <td>},</td>
+          <td>Different</td>
+          <td>Changed line</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <h3>Implementation Notes:</h3>
+    <p><strong>Current Algorithm:</strong> The diff works at the whole-line level. When comparing:</p>
+    <pre>"answers_green_badge": {}</pre>
+    <p>vs</p>
+    <pre>"answers_green_badge": {
+  "cooling": "ac",
+  "heating": "natgas"
+}</pre>
+    <p>The algorithm sees this as:</p>
+    <ul>
+      <li>Line 3 LEFT: <code>"answers_green_badge": {},</code></li>
+      <li>Line 3 RIGHT: <code>"answers_green_badge": {</code> (DIFFERENT)</li>
+      <li>Line 4 RIGHT: <code>  "cooling": "ac",</code> (INSERT)</li>
+      <li>Line 5 RIGHT: <code>  "heating": "natgas"</code> (INSERT)</li>
+      <li>Line 6 RIGHT: <code>},</code> (INSERT or context-dependent)</li>
+    </ul>
+    
+    <p><strong>Solution:</strong> The placeholder insertion should happen after detecting the closing brace difference. The algorithm correctly identifies 2 inserted lines and should place a 2-line placeholder on the left at line 4.</p>
+    
+    <p><strong>To verify:</strong> Open index-cm6.html, paste the above JSON, and check the browser console for the debug output showing placeholder positions.</p>
+  </div>
+
+  <h2>Quick Test Instructions</h2>
+  <ol>
+    <li>Copy LEFT JSON above</li>
+    <li>Open <code>index-cm6.html</code> in browser</li>
+    <li>Paste LEFT JSON into left panel</li>
+    <li>Paste RIGHT JSON into right panel</li>
+    <li>Open browser DevTools Console (F12)</li>
+    <li>Look for "📐 Block Alignment Computation" log group</li>
+    <li>Verify placeholders are being calculated correctly</li>
+    <li>Visually confirm hatched blocks appear in the editors</li>
+  </ol>
+</body>
+</html>
