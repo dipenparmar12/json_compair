@@ -200,6 +200,19 @@
         max-width: 100% !important;
       }
 
+      /* Word wrap specific styles */
+      .cm-mergeView .cm-line[style*="white-space: pre-wrap"] {
+        max-width: 100% !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+      }
+
+      /* No wrap mode - ensure horizontal scrolling */
+      .cm-mergeView .cm-line[style*="white-space: pre"] {
+        max-width: none; /* Allow line to extend for scrolling */
+        white-space: pre !important;
+      }
+
       /* Diff highlighting (similar to CM5 red/green scheme) */
       .cm-deletedChunk {
         background-color: #FFC4C1 !important;
@@ -309,6 +322,7 @@
       <div class="intro">
         <button id="btn-format">Format JSON</button>
         <button id="btn-sort">Sort Keys</button>
+        <button id="btn-word-wrap" class="active">📄 Word Wrap</button>
         <button id="btn-share">📋 Share URL</button>
         <button id="btn-import">Import Snapshot</button>
         <input type="file" id="file-import" accept=".gz,.gzip,application/gzip,application/octet-stream,.json" style="display: none" />
@@ -374,6 +388,13 @@
       } from "@codemirror/autocomplete";
       import { lintKeymap } from "@codemirror/lint";
 
+      // Import Compartment for dynamic configuration
+      import { Compartment } from "@codemirror/state";
+
+      // Word wrap compartment for dynamic reconfiguration
+      const wordWrapCompartment = new Compartment();
+      let wordWrapEnabled = true; // Default to enabled
+
       // Basic editor extensions for both sides
       const basicSetup = [
         lineNumbers(),
@@ -421,11 +442,11 @@
         mergeView = new MergeView({
           a: {
             doc: initialContent.left,
-            extensions: [basicSetup, json(), EditorView.lineWrapping],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(EditorView.lineWrapping)],
           },
           b: {
             doc: initialContent.right,
-            extensions: [basicSetup, json(), EditorView.lineWrapping],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(EditorView.lineWrapping)],
           },
           parent: container,
           highlightChanges: true,
@@ -593,6 +614,7 @@
       function setupButtons() {
         const btnFormat = document.getElementById("btn-format");
         const btnSort = document.getElementById("btn-sort");
+        const btnWordWrap = document.getElementById("btn-word-wrap");
         const btnShare = document.getElementById("btn-share");
         const btnImport = document.getElementById("btn-import");
         const fileImport = document.getElementById("file-import");
@@ -602,6 +624,29 @@
 
         btnFormat.onclick = formatJSON;
         btnSort.onclick = sortJSON;
+        
+        // Word wrap toggle
+        if (btnWordWrap) {
+          btnWordWrap.onclick = () => {
+            wordWrapEnabled = !wordWrapEnabled;
+            btnWordWrap.classList.toggle('active');
+            btnWordWrap.textContent = wordWrapEnabled ? '📄 Word Wrap' : '📏 No Wrap';
+            
+            // Update both editors simultaneously
+            const wrapExtension = wordWrapEnabled ? EditorView.lineWrapping : [];
+            
+            mergeView.a.dispatch({
+              effects: wordWrapCompartment.reconfigure(wrapExtension)
+            });
+            
+            mergeView.b.dispatch({
+              effects: wordWrapCompartment.reconfigure(wrapExtension)
+            });
+            
+            updateStatus(wordWrapEnabled ? 'Word wrap enabled' : 'Word wrap disabled');
+          };
+        }
+        
         btnShare.onclick = shareURL;
         
         // Import snapshot
