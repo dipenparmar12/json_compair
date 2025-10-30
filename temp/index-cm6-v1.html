@@ -144,7 +144,10 @@
       }
 
       .cm-mergeView .cm-mergeViewEditor {
-        flex: 1;
+        flex: 1 1 50%; /* Force equal 50% width for both panels */
+        min-width: 0; /* Allow flex shrinking below content size */
+        max-width: 50%; /* Prevent expanding beyond 50% */
+        width: 50%; /* Explicit width */
         border: 1px solid #ddd;
         border-radius: 4px;
         overflow: auto;
@@ -156,11 +159,17 @@
       .cm-mergeView .cm-editor {
         flex: 1;
         overflow: auto;
+        width: 100%; /* Force editor to fill parent width */
       }
 
       .cm-mergeView .cm-scroller {
         flex: 1;
         overflow: auto !important;
+        min-width: 0; /* Allow horizontal scrolling for long lines */
+      }
+
+      .cm-mergeView .cm-content {
+        min-width: fit-content; /* Allow content to expand within scroller */
       }
 
       /* Diff highlighting (similar to CM5 red/green scheme) */
