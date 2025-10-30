@@ -355,10 +355,50 @@ DIFF ALGORITHM:
 - Basic Dark - Custom dark theme
 - One Dark - Official CodeMirror One Dark theme
 
-Changes made:
+CHANGES MADE:
 1. Added @codemirror/theme-one-dark to import map
 2. Imported oneDark theme in script
 3. Updated theme selector with One Dark option
 4. Enhanced getThemeExtension() to support oneDark
 5. Updated theme name display in status messages
 6. All themes use Compartment for live switching (no page reload needed)
+
+CHANGES MADE:
+1. ✓ Theme selection feature implemented
+2. ✓ Added dedicated theme dropdown in toolbar (before Clear All button)
+3. ✓ Removed theme selector from settings panel
+4. ✓ Simplified to 4 working themes:
+   - Default (Light) 🎨
+   - Light ☀️
+   - Dark 🌙  
+   - One Dark 🌃
+5. ✓ Added baseFontTheme to normalize font sizes at 13px
+6. ✓ Theme persists to localStorage
+7. ✓ Live theme switching without page reload
+
+
+ADDED THEMES (11 total):
+
+Light Themes:
+✓ Default (Light) - CodeMirror's default
+✓ Basic Light - Custom minimal light theme
+✓ GitHub Light - GitHub's light theme
+✓ Solarized Light - Popular Solarized light
+
+Dark Themes:
+✓ Basic Dark - Custom minimal dark theme
+✓ One Dark - Official CodeMirror One Dark
+✓ GitHub Dark - GitHub's dark theme
+✓ Dracula - Popular Dracula theme
+✓ Nord - Nordic-inspired color scheme
+✓ Solarized Dark - Popular Solarized dark
+✓ VS Code Dark - VS Code's dark theme
+
+FEATURES:
+- Grouped themes (Light/Dark) for easy selection
+- Base font theme ensures consistent 13px sizing
+- All themes use Compartment for instant switching
+- Themes persist to localStorage
+- Scrollable settings panel supports long theme list
+
+The browser should refresh to load the new themes.

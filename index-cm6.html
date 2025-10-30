@@ -333,7 +333,7 @@
         </select>
         <div class="settings-dropdown" style="position: relative; display: inline-block;">
           <button id="btn-settings" style="font-size: 13px; font-weight: 400;">⚙️ Diff Settings</button>
-          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 16px; min-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 1000; margin-top: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;">
+          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 16px; min-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 1000; margin-top: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; max-height: calc(100vh - 100px); overflow-y: auto;">
             <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">EDITOR SETTINGS</div>
             
             <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
@@ -374,16 +374,6 @@
                 <div style="font-weight: 400; color: #222;">Auto Sort Keys</div>
                 <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically sort JSON keys on paste/drop</div>
               </div>
-            </label>
-            
-            <label style="display: flex; align-items: center; margin-bottom: 14px; padding: 6px; font-size: 12px; font-weight: 500; color: #222;">
-              Theme:
-              <select id="setting-theme" style="margin-left: 10px; flex: 1; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
-                <option value="default">Default (Light)</option>
-                <option value="light">Basic Light</option>
-                <option value="dark">Basic Dark</option>
-                <option value="oneDark">One Dark</option>
-              </select>
             </label>
             
             <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF VIEW SETTINGS</div>
@@ -440,6 +430,12 @@
             </label>
           </div>
         </div>
+        <select id="theme-selector" style="font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+          <option value="default">🎨 Default</option>
+          <option value="light">☀️ Light</option>
+          <option value="dark">🌙 Dark</option>
+          <option value="oneDark">🌃 One Dark</option>
+        </select>
         <button id="btn-clear-all" style="display: none">Clear All</button>
         <span style="margin-left: auto; font-size: 13px; color: #666">
           <strong style="margin-right: 10px;">JsonCompair</strong>
@@ -462,7 +458,10 @@
       import { EditorState } from "@codemirror/state";
       import { json } from "@codemirror/lang-json";
       import { MergeView } from "@codemirror/merge";
+      
+      // Import themes
       import { oneDark } from "@codemirror/theme-one-dark";
+      
       import {
         lineNumbers,
         highlightActiveLineGutter,
@@ -680,8 +679,9 @@
         // Update diff status initially
         updateDiffStatus();
         
-        // Initialize settings panel
+        // Initialize settings panel and theme selector
         initializeSettingsPanel();
+        initializeThemeSelector();
       }
 
       // Load merge settings from localStorage
@@ -705,7 +705,6 @@
         const settings = loadMergeSettings();
         document.getElementById('setting-word-wrap').checked = wordWrapEnabled;
         document.getElementById('setting-scroll-lock').checked = scrollLocked;
-        document.getElementById('setting-theme').value = currentTheme;
         document.getElementById('setting-highlight-changes').checked = settings.highlightChanges;
         document.getElementById('setting-gutter').checked = settings.gutter;
         document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
@@ -729,13 +728,19 @@
         // Add live change listeners to all settings
         document.getElementById('setting-word-wrap').addEventListener('change', applyWordWrap);
         document.getElementById('setting-scroll-lock').addEventListener('change', applyScrollLock);
-        document.getElementById('setting-theme').addEventListener('change', applyTheme);
         document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-collapse-unchanged').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
+      }
+
+      // Initialize theme selector (separate from settings panel)
+      function initializeThemeSelector() {
+        const themeSelector = document.getElementById('theme-selector');
+        themeSelector.value = currentTheme;
+        themeSelector.addEventListener('change', applyTheme);
       }
 
       // Apply word wrap setting (live, no recreation needed)
@@ -765,7 +770,7 @@
 
       // Apply theme setting (live, no recreation needed)
       function applyTheme() {
-        currentTheme = document.getElementById('setting-theme').value;
+        currentTheme = document.getElementById('theme-selector').value;
         SettingsManager.set('theme', currentTheme);
         
         const themeExtension = getThemeExtension(currentTheme);
@@ -780,8 +785,8 @@
         
         const themeNames = { 
           default: 'Default', 
-          light: 'Basic Light', 
-          dark: 'Basic Dark',
+          light: 'Light', 
+          dark: 'Dark',
           oneDark: 'One Dark'
         };
         updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
