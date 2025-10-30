@@ -194,6 +194,13 @@
       showOnlyDiffs: false,
       wordWrap: true,       // Default word wrap enabled
       scrollLock: true,     // Default scroll lock enabled
+      // Merge view settings
+      highlightChanges: true,
+      gutter: true,
+      collapseUnchanged: false,
+      orientation: "a-b",
+      revertControls: "none",
+      scanLimit: 500,
     },
 
     loadAll: function () {

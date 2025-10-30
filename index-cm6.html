@@ -331,6 +331,56 @@
           <option value="simple">Simple Template</option>
           <option value="complex">Complex Template</option>
         </select>
+        <div class="settings-dropdown" style="position: relative; display: inline-block;">
+          <button id="btn-settings" style="font-size: 13px;">⚙️ Diff Settings</button>
+          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 12px; min-width: 280px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; margin-top: 4px;">
+            <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee;">Merge View Settings</div>
+            
+            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+              <input type="checkbox" id="setting-highlight-changes" checked /> Highlight Changes
+              <div style="color: #666; font-size: 11px; margin-left: 20px;">Show character-level diffs in chunks</div>
+            </label>
+            
+            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+              <input type="checkbox" id="setting-gutter" checked /> Show Gutter Markers
+              <div style="color: #666; font-size: 11px; margin-left: 20px;">Display markers next to changed lines</div>
+            </label>
+            
+            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+              <input type="checkbox" id="setting-collapse-unchanged" /> Collapse Unchanged
+              <div style="color: #666; font-size: 11px; margin-left: 20px;">Fold long sections of identical lines</div>
+            </label>
+            
+            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+              Orientation:
+              <select id="setting-orientation" style="margin-left: 8px; font-size: 11px; padding: 2px 4px;">
+                <option value="a-b">A-B (Left-Right)</option>
+                <option value="b-a">B-A (Right-Left)</option>
+              </select>
+            </label>
+            
+            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+              Revert Controls:
+              <select id="setting-revert-controls" style="margin-left: 8px; font-size: 11px; padding: 2px 4px;">
+                <option value="none">None</option>
+                <option value="a-to-b">A → B</option>
+                <option value="b-to-a">B → A</option>
+              </select>
+            </label>
+            
+            <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; font-weight: bold; margin-bottom: 8px;">Diff Algorithm</div>
+            
+            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+              Scan Limit:
+              <input type="number" id="setting-scan-limit" value="500" min="100" max="10000" step="100" style="width: 80px; margin-left: 8px; font-size: 11px; padding: 2px 4px;" />
+              <div style="color: #666; font-size: 11px; margin-left: 20px;">Max characters to scan (higher = slower)</div>
+            </label>
+            
+            <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee;">
+              <button id="btn-apply-settings" style="width: 100%; background: #08c988; color: white; border: none; padding: 6px; border-radius: 3px; cursor: pointer; font-size: 12px;">Apply Settings</button>
+            </div>
+          </div>
+        </div>
         <label style="margin-left: 10px; font-size: 13px;">
           <input type="checkbox" id="auto-csv-conversion" /> Auto CSV→JSON
         </label>
@@ -448,6 +498,9 @@
 
       // Initialize the application
       function initializeApp() {
+        // Load saved merge settings
+        const mergeSettings = loadMergeSettings();
+        
         // Load content from URL parameters first, then from storage, then use defaults
         const urlContent = URLManager.loadFromURL();
         const savedContent = StorageManager.loadFromStorage();
@@ -456,8 +509,7 @@
         // Create merge view container
         const container = document.getElementById("view-container");
 
-        // Create merge view with CodeMirror 6
-        // Use 'connect: "align"' to show empty placeholder blocks for unmatched chunks
+        // Create merge view with CodeMirror 6 using saved settings
         mergeView = new MergeView({
           a: {
             doc: initialContent.left,
@@ -468,18 +520,16 @@
             extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
           },
           parent: container,
-          // Align matching lines and leave empty blocks for unmatched chunks (Git-like split view)
+          // Apply saved merge settings
+          orientation: mergeSettings.orientation,
           connect: "align",
-          // Keep identical lines visible so placeholders show in context
           collapseIdentical: false,
-          // Highlight differences at character-level when possible
-          highlightDifferences: true,
-          // Show gutter markers
-          gutter: true,
-          // Allow editing both sides
+          highlightChanges: mergeSettings.highlightChanges,
+          gutter: mergeSettings.gutter,
           allowEditingOriginals: true,
-          // Orientation a-b (left vs right)
-          orientation: "a-b",
+          revertControls: mergeSettings.revertControls === "none" ? undefined : mergeSettings.revertControls,
+          collapseUnchanged: mergeSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
+          diffConfig: { scanLimit: mergeSettings.scanLimit },
         });
 
         // Add per-pane control buttons
@@ -501,6 +551,116 @@
         }
 
         // Update diff status initially
+        updateDiffStatus();
+        
+        // Initialize settings panel
+        initializeSettingsPanel();
+      }
+
+      // Load merge settings from localStorage
+      function loadMergeSettings() {
+        return {
+          highlightChanges: SettingsManager.get('highlightChanges'),
+          gutter: SettingsManager.get('gutter'),
+          collapseUnchanged: SettingsManager.get('collapseUnchanged'),
+          orientation: SettingsManager.get('orientation'),
+          revertControls: SettingsManager.get('revertControls'),
+          scanLimit: SettingsManager.get('scanLimit'),
+        };
+      }
+
+      // Initialize settings panel
+      function initializeSettingsPanel() {
+        const btnSettings = document.getElementById('btn-settings');
+        const settingsPanel = document.getElementById('settings-panel');
+        const btnApplySettings = document.getElementById('btn-apply-settings');
+        
+        // Load current settings into UI
+        const settings = loadMergeSettings();
+        document.getElementById('setting-highlight-changes').checked = settings.highlightChanges;
+        document.getElementById('setting-gutter').checked = settings.gutter;
+        document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
+        document.getElementById('setting-orientation').value = settings.orientation;
+        document.getElementById('setting-revert-controls').value = settings.revertControls;
+        document.getElementById('setting-scan-limit').value = settings.scanLimit;
+        
+        // Toggle panel visibility
+        btnSettings.addEventListener('click', (e) => {
+          e.stopPropagation();
+          settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+        });
+        
+        // Close panel when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!settingsPanel.contains(e.target) && e.target !== btnSettings) {
+            settingsPanel.style.display = 'none';
+          }
+        });
+        
+        // Apply settings button
+        btnApplySettings.addEventListener('click', () => {
+          applyMergeSettings();
+          settingsPanel.style.display = 'none';
+        });
+      }
+
+      // Apply merge settings and recreate merge view
+      function applyMergeSettings() {
+        // Get current settings from UI
+        const newSettings = {
+          highlightChanges: document.getElementById('setting-highlight-changes').checked,
+          gutter: document.getElementById('setting-gutter').checked,
+          collapseUnchanged: document.getElementById('setting-collapse-unchanged').checked,
+          orientation: document.getElementById('setting-orientation').value,
+          revertControls: document.getElementById('setting-revert-controls').value,
+          scanLimit: parseInt(document.getElementById('setting-scan-limit').value, 10),
+        };
+        
+        // Save to localStorage
+        SettingsManager.set('highlightChanges', newSettings.highlightChanges);
+        SettingsManager.set('gutter', newSettings.gutter);
+        SettingsManager.set('collapseUnchanged', newSettings.collapseUnchanged);
+        SettingsManager.set('orientation', newSettings.orientation);
+        SettingsManager.set('revertControls', newSettings.revertControls);
+        SettingsManager.set('scanLimit', newSettings.scanLimit);
+        
+        // Get current content
+        const leftContent = mergeView.a.state.doc.toString();
+        const rightContent = mergeView.b.state.doc.toString();
+        
+        // Destroy existing merge view
+        const container = document.getElementById("view-container");
+        container.innerHTML = '';
+        
+        // Recreate merge view with new settings
+        mergeView = new MergeView({
+          a: {
+            doc: leftContent,
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
+          },
+          b: {
+            doc: rightContent,
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
+          },
+          parent: container,
+          orientation: newSettings.orientation,
+          connect: "align",
+          collapseIdentical: false,
+          highlightChanges: newSettings.highlightChanges,
+          gutter: newSettings.gutter,
+          allowEditingOriginals: true,
+          revertControls: newSettings.revertControls === "none" ? undefined : newSettings.revertControls,
+          collapseUnchanged: newSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
+          diffConfig: { scanLimit: newSettings.scanLimit },
+        });
+        
+        // Re-add pane controls
+        addPaneControls();
+        
+        // Re-setup synchronized scrolling
+        setupSynchronizedScrolling();
+        
+        updateStatus('Settings applied successfully');
         updateDiffStatus();
       }
 
