@@ -340,9 +340,14 @@
               <div style="color: #666; font-size: 11px; margin-left: 20px;">Wrap long lines to fit editor width</div>
             </label>
             
-            <label style="display: block; margin-bottom: 12px; font-size: 12px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
               <input type="checkbox" id="setting-scroll-lock" checked /> Synchronized Scrolling
               <div style="color: #666; font-size: 11px; margin-left: 20px;">Lock scroll between left and right panels</div>
+            </label>
+            
+            <label style="display: block; margin-bottom: 12px; font-size: 12px;">
+              <input type="checkbox" id="auto-csv-conversion" /> Auto CSV→JSON
+              <div style="color: #666; font-size: 11px; margin-left: 20px;">Automatically convert CSV to JSON on paste/drop</div>
             </label>
             
             <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 8px; padding-top: 8px; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">Diff View Settings</div>
@@ -388,9 +393,6 @@
             </label>
           </div>
         </div>
-        <label style="margin-left: 10px; font-size: 13px;">
-          <input type="checkbox" id="auto-csv-conversion" /> Auto CSV→JSON
-        </label>
         <button id="btn-clear-all" style="display: none">Clear All</button>
         <span style="margin-left: auto; font-size: 13px; color: #666">
           <strong style="margin-right: 10px;">JsonCompair</strong>

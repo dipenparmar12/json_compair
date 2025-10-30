@@ -190,7 +190,8 @@
     KEY: "json_compair_settings",
     defaults: {
       autoCsv: false,
-      autoSortOnPaste: true,
+      autoFormatJson: true,     // Auto-format JSON on paste/drop
+      autoSortKeys: false,      // Auto-sort keys on paste/drop
       showOnlyDiffs: false,
       wordWrap: true,       // Default word wrap enabled
       scrollLock: true,     // Default scroll lock enabled
