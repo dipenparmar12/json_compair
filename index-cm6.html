@@ -439,6 +439,7 @@
         const container = document.getElementById("view-container");
 
         // Create merge view with CodeMirror 6
+        // Use 'connect: "align"' to show empty placeholder blocks for unmatched chunks
         mergeView = new MergeView({
           a: {
             doc: initialContent.left,
@@ -449,8 +450,17 @@
             extensions: [basicSetup, json(), wordWrapCompartment.of(EditorView.lineWrapping)],
           },
           parent: container,
-          highlightChanges: true,
+          // Align matching lines and leave empty blocks for unmatched chunks (Git-like split view)
+          connect: "align",
+          // Keep identical lines visible so placeholders show in context
+          collapseIdentical: false,
+          // Highlight differences at character-level when possible
+          highlightDifferences: true,
+          // Show gutter markers
           gutter: true,
+          // Allow editing both sides
+          allowEditingOriginals: true,
+          // Orientation a-b (left vs right)
           orientation: "a-b",
         });
 
