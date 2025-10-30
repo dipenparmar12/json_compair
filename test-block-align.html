@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Block Alignment Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #test-results { margin-top: 20px; }
+    .test-case { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; }
+    .pass { background: #d4edda; }
+    .fail { background: #f8d7da; }
+  </style>
+</head>
+<body>
+  <h1>Block Alignment Test</h1>
+  <p>Testing the line diff placeholder algorithm...</p>
+  
+  <div id="test-results"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.min.js"></script>
+  <script>
+    // Copy the algorithm from index-cm6.html
+    function computeLineDiffPlaceholders(leftText, rightText) {
+      // Split into lines for comparison
+      const leftLines = leftText.split('\n');
+      const rightLines = rightText.split('\n');
+      
+      const dmp = new diff_match_patch();
+      
+      // Create line-based diff using a simpler approach
+      const lineToChar = new Map();
+      const charToLine = [];
+      let nextChar = 0;
+      
+      function getChar(line) {
+        if (!lineToChar.has(line)) {
+          lineToChar.set(line, String.fromCharCode(nextChar++));
+          charToLine.push(line);
+        }
+        return lineToChar.get(line);
+      }
+      
+      const leftChars = leftLines.map(getChar).join('');
+      const rightChars = rightLines.map(getChar).join('');
+      
+      const diffs = dmp.diff_main(leftChars, rightChars, false);
+      dmp.diff_cleanupSemantic(diffs);
+      
+      let leftLine = 1;
+      let rightLine = 1;
+      const leftPlaceholders = [];
+      const rightPlaceholders = [];
+
+      for (const [op, chars] of diffs) {
+        const lineCount = chars.length;
+        
+        if (op === 0) { // DIFF_EQUAL
+          leftLine += lineCount;
+          rightLine += lineCount;
+        } else if (op === -1) { // DIFF_DELETE
+          if (lineCount > 0) {
+            rightPlaceholders.push({ line: rightLine, count: lineCount });
+          }
+          leftLine += lineCount;
+        } else if (op === 1) { // DIFF_INSERT
+          if (lineCount > 0) {
+            leftPlaceholders.push({ line: leftLine, count: lineCount });
+          }
+          rightLine += lineCount;
+        }
+      }
+
+      return { leftPlaceholders, rightPlaceholders };
+    }
+
+    // Test cases
+    const tests = [
+      {
+        name: "Simple deletion",
+        left: '{\n  "a": 1,\n  "b": 2,\n  "c": 3\n}',
+        right: '{\n  "a": 1,\n  "c": 3\n}',
+        expectedLeft: [],
+        expectedRight: [{ line: 2, count: 1 }]
+      },
+      {
+        name: "Simple addition",
+        left: '{\n  "a": 1,\n  "c": 3\n}',
+        right: '{\n  "a": 1,\n  "b": 2,\n  "c": 3\n}',
+        expectedLeft: [{ line: 2, count: 1 }],
+        expectedRight: []
+      },
+      {
+        name: "Object array change",
+        left: '[\n  {"id": 1},\n  {"id": 2}\n]',
+        right: '[\n  {"id": 1},\n  {"id": 3}\n]',
+        expectedLeft: [{ line: 3, count: 1 }],
+        expectedRight: [{ line: 3, count: 1 }]
+      }
+    ];
+
+    const resultsDiv = document.getElementById('test-results');
+    
+    tests.forEach(test => {
+      const result = computeLineDiffPlaceholders(test.left, test.right);
+      const leftMatch = JSON.stringify(result.leftPlaceholders) === JSON.stringify(test.expectedLeft);
+      const rightMatch = JSON.stringify(result.rightPlaceholders) === JSON.stringify(test.expectedRight);
+      const passed = leftMatch && rightMatch;
+      
+      const div = document.createElement('div');
+      div.className = 'test-case ' + (passed ? 'pass' : 'fail');
+      div.innerHTML = `
+        <strong>${test.name}</strong>: ${passed ? '✓ PASS' : '✗ FAIL'}<br>
+        Left placeholders: ${JSON.stringify(result.leftPlaceholders)}<br>
+        Right placeholders: ${JSON.stringify(result.rightPlaceholders)}<br>
+        Expected left: ${JSON.stringify(test.expectedLeft)}<br>
+        Expected right: ${JSON.stringify(test.expectedRight)}
+      `;
+      resultsDiv.appendChild(div);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Block Alignment Demo</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    h1 { color: #333; }
+    .demo-section {
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+    .demo-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #08c988;
+    }
+    .code-block {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      white-space: pre;
+      margin: 10px 0;
+      overflow-x: auto;
+    }
+    .comparison {
+      display: flex;
+      gap: 20px;
+      margin-top: 10px;
+    }
+    .panel {
+      flex: 1;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+    }
+    .panel-label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #666;
+    }
+    .note {
+      background: #fff9e6;
+      border-left: 4px solid #ffc107;
+      padding: 10px;
+      margin: 10px 0;
+    }
+    .feature-list {
+      list-style: none;
+      padding: 0;
+    }
+    .feature-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .feature-list li:before {
+      content: "✓ ";
+      color: #08c988;
+      font-weight: bold;
+      margin-right: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔲 Block Alignment Feature Demo</h1>
+  <p><em>Git-style split diff with empty placeholder blocks</em></p>
+
+  <div class="demo-section">
+    <div class="demo-title">📦 What is Block Alignment?</div>
+    <p>Block alignment shows empty hatched placeholder blocks where content differs between the left and right panels. This keeps lines perfectly aligned vertically, just like GitHub's split diff view.</p>
+    
+    <ul class="feature-list">
+      <li>Red hatched blocks on the right = Lines deleted from left</li>
+      <li>Green hatched blocks on the left = Lines added on right</li>
+      <li>Maintains perfect vertical alignment for easy comparison</li>
+      <li>Works with JSON objects, arrays, and all text formats</li>
+    </ul>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">Example 1: Object Property Deletion</div>
+    <div class="comparison">
+      <div class="panel">
+        <div class="panel-label">LEFT (Original)</div>
+        <div class="code-block">{
+  "name": "Alice",
+  "age": 30,
+  "city": "NYC",
+  "email": "alice@example.com"
+}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-label">RIGHT (Modified)</div>
+        <div class="code-block">{
+  "name": "Alice",
+  <span style="background: #ffe5e3; padding: 2px;">[PLACEHOLDER: 1 line deleted]</span>
+  "city": "NYC",
+  "email": "alice@example.com"
+}</div>
+      </div>
+    </div>
+    <div class="note">
+      <strong>Result:</strong> The "age" line is deleted. The right side shows a hatched placeholder block at line 3 to keep alignment.
+    </div>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">Example 2: Array Item Addition</div>
+    <div class="comparison">
+      <div class="panel">
+        <div class="panel-label">LEFT (Original)</div>
+        <div class="code-block">{
+  "users": [
+    {"id": 1, "name": "Alice"},
+    <span style="background: #e3f5ef; padding: 2px;">[PLACEHOLDER: 1 line added]</span>
+    {"id": 3, "name": "Charlie"}
+  ]
+}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-label">RIGHT (Modified)</div>
+        <div class="code-block">{
+  "users": [
+    {"id": 1, "name": "Alice"},
+    {"id": 2, "name": "Bob"},
+    {"id": 3, "name": "Charlie"}
+  ]
+}</div>
+      </div>
+    </div>
+    <div class="note">
+      <strong>Result:</strong> A new user "Bob" is added. The left side shows a green hatched placeholder to keep row 4 aligned.
+    </div>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">Example 3: Complex Object Changes</div>
+    <div class="comparison">
+      <div class="panel">
+        <div class="panel-label">LEFT (Original)</div>
+        <div class="code-block">{
+  "answers_blue_badge": {},
+  "answers_green_badge": {},
+  "answers_merged": {},
+  "base_bldg_desc": {
+    "AC installed kbtuh": 21.098
+  }
+}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-label">RIGHT (Modified)</div>
+        <div class="code-block">{
+  "answers_blue_badge": {},
+  "answers_green_badge": {
+    "cooling": "cooling-ac-conventional",
+    "heating": "heating-furnace-natgas",
+    "version": 3
+  },
+  "answers_merged": {
+    "cooling": "cooling-ac-conventional",
+    "heating": "heating-furnace-natgas"
+  },
+  "base_bldg_desc": {
+    "AC installed kbtuh": 21.098
+  }
+}</div>
+      </div>
+    </div>
+    <div class="note">
+      <strong>Result:</strong> The green_badge and merged objects now have content. The left side shows green hatched placeholders for the 7 new lines, keeping everything aligned.
+    </div>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">🎯 How to Use</div>
+    <ol>
+      <li>Open <code>index-cm6.html</code> in your browser</li>
+      <li>Paste different JSON in the left and right panels</li>
+      <li>The "🔲 Block Align" button is active by default (green)</li>
+      <li>See hatched blocks appear where content differs</li>
+      <li>Click the button to toggle between:
+        <ul>
+          <li><strong>🔲 Block Align</strong> - Git-style with placeholders</li>
+          <li><strong>📊 Line-by-Line</strong> - Standard diff without placeholders</li>
+        </ul>
+      </li>
+    </ol>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">⚙️ Technical Implementation</div>
+    <p><strong>Algorithm:</strong></p>
+    <ol>
+      <li>Split both documents into lines</li>
+      <li>Convert each unique line to a character for efficient diffing</li>
+      <li>Use diff_match_patch to compute character-level differences</li>
+      <li>For each DELETE operation: insert placeholder on right side</li>
+      <li>For each INSERT operation: insert placeholder on left side</li>
+      <li>Use CodeMirror 6 decorations/widgets to render hatched blocks</li>
+    </ol>
+    
+    <p><strong>Features:</strong></p>
+    <ul class="feature-list">
+      <li>Debounced updates for performance during typing</li>
+      <li>Dynamic reconfiguration using Compartments</li>
+      <li>Line height calculation for accurate spacing</li>
+      <li>Side-specific styling (red for deletions, green for additions)</li>
+      <li>Error handling with graceful fallback</li>
+      <li>Debug logging in console for troubleshooting</li>
+    </ul>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-title">🎨 Visual Design</div>
+    <p>Placeholder blocks use:</p>
+    <ul class="feature-list">
+      <li>Diagonal stripe pattern (45° hatching) for clear visual distinction</li>
+      <li>Color-coded borders: red for deletions, green for additions</li>
+      <li>Centered labels showing line count and change type</li>
+      <li>Semi-transparent background to not distract from content</li>
+      <li>Smooth shadows for depth perception</li>
+    </ul>
+  </div>
+
+  <div class="note">
+    <strong>💡 Pro Tip:</strong> This feature is essential for comparing JSON API responses, configuration files, and database dumps where understanding the exact structural differences is critical.
+  </div>
+</body>
+</html>
