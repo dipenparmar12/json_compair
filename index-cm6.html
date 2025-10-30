@@ -386,10 +386,6 @@
               <input type="number" id="setting-scan-limit" value="500" min="100" max="10000" step="100" style="width: 80px; margin-left: 8px; font-size: 11px; padding: 2px 4px;" />
               <div style="color: #666; font-size: 11px; margin-left: 20px;">Max characters to scan (higher = slower)</div>
             </label>
-            
-            <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee;">
-              <button id="btn-apply-settings" style="width: 100%; background: #08c988; color: white; border: none; padding: 6px; border-radius: 3px; cursor: pointer; font-size: 12px;">Apply Settings</button>
-            </div>
           </div>
         </div>
         <label style="margin-left: 10px; font-size: 13px;">
@@ -584,7 +580,6 @@
       function initializeSettingsPanel() {
         const btnSettings = document.getElementById('btn-settings');
         const settingsPanel = document.getElementById('settings-panel');
-        const btnApplySettings = document.getElementById('btn-apply-settings');
         
         // Load current settings into UI
         const settings = loadMergeSettings();
@@ -610,11 +605,40 @@
           }
         });
         
-        // Apply settings button
-        btnApplySettings.addEventListener('click', () => {
-          applyMergeSettings();
-          settingsPanel.style.display = 'none';
+        // Add live change listeners to all settings
+        document.getElementById('setting-word-wrap').addEventListener('change', applyWordWrap);
+        document.getElementById('setting-scroll-lock').addEventListener('change', applyScrollLock);
+        document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-collapse-unchanged').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
+      }
+
+      // Apply word wrap setting (live, no recreation needed)
+      function applyWordWrap() {
+        wordWrapEnabled = document.getElementById('setting-word-wrap').checked;
+        SettingsManager.set('wordWrap', wordWrapEnabled);
+        
+        const wrapExtension = wordWrapEnabled ? EditorView.lineWrapping : [];
+        
+        mergeView.a.dispatch({
+          effects: wordWrapCompartment.reconfigure(wrapExtension)
         });
+        
+        mergeView.b.dispatch({
+          effects: wordWrapCompartment.reconfigure(wrapExtension)
+        });
+        
+        updateStatus(wordWrapEnabled ? 'Word wrap enabled' : 'Word wrap disabled');
+      }
+
+      // Apply scroll lock setting (live, no recreation needed)
+      function applyScrollLock() {
+        scrollLocked = document.getElementById('setting-scroll-lock').checked;
+        SettingsManager.set('scrollLock', scrollLocked);
+        updateStatus(scrollLocked ? 'Scroll lock enabled' : 'Scroll lock disabled');
       }
 
       // Apply merge settings and recreate merge view

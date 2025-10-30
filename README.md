@@ -319,6 +319,7 @@ DIFF VIEW SETTINGS:
 DIFF ALGORITHM:
 - Scan Limit (100-10000 characters)
 
+✅ All settings now apply INSTANTLY on change
 ✅ All settings persist in localStorage
 ✅ Content auto-saves on all document changes
 ✅ Settings panel auto-closes when clicking outside
