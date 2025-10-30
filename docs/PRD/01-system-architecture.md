@@ -25,21 +25,19 @@ JSON Compare Tool is a client-side-only web application designed for comparing, 
 - **`large_json_helpers.js`**: Performance optimization for large data processing
 
 ### 3. UI Components & Styling
-- **TailwindCSS 3.3.6**: Utility-first CSS framework for consistent, responsive UI design
-  - CDN delivery with offline fallback (css/offline/tailwindcss_3.3.6.css)
-  - Custom components built on Tailwind utilities (diff highlighting, JSON syntax)
-  - Dark mode support with 'dark:' variant classes
+- **Custom CSS**: Application-specific styles in `css/app.css` and `css/ccsiteV6.css`
+  - Custom diff highlighting colors (red/green scheme)
+  - Responsive layouts and mobile support
+- **CodeMirror Styles**: Base styles from library plus custom overrides in `css/merge-custom.css`
 - **`js/button-events.js`**: File upload handlers and UI interaction management
-- **Custom CSS Components**: Diff visualization, syntax highlighting, responsive layouts
-- **Dynamic Controls**: JavaScript-generated UI elements using Tailwind utility classes
+- **Dynamic Controls**: JavaScript-generated UI elements with custom styling
 
 ### 4. Third-Party Integration
-- **TailwindCSS 3.3.6**: Primary styling framework (CDN + offline fallback)
-- **CodeMirror 5.65.3**: Text editor with syntax highlighting and merge view (CDN + offline fallback)
-- **diff_match_patch**: Google's difference calculation library (CDN + offline fallback)
-- **Pako 2.1.0**: Client-side gzip compression for URL sharing (CDN + offline fallback)
-- **PapaParse 5.4.1**: High-performance CSV parsing (CDN + offline fallback)
-- **Oboe 2.1.5**: Streaming JSON parser for large files (optional)
+- **CodeMirror 5.65.20**: Text editor with syntax highlighting and merge view (latest stable v5, October 2025)
+- **diff_match_patch**: Google's difference calculation library (latest version)
+- **Pako 2.1.0**: Client-side gzip compression for URL sharing (with SRI security)
+- **PapaParse 5.4.1**: High-performance CSV parsing (with SRI security)
+- **Oboe 2.1.5**: Streaming JSON parser for large files (with SRI security)
 
 ## Data Flow Architecture
 
@@ -120,9 +118,10 @@ JSON Compare Tool is a client-side-only web application designed for comparing, 
 ## Integration Points
 
 ### 1. External Libraries
-- **CDN Dependencies**: Reliable fallback to local copies
-- **Version Pinning**: Specific versions for stability
-- **License Compliance**: All libraries use permissive licenses
+- **CDN Dependencies**: Core libraries loaded from CDN with SRI integrity hashes
+- **Local Copies**: All dependencies available locally for offline use
+- **Version Pinning**: Specific versions for stability (updated October 2025)
+- **License Compliance**: All libraries use permissive licenses (MIT, Apache, BSD)
 
 ### 2. Browser APIs
 - **File API**: File upload and download capabilities

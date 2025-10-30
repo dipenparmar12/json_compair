@@ -46,7 +46,7 @@ Complete documentation of utility modules:
 
 ### [04-library-dependencies.md](04-library-dependencies.md)
 Comprehensive analysis of third-party dependencies:
-- CodeMirror 5.65.3 text editor integration
+- CodeMirror 5.65.20 text editor integration (latest stable v5, October 2025)
 - Google's diff_match_patch algorithm
 - Pako 2.1.0 compression library
 - Optional PapaParse and Oboe libraries
@@ -103,7 +103,7 @@ Comprehensive CSV to JSON conversion with Python literal support:
 
 ### Core Technologies
 - **Frontend**: Vanilla JavaScript (ES6+), HTML5, CSS3
-- **Text Editor**: CodeMirror 5.65.3 with merge view
+- **Text Editor**: CodeMirror 5.65.20 with merge view (latest stable v5)
 - **Diff Engine**: Google's diff_match_patch library
 - **Compression**: Pako 2.1.0 for gzip compression
 - **CSV Processing**: Custom parser with PapaParse fallback
