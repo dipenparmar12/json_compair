@@ -402,3 +402,80 @@ FEATURES:
 - Scrollable settings panel supports long theme list
 
 The browser should refresh to load the new themes.
+
+---
+
+FILE CHANGES:
+✅ index.html (was index-cm6.html) - Now the DEFAULT version (CodeMirror 6)
+✅ index-v5.html (was index.html) - CodeMirror 5 version with full offline support
+
+VERSION SWITCHER LINKS ADDED:
+1️⃣ index.html header:
+   - Link to '↩️ CodeMirror v5' (gray button style)
+   
+2️⃣ index-v5.html header:
+   - Link to '✨ Try CodeMirror v6' (green button style)
+
+KEY DIFFERENCES:
+📦 index.html (v6):
+   - Modern CodeMirror 6
+   - Theme support (Default, Light, Dark, One Dark)
+   - Requires internet (uses CDN)
+   - Better performance & features
+   
+📦 index-v5.html (v5):
+   - Stable CodeMirror 5
+   - Fully offline-capable
+   - All local files in js/
+   - Legacy but reliable
+
+The new setup allows users to choose based on their needs:
+- Want themes & modern features → use index.html
+- Need offline or stable version → use index-v5.html
+
+---
+
+CHANGES:
+✅ index.html (v6):
+   - Moved '↩️ v5' link to END of header (after GitHub link)
+   - Used flexbox to properly align items
+   - Shortened text to 'v5' to save space
+
+✅ index-v5.html:
+   - Moved '✨ Try v6' link to separate line below controls
+   - Reduced size (11px font, 3px padding) to minimize header height impact
+   - Shorter text 'Try v6' instead of 'Try CodeMirror v6'
+
+LAYOUT:
+v6: [Buttons] [Theme] [Clear All] → [margin-left: auto] → [JsonCompair] [GitHub] [↩️ v5]
+v5: [Format button]
+    [✨ Try v6] ← small, separate line
+
+
+✅ FINAL CONFIGURATION:
+
+📄 index.html (v6 - DEFAULT):
+   - CodeMirror 6 with theme support
+   - Header: [Buttons] [Theme] → [JsonCompair] [GitHub] [↩️ v5]
+   - Requires internet (CDN-based)
+   
+📄 index-v5.html (v5 - OFFLINE):
+   - CodeMirror 5 with full offline support
+   - Footer: 'Found X differences [✨ Try v6]'
+   - Fully offline capable
+
+🎨 THEMES (v6):
+   - Default (Light) 🎨
+   - Light ☀️
+   - Dark 🌙
+   - One Dark 🌃
+
+💾 FEATURES:
+   ✓ Settings persist to localStorage
+   ✓ Content auto-saves with 300ms debounce
+   ✓ Live theme switching (no reload)
+   ✓ Smart button visibility
+   ✓ Placeholders for empty editors
+   ✓ Auto-format & auto-sort options
+   ✓ Scrollable settings panel
+   ✓ Version switcher links

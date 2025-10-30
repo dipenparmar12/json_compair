@@ -3,21 +3,10 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="theme-color" content="#08C988" />
-    <meta property="og:locale" content="en_US" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Online Text Compare" />
-    <title>Compare JSON files online</title>
+    <title>Compare JSON files online - CodeMirror 6</title>
     <meta
       name="Description"
-      content="FREE two-way JSON format, diff and merge tool. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser"
-    />
-    <meta
-      name="keywords"
-      content="Online JSON Compare - Format and find differences between two JSON files"
-    />
-    <link
-      rel="canonical"
-      href="https://dipenparmar12.github.io/json_compair/"
+      content="FREE two-way JSON format, diff and merge tool with CodeMirror 6"
     />
     <meta
       name="viewport"
@@ -25,1293 +14,663 @@
     />
     <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
     <link rel="stylesheet" href="./css/ccsiteV6.css" />
-    <!-- CodeMirror 5.65.20 (latest stable v5, Oct 2025) -->
-    <link rel="stylesheet" type="text/css" href="./css/codemirror.css" />
-    <link rel="stylesheet" type="text/css" href="./css/merge.css" />
-    <!-- Custom merge view styles - loaded after base merge.css -->
-    <link rel="stylesheet" type="text/css" href="./css/merge-custom.css" />
     <link rel="stylesheet" type="text/css" href="./css/app.css" />
-    <!-- CodeMirror 5.65.20 core and addons -->
-    <script src="./js/codemirror.js"></script>
-    <!-- diff-match-patch (latest from jsDelivr) -->
-    <script src="./js/diff_match_patch.js"></script>
-    <!-- CodeMirror 5.65.20 merge addon -->
-    <script src="./js/merge.js"></script>
-    <!-- CodeMirror 5.65.20 JavaScript mode -->
-    <script src="./js/javascript.js"></script>
+
     <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-giedl6V2CsRUwviHqAInbg+h/aNVr2gn3//FaTWUDPv6d3Pv2wvPWiMKV71RvdMGHE3OcQP9qFLOKD+ZntBdlw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="./utils.js"></script>
-  <script src="./json_utils.js"></script>
-  <script src="./utils_csv.js"></script>
-  <script src="./js/large_json_helpers.js"></script>
-    <!-- Optional: PapaParse (CSV) and Oboe (streaming JSON).
-         We try to load from CDN for convenience; you should download and save
-         these files into ./js/ (papaparse.min.js and oboe-browser.min.js) for offline use.
-    -->
-    <script>
-      // Dynamically inject CDN scripts but allow local copies to be used if present
-      (function(){
-        function loadOnce(src, localPath, integrity) {
-          return new Promise((resolve) => {
-            // If already loaded, resolve
-            const name = src.split('/').pop();
-            if (window[name] || window.Papa || window.oboe) { resolve(); return; }
-            // Try to load local copy first
-            var s = document.createElement('script');
-            s.src = localPath;
-            s.async = false;
-            s.onload = function(){ resolve(); };
-            s.onerror = function(){
-              // fallback to CDN if local copy not found
-              var s2 = document.createElement('script');
-              s2.src = src;
-              s2.async = false;
-              if (integrity) {
-                s2.integrity = integrity;
-                s2.crossOrigin = 'anonymous';
-              }
-              s2.onload = function(){ resolve(); };
-              s2.onerror = function(){ resolve(); };
-              document.head.appendChild(s2);
-            };
-            document.head.appendChild(s);
-          });
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"
+      crossorigin="anonymous"
+    ></script>
+
+    <!-- diff_match_patch for accurate diff counting -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.min.js"
+      crossorigin="anonymous"
+    ></script>
+
+    <!-- Utility scripts -->
+    <script src="./utils.js"></script>
+    <script src="./json_utils.js"></script>
+    <script src="./utils_csv.js"></script>
+
+    <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@codemirror/state": "https://unpkg.com/@codemirror/state@6.4.1/dist/index.js",
+          "@codemirror/view": "https://unpkg.com/@codemirror/view@6.34.1/dist/index.js",
+          "@codemirror/language": "https://unpkg.com/@codemirror/language@6.10.3/dist/index.js",
+          "@codemirror/commands": "https://unpkg.com/@codemirror/commands@6.7.1/dist/index.js",
+          "@codemirror/lang-json": "https://unpkg.com/@codemirror/lang-json@6.0.1/dist/index.js",
+          "@codemirror/merge": "https://unpkg.com/@codemirror/merge@6.7.2/dist/index.js",
+          "@codemirror/search": "https://unpkg.com/@codemirror/search@6.5.6/dist/index.js",
+          "@codemirror/autocomplete": "https://unpkg.com/@codemirror/autocomplete@6.18.1/dist/index.js",
+          "@codemirror/lint": "https://unpkg.com/@codemirror/lint@6.8.2/dist/index.js",
+          "@codemirror/theme-one-dark": "https://unpkg.com/@codemirror/theme-one-dark@6.1.3/dist/index.js",
+          "@lezer/common": "https://unpkg.com/@lezer/common@1.2.2/dist/index.js",
+          "@lezer/highlight": "https://unpkg.com/@lezer/highlight@1.2.1/dist/index.js",
+          "@lezer/lr": "https://unpkg.com/@lezer/lr@1.4.2/dist/index.js",
+          "@lezer/json": "https://unpkg.com/@lezer/json@1.0.2/dist/index.js",
+          "codemirror": "https://unpkg.com/codemirror@6.0.1/dist/index.js",
+          "crelt": "https://unpkg.com/crelt@1.0.6/index.js",
+          "style-mod": "https://unpkg.com/style-mod@4.1.2/src/style-mod.js",
+          "w3c-keyname": "https://unpkg.com/w3c-keyname@2.2.8/index.js"
         }
-        // PapaParse 5.4.1 (latest stable) - CSV parsing
-        loadOnce(
-          'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js',
-          './js/papaparse.min.js',
-          'sha512-dfX5uYVXzyU8+KHqj8bjo7UkOdg18PaOtpa48djpNbZHwExddghZ+ZmzWT06R5v6NSk3ZUfsH6FNEDepLx9hPQ=='
-        );
-        // Oboe 2.1.5 (latest) - streaming JSON parser
-        loadOnce(
-          'https://cdnjs.cloudflare.com/ajax/libs/oboe.js/2.1.5/oboe-browser.min.js',
-          './js/oboe-browser.min.js',
-          'sha512-Vd/k3BhEhDPdRz3ERWi8eN5GDo0F3f9oJE/w0zIzYqv/ZdbiLhToLss7EzQCByGBA8MjX9TZqtGn1SWuwlNP/g=='
-        );
-      })();
+      }
     </script>
+
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      
+      #container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+
+      .intro {
+        padding: 5px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #ddd;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      #view-container {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+        min-height: 0; /* Important for flex child scrolling */
+        display: flex;
+        flex-direction: row;
+      }
+
+      /* Button styles */
+      button {
+        padding: 6px 14px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.2s;
+      }
+
+      button:hover {
+        background: #f5f5f5;
+        border-color: #999;
+      }
+
+      button.active {
+        background: #08c988;
+        color: white;
+        border-color: #08c988;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Pane-specific buttons */
+      .pane-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 10;
+        font-size: 12px;
+        padding: 4px 10px;
+      }
+
+      .copy-btn {
+        display: none;
+      }
+
+      /* CodeMirror 6 custom styling */
+      .cm-editor {
+        height: 100%;
+        font-size: 14px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      }
+
+      .cm-scroller {
+        overflow: auto;
+      }
+
+      /* Merge view styling - Fixed to match actual DOM structure */
+      .cm-mergeView {
+        height: 100% !important;
+        width: 100% !important;
+        display: flex !important;
+        flex-direction: row !important;
+        flex: 1;
+      }
+
+      /* The wrapper that contains both editors */
+      .cm-mergeViewEditors {
+        display: flex !important;
+        flex-direction: row !important;
+        width: 100% !important;
+        height: 100% !important;
+        gap: 2px;
+        flex: 1;
+      }
+
+      /* Force each editor to be exactly 50% */
+      .cm-mergeViewEditor {
+        flex: 1 1 50% !important;
+        width: 50% !important;
+        max-width: 50% !important;
+        min-width: 0 !important; /* Critical: allows shrinking below content size */
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        overflow: hidden !important; /* Prevent overflow from breaking layout */
+        position: relative;
+      }
+
+      /* Editor container within each panel */
+      .cm-mergeView .cm-editor {
+        height: 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+      }
+
+      /* Scroller must respect parent constraints */
+      .cm-mergeView .cm-scroller {
+        overflow: auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        height: 100% !important;
+      }
+
+      /* Prevent content from forcing panel expansion */
+      .cm-mergeView .cm-content {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+
+      /* Ensure lines don't stretch the container */
+      .cm-mergeView .cm-line {
+        max-width: 100% !important;
+      }
+
+      /* Word wrap specific styles */
+      .cm-mergeView .cm-line[style*="white-space: pre-wrap"] {
+        max-width: 100% !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+      }
+
+      /* No wrap mode - ensure horizontal scrolling */
+      .cm-mergeView .cm-line[style*="white-space: pre"] {
+        max-width: none; /* Allow line to extend for scrolling */
+        white-space: pre !important;
+      }
+
+      /* Diff highlighting (similar to CM5 red/green scheme) */
+      .cm-deletedChunk {
+        background-color: #FFC4C1 !important;
+      }
+
+      .cm-insertedChunk {
+        background-color: #B5EFDB !important;
+      }
+
+      .cm-changedLine {
+        background-color: #fff3cd !important;
+      }
+
+      .cm-deletedText {
+        background-color: #FF8983 !important;
+        text-decoration: none !important;
+      }
+
+      .cm-insertedText {
+        background-color: #6BDFB8 !important;
+        text-decoration: none !important;
+      }
+
+      /* Status bar */
+      #diff-status {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 8px 16px;
+        background: #f8f9fa;
+        border-top: 1px solid #ddd;
+        font-size: 13px;
+        color: #333;
+        z-index: 1000;
+      }
+
+      /* Error message area */
+      #conversion-error-area {
+        position: fixed;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #ff4444;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 4px;
+        display: none;
+        z-index: 2000;
+        max-width: 80%;
+        text-align: center;
+      }
+
+      /* Per-pane action buttons */
+      .pane-controls {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 100;
+        display: flex;
+        gap: 5px;
+      }
+
+      .pane-controls button {
+        font-size: 11px;
+        padding: 4px 8px;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        cursor: pointer;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+      }
+
+      .pane-controls button:hover {
+        opacity: 1;
+        background: #f5f5f5;
+      }
+
+      .pane-wrapper {
+        position: relative;
+        flex: 1;
+      }
+
+      /* Responsive design */
+      @media (max-width: 768px) {
+        .intro {
+          flex-wrap: wrap;
+        }
+
+        button {
+          font-size: 12px;
+          padding: 5px 10px;
+        }
+
+        .pane-controls button {
+          font-size: 10px;
+          padding: 3px 6px;
+        }
+      }
+
+    </style>
   </head>
 
   <body>
-    <article id="ArticlePage" class="contentPage cover">
-      <div
-        class="intro"
-        style="
-          max-width: 100%;
-          margin: 0;
-          padding: 10px 0;
-          text-align: center;
-          background-color: #f8f9fa;
-        "
-      >
-        <div class="controls">
-          <button id="btn-format" class="toggle-button">
-            Format &amp; Compare JSON
-          </button>
-          <!-- Additional controls will be added by JavaScript -->
-        </div>
-      </div>
-    </article>
     <div id="container">
-      <div id="view"></div>
-      <div id="diff-status">Found 0 differences</div>
+      <div class="intro">
+        <button id="btn-format">Format JSON</button>
+        <button id="btn-sort">Sort Keys</button>
+        <button id="btn-share">📋 Share URL</button>
+        <button id="btn-import">Import Snapshot</button>
+        <input type="file" id="file-import" accept=".gz,.gzip,application/gzip,application/octet-stream,.json" style="display: none" />
+        <select id="select-templates">
+          <option value="">Examples...</option>
+          <option value="simple">Simple Template</option>
+          <option value="complex">Complex Template</option>
+        </select>
+        <div class="settings-dropdown" style="position: relative; display: inline-block;">
+          <button id="btn-settings" style="font-size: 13px; font-weight: 400;">⚙️ Diff Settings</button>
+          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 16px; min-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 1000; margin-top: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; max-height: calc(100vh - 100px); overflow-y: auto;">
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">EDITOR SETTINGS</div>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-word-wrap" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Word Wrap</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Wrap long lines to fit editor width</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-scroll-lock" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Synchronized Scrolling</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Lock scroll between left and right panels</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="auto-csv-conversion" style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Auto CSV→JSON</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically convert CSV to JSON on paste/drop</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="auto-format-json" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Auto Format JSON</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically format JSON on paste/drop</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 14px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="auto-sort-keys" style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Auto Sort Keys</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically sort JSON keys on paste/drop</div>
+              </div>
+            </label>
+            
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF VIEW SETTINGS</div>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-highlight-changes" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Highlight Changes</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Show character-level diffs in chunks</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-gutter" checked style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Show Gutter Markers</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Display markers next to changed lines</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 12px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" id="setting-collapse-unchanged" style="margin-top: 2px; cursor: pointer;" />
+              <div style="margin-left: 10px;">
+                <div style="font-weight: 400; color: #222;">Collapse Unchanged</div>
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Fold long sections of identical lines</div>
+              </div>
+            </label>
+            
+            <label style="display: flex; align-items: center; margin-bottom: 10px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
+              Orientation:
+              <select id="setting-orientation" style="margin-left: 10px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
+                <option value="a-b">A-B (Left-Right)</option>
+                <option value="b-a">B-A (Right-Left)</option>
+              </select>
+            </label>
+            
+            <label style="display: flex; align-items: center; margin-bottom: 14px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
+              Revert Controls:
+              <select id="setting-revert-controls" style="margin-left: 10px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
+                <option value="none">None</option>
+                <option value="a-to-b">A → B</option>
+                <option value="b-to-a">B → A</option>
+              </select>
+            </label>
+            
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF ALGORITHM</div>
+            
+            <label style="display: flex; align-items: flex-start; margin-bottom: 8px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
+              <div style="flex: 1;">
+                Scan Limit:
+                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-weight: 400; font-family: 'Segoe UI', system-ui, sans-serif;">Max characters to scan (higher = slower)</div>
+              </div>
+              <input type="number" id="setting-scan-limit" value="500" min="100" max="10000" step="100" style="width: 90px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: 'Segoe UI', system-ui, sans-serif;" />
+            </label>
+          </div>
+        </div>
+        <select id="theme-selector" style="font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+          <option value="default">🎨 Default</option>
+          <option value="light">☀️ Light</option>
+          <option value="dark">🌙 Dark</option>
+          <option value="oneDark">🌃 One Dark</option>
+        </select>
+        <button id="btn-clear-all" style="display: none">Clear All</button>
+        <span style="margin-left: auto; font-size: 13px; color: #666; display: flex; align-items: center; gap: 10px;">
+          <strong>JsonCompair</strong>
+          <a href="https://github.com/dipenparmar12/json_compair" target="_blank" rel="noopener noreferrer">
+            <img src="https://github.githubassets.com/images/modules/site/icons/footer/github-mark.svg" alt="GitHub" width="16" height="16" style="vertical-align: middle; margin-right: 5px;"> - Dipenparmar12
+          </a>
+          <a href="index-v5.html" style="font-size: 12px; padding: 4px 12px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; display: inline-flex; align-items: center; gap: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; transition: background 0.2s;" onmouseover="this.style.background='#e0e0e0'" onmouseout="this.style.background='#f0f0f0'">
+            <span style="font-size: 14px;">↩️</span> v5
+          </a>
+        </span>
+      </div>
+
+      <div id="view-container"></div>
+
+      <div id="conversion-error-area" style="display: none"></div>
+      <div id="diff-status">Ready to compare JSON</div>
     </div>
 
-    <script type="text/javascript">
-    // Utilities are loaded from ./utils.js
+    <script type="module">
+      // Import CodeMirror 6 core and extensions
+      import { EditorView } from "@codemirror/view";
+      import { EditorState } from "@codemirror/state";
+      import { json } from "@codemirror/lang-json";
+      import { MergeView } from "@codemirror/merge";
+      
+      // Import themes
+      import { oneDark } from "@codemirror/theme-one-dark";
+      
+      import {
+        lineNumbers,
+        highlightActiveLineGutter,
+        highlightSpecialChars,
+        drawSelection,
+        dropCursor,
+        rectangularSelection,
+        crosshairCursor,
+        highlightActiveLine,
+        keymap,
+      } from "@codemirror/view";
+      import {
+        foldGutter,
+        indentOnInput,
+        syntaxHighlighting,
+        defaultHighlightStyle,
+        bracketMatching,
+        foldKeymap,
+      } from "@codemirror/language";
+      import {
+        history,
+        defaultKeymap,
+        historyKeymap,
+      } from "@codemirror/commands";
+      import {
+        highlightSelectionMatches,
+        searchKeymap,
+      } from "@codemirror/search";
+      import {
+        closeBrackets,
+        autocompletion,
+        closeBracketsKeymap,
+        completionKeymap,
+      } from "@codemirror/autocomplete";
+      import { lintKeymap } from "@codemirror/lint";
 
-  // parseFlexibleJSON is provided by `json_utils.js` and exposed on window.parseFlexibleJSON
+      // Import Compartment for dynamic configuration
+      import { Compartment } from "@codemirror/state";
 
-  // --- Large data handling helpers ---
-  (function(){
-    // Worker used for heavy operations when payloads are large
-    let largeDataWorker = null;
-    const WORKER_PATH = './js/large-data-worker.js';
-    const WORKER_SIZE_THRESHOLD = 150 * 1024; // 150 KB conservative threshold to offload to worker
-
-    // Create worker lazily
-    function ensureWorker() {
-      if (largeDataWorker) return largeDataWorker;
-      try {
-        largeDataWorker = new Worker(WORKER_PATH);
-        largeDataWorker._nextId = 1;
-        largeDataWorker._pending = new Map();
-        largeDataWorker.addEventListener('message', function(e){
-          const msg = e.data || {};
-          const id = msg.id;
-          if (!id) return;
-          const p = largeDataWorker._pending.get(id);
-          if (!p) return;
-          largeDataWorker._pending.delete(id);
-          if (msg.ok) p.resolve(msg.result); else p.reject(new Error(msg.error || 'worker error'));
-        });
-      } catch (err) {
-        largeDataWorker = null; // worker not available
-      }
-      return largeDataWorker;
-    }
-
-    // Helper to run action in worker or fallback to local synchronous function
-    function runHeavyTask(action, payload, fallback) {
-      return new Promise((resolve, reject) => {
-        const text = (payload && payload.text) || '';
-        const useWorker = text && text.length > WORKER_SIZE_THRESHOLD && typeof Worker !== 'undefined';
-        if (useWorker) {
-          const w = ensureWorker();
-          if (!w) {
-            // worker couldn't be created - fallback
-            try { resolve(fallback()); } catch (e) { reject(e); }
-            return;
-          }
-          const id = (w._nextId++).toString();
-          w._pending.set(id, { resolve, reject });
-          w.postMessage({ id, action, payload });
-          // Add a conservative timeout to recover from hung worker
-          setTimeout(() => {
-            if (w._pending.has(id)) {
-              w._pending.delete(id);
-              try { resolve(fallback()); } catch (e) { reject(e); }
-            }
-          }, 30000);
-        } else {
-          // run fallback synchronously but in a microtask so UI can update
-          try { Promise.resolve().then(() => resolve(fallback())); } catch (e) { reject(e); }
+      // Auto-save extension for CodeMirror 6
+      const autoSaveExtension = EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          // Debounce saves to avoid excessive localStorage writes
+          clearTimeout(window.autoSaveTimer);
+          window.autoSaveTimer = setTimeout(() => {
+            saveContent();
+          }, 300);
         }
       });
-    }
 
-    // Expose helpers
-    window.LargeDataHelpers = {
-      runHeavyTask,
-      WORKER_SIZE_THRESHOLD
-    };
-  })();
+      // Word wrap compartment for dynamic reconfiguration
+      const wordWrapCompartment = new Compartment();
+      
+      // Theme compartment for dynamic theme switching
+      const themeCompartment = new Compartment();
+      
+      // Define theme extensions
+      const lightTheme = EditorView.theme({
+        "&": {
+          backgroundColor: "#ffffff",
+          color: "#000000"
+        },
+        ".cm-content": {
+          caretColor: "#000000"
+        },
+        "&.cm-focused .cm-cursor": {
+          borderLeftColor: "#000000"
+        },
+        ".cm-activeLine": {
+          backgroundColor: "#f0f0f0"
+        },
+        ".cm-selectionBackground, ::selection": {
+          backgroundColor: "#d7d4f0"
+        },
+        ".cm-gutters": {
+          backgroundColor: "#f5f5f5",
+          color: "#999",
+          border: "none"
+        }
+      }, { dark: false });
 
-      // Initialize enhanced merge view
-      function initializeMergeView(target) {
+      const darkTheme = EditorView.theme({
+        "&": {
+          backgroundColor: "#1e1e1e",
+          color: "#d4d4d4"
+        },
+        ".cm-content": {
+          caretColor: "#ffffff"
+        },
+        "&.cm-focused .cm-cursor": {
+          borderLeftColor: "#ffffff"
+        },
+        ".cm-activeLine": {
+          backgroundColor: "#2a2a2a"
+        },
+        ".cm-selectionBackground, ::selection": {
+          backgroundColor: "#3a3d41"
+        },
+        ".cm-gutters": {
+          backgroundColor: "#252526",
+          color: "#858585",
+          border: "none"
+        }
+      }, { dark: true });
+
+      // Function to get theme extension based on setting
+      function getThemeExtension(themeName) {
+        switch (themeName) {
+          case "light":
+            return lightTheme;
+          case "dark":
+            return darkTheme;
+          case "oneDark":
+            return oneDark;
+          default:
+            return []; // Default (no custom theme)
+        }
+      }
+      
+      // Load settings from localStorage
+      let wordWrapEnabled = SettingsManager.get('wordWrap');
+      let scrollLocked = SettingsManager.get('scrollLock');
+      let currentTheme = SettingsManager.get('theme');
+
+      // Basic editor extensions for both sides
+      const basicSetup = [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightSpecialChars(),
+        history(),
+        foldGutter(),
+        drawSelection(),
+        dropCursor(),
+        EditorState.allowMultipleSelections.of(true),
+        indentOnInput(),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        bracketMatching(),
+        closeBrackets(),
+        autocompletion(),
+        rectangularSelection(),
+        crosshairCursor(),
+        highlightActiveLine(),
+        highlightSelectionMatches(),
+        keymap.of([
+          ...closeBracketsKeymap,
+          ...defaultKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
+          ...foldKeymap,
+          ...completionKeymap,
+          ...lintKeymap,
+        ]),
+      ];
+
+      // Global reference to merge view
+      let mergeView = null;
+
+      // Initialize the application
+      function initializeApp() {
+        // Load saved merge settings
+        const mergeSettings = loadMergeSettings();
+        
         // Load content from URL parameters first, then from storage, then use defaults
         const urlContent = URLManager.loadFromURL();
         const savedContent = StorageManager.loadFromStorage();
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
 
-        // Create merge view with enhanced options
-        // Using 'align' connection to show empty blocks for unmatched lines (like Git diff)
-        const mv = CodeMirror.MergeView(target, {
-          value: initialContent.left,
-          origLeft: null,
-          orig: initialContent.right,
-          lineNumbers: true,
-          mode: "application/json",
-          showDifferences: true,
-          connect: "align",              // Show aligned blocks with empty spaces for unmatched lines
-          collapseIdentical: false,      // Keep all unchanged lines visible
-          revertButtons: true,           // Show revert buttons between chunks
-          allowEditingOriginals: true,   // Allow editing both sides
-          highlightDifferences: true,    // Highlight character-level differences
-          lineWrapping: false,           // Disable line wrapping for better diff alignment
-          styleActiveLine: true,
-          chunkClassLocation: ["background", "wrap", "gutter"],
+        // Create merge view container
+        const container = document.getElementById("view-container");
+
+        // Create merge view with CodeMirror 6 using saved settings
+        mergeView = new MergeView({
+          a: {
+            doc: initialContent.left,
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+          },
+          b: {
+            doc: initialContent.right,
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+          },
+          parent: container,
+          // Apply saved merge settings
+          orientation: mergeSettings.orientation,
+          connect: "align",
+          collapseIdentical: false,
+          highlightChanges: mergeSettings.highlightChanges,
+          gutter: mergeSettings.gutter,
+          allowEditingOriginals: true,
+          revertControls: mergeSettings.revertControls === "none" ? undefined : mergeSettings.revertControls,
+          collapseUnchanged: mergeSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
+          diffConfig: { scanLimit: mergeSettings.scanLimit },
         });
 
-        // Add scroll synchronization with toggle
-        let scrollLocked = true;
-        const leftEditor = mv.editor();
-        const rightEditor = mv.rightOriginal();
-
-        function syncScroll(sourceEditor, targetEditor) {
-          if (!scrollLocked) return;
-          const info = sourceEditor.getScrollInfo();
-          targetEditor.scrollTo(info.left, info.top);
-        }
-
-        leftEditor.on("scroll", () => syncScroll(leftEditor, rightEditor));
-        rightEditor.on("scroll", () => syncScroll(rightEditor, leftEditor));
-
-        // Add UI controls
-        const controls = document.querySelector(".controls");
-
-          // Error message area (bottom) to show CSV conversion errors
-          let errorArea = document.getElementById('conversion-error-area');
-          if (!errorArea) {
-            errorArea = document.createElement('div');
-            errorArea.id = 'conversion-error-area';
-            errorArea.style.cssText = 'color: #b00020; padding: 8px 10px; text-align: left; display: none;';
-            document.body.appendChild(errorArea);
-          }
-
-        // Add scroll lock toggle
-        const scrollLockBtn = document.createElement("button");
-        scrollLockBtn.className = "toggle-button active";
-        scrollLockBtn.textContent = "Scroll Lock";
-        scrollLockBtn.onclick = () => {
-          scrollLocked = !scrollLocked;
-          scrollLockBtn.classList.toggle("active");
-        };
-        // controls.appendChild(scrollLockBtn);
-
-        // Add Show Only Differences toggle
-        const showDiffsBtn = document.createElement("button");
-        showDiffsBtn.className = "toggle-button";
-        showDiffsBtn.textContent = "Show Only Differences";
-
-        showDiffsBtn.onclick = () => {
-          showDiffsBtn.classList.toggle("active");
-          const showOnlyDiffs = showDiffsBtn.classList.contains("active");
-
-          // Use a timeout to allow the UI to update before heavy work
-          setTimeout(() => {
-            const leftPane = leftEditor.getWrapperElement().parentNode;
-            const rightPane = rightEditor.getWrapperElement().parentNode;
-
-            leftPane.classList.toggle("show-diffs-only", showOnlyDiffs);
-            rightPane.classList.toggle("show-diffs-only", showOnlyDiffs);
-
-            // If showing diffs, ensure chunks are expanded
-            if (showOnlyDiffs) {
-              // Process markers in chunks to avoid freezing on large documents
-              const markers = leftEditor.getAllMarks();
-              let i = 0;
-              function processNextChunk() {
-                const end = Math.min(i + 200, markers.length);
-                for (; i < end; i++) {
-                  if (markers[i].collapsed) {
-                    markers[i].clear();
-                  }
-                }
-                if (i < markers.length) {
-                  setTimeout(processNextChunk, 0);
-                } else {
-                  // All markers processed, now refresh and scroll
-                  leftEditor.refresh();
-                  rightEditor.refresh();
-                  const chunks = mv.rightChunks();
-                  if (chunks && chunks.length > 0) {
-                    leftEditor.scrollIntoView({ line: chunks[0].from, ch: 0 }, 100);
-                  }
-                }
-              }
-              processNextChunk();
-              return; // Return to avoid synchronous refresh
-            }
-
-            // Refresh both editors when turning off "show only diffs"
-            leftEditor.refresh();
-            rightEditor.refresh();
-          }, 10); // Small delay to ensure button state has updated
-        };
-        controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
-
-        // Add Sort JSON Keys button
-        const sortKeysBtn = document.createElement("button");
-        sortKeysBtn.className = "toggle-button";
-        sortKeysBtn.textContent = "Sort JSON Keys";
-        sortKeysBtn.onclick = () => {
-          try {
-            const leftText = leftEditor.getValue();
-            const rightText = rightEditor.getValue();
-
-            // Run sorting possibly in worker for large inputs
-            Promise.all([
-              window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: leftText }, () => {
-                // fallback synchronous
-                const obj = parseFlexibleJSON(leftText);
-                const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
-                return JSON.stringify(out, null, 3);
-              }).catch((e) => { console.warn('left sort failed', e); return leftText; }),
-              window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: rightText }, () => {
-                const obj = parseFlexibleJSON(rightText);
-                const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
-                return JSON.stringify(out, null, 3);
-              }).catch((e) => { console.warn('right sort failed', e); return rightText; })
-            ]).then(([newLeft, newRight]) => {
-              leftEditor.setValue(newLeft);
-              rightEditor.setValue(newRight);
-              // Realign chunks after sorting
-              if (mv.alignChunks) mv.alignChunks();
-              updateDiffStatus(mv);
-            }).catch((e) => { console.error('Sort failed', e); alert('Failed to sort JSON.'); });
-          } catch (e) {
-            console.error("Failed to sort JSON:", e);
-            alert(
-              "Failed to sort JSON. Please ensure both sides contain valid JSON."
-            );
-          }
-        };
-        // Insert the sort button after the format button
-        const formatBtn = document.getElementById("btn-format");
-        controls.insertBefore(sortKeysBtn, formatBtn.nextSibling);
-
-        // Add Share URL button
-        const shareBtn = document.createElement("button");
-        shareBtn.className = "toggle-button";
-        shareBtn.textContent = "📋 Copy Share URL";
-        shareBtn.onclick = async () => {
-          const leftContent = leftEditor.getValue();
-          const rightContent = rightEditor.getValue();
-
-          if (!leftContent.trim() && !rightContent.trim()) {
-            alert("Please add some content to share!");
-            return;
-          }
-
-          // Show loading state
-          const originalText = shareBtn.textContent;
-          shareBtn.textContent = '⏳ Processing...';
-          shareBtn.disabled = true;
-
-          try {
-            // Generate the shareable URL
-            const shareUrl = URLManager.generateShareableURL(leftContent, rightContent);
-
-            // Check if URL is within safe browser limits (most browsers support ~2000 chars)
-            const MAX_SAFE_URL_LEN = 1800;
-
-            if (shareUrl.length <= MAX_SAFE_URL_LEN) {
-              // URL is safe to use - copy to clipboard
-              try {
-                await navigator.clipboard.writeText(shareUrl);
-                shareBtn.textContent = '✅ URL Copied';
-                setTimeout(() => {
-                  shareBtn.textContent = originalText;
-                  shareBtn.disabled = false;
-                }, 2000);
-                return;
-              } catch (err) {
-                // Fallback to old clipboard API
-                const textArea = document.createElement("textarea");
-                textArea.value = shareUrl;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                shareBtn.textContent = '✅ URL Copied';
-                setTimeout(() => {
-                  shareBtn.textContent = originalText;
-                  shareBtn.disabled = false;
-                }, 2000);
-                return;
-              }
-            }
-
-            // URL is too long - fall back to file download
-            if (window.pako) {
-              const snap = JSON.stringify({ left: leftContent, right: rightContent });
-              const gz = pako.gzip(snap);
-              const blob = new Blob([gz], { type: 'application/gzip' });
-              const filename = 'json_compair_snapshot.json.gz';
-
-              // Try Web Share API first (mobile-friendly)
-              try {
-                if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename)] })) {
-                  await navigator.share({
-                    files: [new File([blob], filename)],
-                    title: 'JSON Compare Snapshot'
-                  });
-                  shareBtn.textContent = '📤 Shared';
-                  setTimeout(() => {
-                    shareBtn.textContent = originalText;
-                    shareBtn.disabled = false;
-                  }, 2000);
-                  return;
-                }
-              } catch (e) {
-                // Fall back to download
-              }
-
-              // Trigger file download
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = filename;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              URL.revokeObjectURL(url);
-
-              // Copy helper text to clipboard
-              const helperText = '📎 JSON Compare snapshot attached. Open https://dipenparmar12.github.io/json_compair/ and use "Import Snapshot" to load it.';
-              try {
-                await navigator.clipboard.writeText(helperText);
-              } catch (e) {
-                // Ignore clipboard errors
-              }
-
-              shareBtn.textContent = '📥 Downloaded';
-              setTimeout(() => {
-                shareBtn.textContent = originalText;
-                shareBtn.disabled = false;
-              }, 2000);
-              return;
-            } else {
-              // No compression available
-              alert('Content is too large for URL sharing and compression is not available. Please use the Export option to save a file manually.');
-              shareBtn.textContent = originalText;
-              shareBtn.disabled = false;
-              return;
-            }
-          } catch (err) {
-            console.error('Share error:', err);
-            alert('Unable to create share link. Please try again or use Export manually.');
-            shareBtn.textContent = originalText;
-            shareBtn.disabled = false;
-          }
-        };
-    controls.insertBefore(shareBtn, sortKeysBtn.nextSibling);
-
-        // Add Import Snapshot button + hidden file input
-        const importBtn = document.createElement('button');
-        importBtn.className = 'toggle-button';
-        importBtn.textContent = 'Import Snapshot';
-        const importInput = document.createElement('input');
-        importInput.type = 'file';
-        importInput.accept = '.gz,.gzip,application/gzip,application/octet-stream,.json';
-        importInput.style.display = 'none';
-
-        importBtn.onclick = () => importInput.click();
-
-        importInput.onchange = async (e) => {
-          const f = importInput.files && importInput.files[0];
-          if (!f) return;
-          try {
-            const buf = await f.arrayBuffer();
-            let text = null;
-            // Try to ungzip using pako if available - large files should be uncompressed in a worker
-            if (window.pako && buf.byteLength > window.LargeDataHelpers?.WORKER_SIZE_THRESHOLD) {
-              // Offload decompression to a timeout so UI isn't blocked
-              text = await new Promise((res, rej) => {
-                setTimeout(() => {
-                  try {
-                    const u8 = new Uint8Array(buf);
-                    const decompressed = pako.ungzip(u8, { to: 'string' });
-                    res(decompressed);
-                  } catch (err) { rej(err); }
-                }, 0);
-              });
-            } else if (window.pako) {
-              try { const u8 = new Uint8Array(buf); text = pako.ungzip(u8, { to: 'string' }); } catch(err) { text = null; }
-            }
-            if (text === null) {
-              try { text = new TextDecoder().decode(new Uint8Array(buf)); } catch (e) { text = null; }
-            }
-            if (!text) { alert('Failed to read snapshot file.'); return; }
-            const snap = JSON.parse(text);
-            if (snap && (snap.left !== undefined || snap.right !== undefined)) {
-              leftEditor.setValue(snap.left || '');
-              rightEditor.setValue(snap.right || '');
-              try {
-                StorageManager.saveToStorage(snap.left || '', snap.right || '');
-              } catch (e) {
-                // localStorage synchronous set may throw - attempt async IndexedDB backup
-                console.warn('saveToStorage threw, attempting IndexedDB fallback', e && e.message ? e.message : e);
-                if (StorageManager.saveToIndexedDB) {
-                  StorageManager.saveToIndexedDB(snap.left || '', snap.right || '').catch((err) => {
-                    console.error('IndexedDB fallback failed', err);
-                  });
-                }
-              }
-              
-              updateDiffStatus(mv);
-
-              // Clear URL parameters after successful import (keep URL clean)
-              URLManager.clearURL();
-              console.log('URL parameters cleared after importing snapshot');
-            } else {
-              alert('Snapshot file format not recognized.');
-            }
-          } catch (err) {
-            console.error('Import failed', err);
-            alert('Failed to import snapshot: ' + (err && err.message ? err.message : String(err)));
-          } finally {
-            importInput.value = '';
-          }
-        };
-
-        controls.appendChild(importBtn);
-        controls.appendChild(importInput);
-
-        // Add template selector
-        const templateSelect = document.createElement("select");
-        templateSelect.className = "toggle-button";
-        templateSelect.innerHTML = `
-                <option value="simple">Simple Template</option>
-                <option value="complex">Complex Template</option>
-            `;
-        templateSelect.onchange = () => {
-          const template = DefaultTemplates[templateSelect.value];
-
-          // Warn if either editor already has content
-          const leftHas = leftEditor.getValue().trim().length > 0;
-          const rightHas = rightEditor.getValue().trim().length > 0;
-
-          if (leftHas || rightHas) {
-            const proceed = confirm(
-              'Loading this template will replace current editor content. Do you want to continue?'
-            );
-            if (!proceed) return; // Do nothing if user cancels
-          }
-
-          leftEditor.setValue(template.left);
-          rightEditor.setValue(template.right);
-
-          // Save to storage and update URL when loading template
-          try {
-            StorageManager.saveToStorage(template.left, template.right);
-          } catch (e) {
-            if (StorageManager.saveToIndexedDB) {
-              StorageManager.saveToIndexedDB(template.left, template.right).catch((err) => console.error('IndexedDB save failed', err));
-            }
-          }
-        };
-        controls.appendChild(templateSelect);
-
-        // Add setting: auto CSV conversion (checkbox will be moved into dropdown)
-        const autoCsvLabel = document.createElement('label');
-        autoCsvLabel.style.marginLeft = '10px';
-        autoCsvLabel.style.fontSize = '13px';
-        autoCsvLabel.innerHTML = `<input type="checkbox" id="auto-csv-conversion" /> Auto CSV→JSON`;
-        controls.appendChild(autoCsvLabel);
-
-        // Build hover dropdown menu (auto opens on hover) and move relevant controls into it
-        const dropdown = document.createElement('div');
-        dropdown.className = 'controls-dropdown';
-        dropdown.style.display = 'inline-block';
-        dropdown.style.position = 'relative';
-        dropdown.style.marginLeft = '8px';
-
-        const dropBtn = document.createElement('button');
-        dropBtn.className = 'toggle-button';
-        dropBtn.textContent = 'Options ▾';
-        dropBtn.style.cursor = 'pointer';
-        dropBtn.style.userSelect = 'none';
-        dropdown.appendChild(dropBtn);
-
-        const menu = document.createElement('div');
-        menu.className = 'controls-menu';
-        menu.style.position = 'absolute';
-        menu.style.top = '100%';
-        menu.style.right = '0';
-        menu.style.minWidth = '220px';
-        menu.style.background = '#fff';
-        menu.style.border = '1px solid #ddd';
-        menu.style.boxShadow = '0 4px 8px rgba(0,0,0,0.08)';
-        menu.style.padding = '8px';
-        menu.style.zIndex = 9999;
-        menu.style.display = 'none';
-
-        // Show menu on hover for better UX
-        dropdown.addEventListener('mouseenter', () => { menu.style.display = 'block'; });
-        dropdown.addEventListener('mouseleave', () => { menu.style.display = 'none'; });
-
-        // Move existing controls into the dropdown menu in a sensible order
-        // We'll move: shareBtn, showDiffsBtn, sortKeysBtn, importBtn (+input), templateSelect, autoCsvLabel, plus a new auto-sort setting
-        const moveIntoMenu = (node) => { if (!node) return; menu.appendChild(node); };
-        moveIntoMenu(shareBtn);
-        moveIntoMenu(showDiffsBtn);
-  // Keep Sort JSON Keys visible outside the dropdown for quick access
-  // (do not move sortKeysBtn into the menu)
-        moveIntoMenu(importBtn);
-        moveIntoMenu(importInput);
-        // Put templates inside menu as a labeled row
-        const tplRow = document.createElement('div');
-        tplRow.style.marginTop = '6px';
-        tplRow.style.marginBottom = '6px';
-        tplRow.appendChild(document.createTextNode('Examples: '));
-        tplRow.appendChild(templateSelect);
-        menu.appendChild(tplRow);
-        moveIntoMenu(autoCsvLabel);
-
-        // Add Auto Sort JSON Keys setting
-        const autoSortRow = document.createElement('div');
-        autoSortRow.style.marginTop = '6px';
-        autoSortRow.style.fontSize = '13px';
-        autoSortRow.innerHTML = `<label style="font-size:13px;"><input type="checkbox" id="auto-sort-on-paste" /> Auto Sort JSON Keys on Paste</label>`;
-        menu.appendChild(autoSortRow);
-
-        // Append the menu element into the dropdown and insert dropdown into controls
-        dropdown.appendChild(menu);
-        controls.appendChild(dropdown);
-
-        // Initialize setting states from SettingsManager (persistent)
-        try {
-          const s_autoCsv = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoCsv') : false;
-          const s_autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-          const s_showOnly = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('showOnlyDiffs') : false;
-
-          const autoCsvCheckbox = document.getElementById('auto-csv-conversion');
-          if (autoCsvCheckbox) {
-            autoCsvCheckbox.checked = !!s_autoCsv;
-            autoCsvCheckbox.addEventListener('change', (e) => {
-              try { SettingsManager.set('autoCsv', e.target.checked); } catch (er) { /* noop */ }
-            });
-          }
-
-          const autoSortCheckbox = document.getElementById('auto-sort-on-paste');
-          if (autoSortCheckbox) {
-            autoSortCheckbox.checked = !!s_autoSort;
-            autoSortCheckbox.addEventListener('change', (e) => {
-              try { SettingsManager.set('autoSortOnPaste', e.target.checked); } catch (er) { /* noop */ }
-            });
-          }
-
-          // Initialize show-only-diffs button state
-          if (showDiffsBtn) {
-            if (s_showOnly) {
-              showDiffsBtn.classList.add('active');
-              showDiffsBtn.onclick && showDiffsBtn.onclick();
-            }
-            // Persist when toggled
-            const oldShowClick = showDiffsBtn.onclick;
-            showDiffsBtn.onclick = function () {
-              oldShowClick && oldShowClick.apply(this, arguments);
-              try { SettingsManager.set('showOnlyDiffs', showDiffsBtn.classList.contains('active')); } catch (er) { /* noop */ }
-            };
-          }
-        } catch (e) {
-          // SettingsManager may not be available in older browsers; ignore
-          console.warn('Settings init failed', e);
-        }
-
-        // Add Clear All button
-        const clearAllBtn = document.createElement("button");
-        clearAllBtn.className = "toggle-button";
-          clearAllBtn.textContent = "Clear All";
-        clearAllBtn.style.display = "none"; // Initially hidden
-        clearAllBtn.onclick = () => {
-          leftEditor.setValue("");
-          rightEditor.setValue("");
-          updateDiffStatus(mv);
-        };
-        controls.appendChild(clearAllBtn);        // Add individual clear buttons to each pane
-        function addClearButton(editor, side) {
-          const wrapper = editor.getWrapperElement();
-          const clearBtn = document.createElement("button");
-          clearBtn.className = `clear-btn clear-btn-${side}`;
-          clearBtn.textContent = "Clear";
-          clearBtn.style.display = "none"; // Initially hidden
-          clearBtn.onclick = (e) => {
-            e.stopPropagation();
-            editor.setValue("");
-            editor.focus(); // Focus the editor after clearing
-            updateDiffStatus(mv);
-          };
-
-          // Insert the button inside the editor's wrapper
-          wrapper.parentNode.style.position = "relative";
-          wrapper.parentNode.appendChild(clearBtn);
-
-          return clearBtn;
-        }
-
-        // Add paste buttons to each pane
-        function addPasteButton(editor, side) {
-          const wrapper = editor.getWrapperElement();
-          const pasteBtn = document.createElement("button");
-          pasteBtn.className = `paste-btn paste-btn-${side}`;
-          pasteBtn.textContent = "Paste from Clipboard";
-          pasteBtn.style.display = "none"; // Initially hidden
-          // Position paste button exactly where clear button is
-          pasteBtn.style.top = "5px";
-          pasteBtn.style.left = "unset";
-          pasteBtn.style.right = "10px";
-          pasteBtn.style.transform = "none";
-          pasteBtn.style.padding = "3px 8px";
-          pasteBtn.style.fontSize = "12px";
-          pasteBtn.onclick = async (e) => {
-            e.stopPropagation();
-            try {
-              // Request clipboard permission and get text
-        const text = await navigator.clipboard.readText();
-              if (text) {
-                // Paste text but do NOT auto-convert; instead show conversion buttons when applicable
-                editor.setValue(text);
-                // Detect CSV or JSON and show conversion buttons in that pane
-                const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(text);
-                const isJSON = (() => { try { JSON.parse(text); return true; } catch { return false; }})();
-                const conv = side === 'left' ? leftConversion : rightConversion;
-                if (conv) {
-                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
-                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
-                }
-                editor.focus();
-                updateDiffStatus(mv);
-              }
-            } catch (err) {
-              console.error("Clipboard permission denied:", err);
-              alert("Please allow clipboard access to use the paste feature");
-            }
-          };
-
-          // Insert the button inside the editor's wrapper
-          wrapper.parentNode.appendChild(pasteBtn);
-
-          return pasteBtn;
-        }
-
-        // Add clear buttons to both editors
-        const leftClearBtn = addClearButton(leftEditor, "left");
-        const rightClearBtn = addClearButton(rightEditor, "right");
-
-        // Add paste buttons to both editors
-        const leftPasteBtn = addPasteButton(leftEditor, "left");
-        const rightPasteBtn = addPasteButton(rightEditor, "right");
-
-        // Add copy buttons to each pane (shown on hover via CSS)
-        function addCopyButton(editor, side) {
-          const wrapper = editor.getWrapperElement();
-          const copyBtn = document.createElement('button');
-          copyBtn.className = `copy-btn copy-btn-${side}`;
-          copyBtn.textContent = 'Copy';
-          copyBtn.type = 'button';
-          copyBtn.title = `Copy ${side} content`;
-          copyBtn.onclick = async (e) => {
-            e.stopPropagation();
-            const text = editor.getValue();
-            const original = copyBtn.textContent;
-            try {
-              if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(text);
-              } else {
-                // Fallback for older browsers
-                const ta = document.createElement('textarea');
-                ta.value = text;
-                ta.style.position = 'fixed';
-                ta.style.top = '-1000px';
-                document.body.appendChild(ta);
-                ta.focus();
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-              }
-              copyBtn.classList.add('copied');
-              copyBtn.textContent = 'Copied';
-              setTimeout(() => {
-                copyBtn.classList.remove('copied');
-                copyBtn.textContent = original;
-              }, 1200);
-            } catch (err) {
-              console.warn('Copy failed', err);
-              copyBtn.textContent = 'Copy failed';
-              setTimeout(() => { copyBtn.textContent = original; }, 1200);
-            }
-          };
-
-          // Ensure the pane container is positioned for absolute children
-          wrapper.parentNode.style.position = wrapper.parentNode.style.position || 'relative';
-          wrapper.parentNode.appendChild(copyBtn);
-          return copyBtn;
-        }
-
-        const leftCopyBtn = addCopyButton(leftEditor, 'left');
-        const rightCopyBtn = addCopyButton(rightEditor, 'right');
-        // Initialize copy buttons visibility based on content state
-        (function(){
-          const leftHas = leftEditor.getValue().trim().length > 0;
-          const rightHas = rightEditor.getValue().trim().length > 0;
-          leftCopyBtn.style.display = leftHas ? 'block' : 'none';
-          rightCopyBtn.style.display = rightHas ? 'block' : 'none';
-        })();
-
-        // Add CSV <-> JSON conversion buttons to each pane
-        function addConversionButtons(editor, side) {
-          const wrapper = editor.getWrapperElement();
-
-          const csvToJsonBtn = document.createElement('button');
-          csvToJsonBtn.className = `convert-btn convert-csv-to-json convert-${side}`;
-          csvToJsonBtn.textContent = 'CSV → JSON';
-          csvToJsonBtn.style.display = 'none';
-          csvToJsonBtn.onclick = (e) => {
-            e.stopPropagation();
-            const text = editor.getValue();
-            // Use async CSV parsing (PapaParse if available) then fallback to worker string conversion
-            try {
-              window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then((arr) => {
-                // Got parsed array, set editor
-                editor.setValue(JSON.stringify(arr, null, 3));
-                updateDiffStatus(mv);
-              }).catch((err) => {
-                // Fallback to existing worker-based conversion (keeps compatibility)
-                window.LargeDataHelpers.runHeavyTask('csvToJsonString', { text }, () => {
-                  const arr = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
-                  return JSON.stringify(arr, null, 3);
-                }).then((res) => { editor.setValue(res); updateDiffStatus(mv); }).catch((err2) => {
-                  showConversionError('CSV conversion failed: ' + (err2 && err2.message ? err2.message : String(err2)));
-                });
-              });
-            } catch (err) {
-              showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-            }
-            updateDiffStatus(mv);
-          };
-
-          const jsonToCsvBtn = document.createElement('button');
-          jsonToCsvBtn.className = `convert-btn convert-json-to-csv convert-${side}`;
-          jsonToCsvBtn.textContent = 'JSON → CSV';
-          jsonToCsvBtn.style.display = 'none';
-          jsonToCsvBtn.onclick = (e) => {
-            e.stopPropagation();
-            const text = editor.getValue();
-            try {
-              const csv = window.CSVUtils.jsonToCSV(text);
-              editor.setValue(csv);
-            } catch (err) {
-              showConversionError('JSON → CSV failed: ' + (err && err.message ? err.message : String(err)));
-            }
-            updateDiffStatus(mv);
-          };
-
-          wrapper.parentNode.appendChild(csvToJsonBtn);
-          wrapper.parentNode.appendChild(jsonToCsvBtn);
-
-          return { csvToJsonBtn, jsonToCsvBtn };
-        }
-
-        const leftConversion = addConversionButtons(leftEditor, 'left');
-        const rightConversion = addConversionButtons(rightEditor, 'right');
-
-        // Function to update button visibility based on content
-        function updateClearButtonsVisibility() {
-          const leftContent = leftEditor.getValue().trim();
-          const rightContent = rightEditor.getValue().trim();
-
-          // Individual clear/paste buttons
-          if (leftContent) {
-            leftClearBtn.style.display = "block";
-            leftPasteBtn.style.display = "none";
-          } else {
-            leftClearBtn.style.display = "none";
-            leftPasteBtn.style.display = "block";
-          }
-          if (rightContent) {
-            rightClearBtn.style.display = "block";
-            rightPasteBtn.style.display = "none";
-          } else {
-            rightClearBtn.style.display = "none";
-            rightPasteBtn.style.display = "block";
-          }
-
-          // Copy buttons only visible when there's content (still hover-revealed via CSS)
-          if (typeof leftCopyBtn !== 'undefined' && leftCopyBtn) {
-            leftCopyBtn.style.display = leftContent ? 'block' : 'none';
-          }
-          if (typeof rightCopyBtn !== 'undefined' && rightCopyBtn) {
-            rightCopyBtn.style.display = rightContent ? 'block' : 'none';
-          }
-
-          // Clear All button - only visible if at least one editor has content
-          clearAllBtn.style.display =
-            leftContent || rightContent ? "inline-block" : "none";
-        }
-
-        // Set initial button visibility based on initial content
-        updateClearButtonsVisibility();
-
-        // Auto-save content changes to storage only (no URL tracking for performance)
-        const saveContent = () => {
-          const leftContent = leftEditor.getValue();
-          const rightContent = rightEditor.getValue();
-
-          try {
-            StorageManager.saveToStorage(leftContent, rightContent);
-          } catch (e) {
-            console.warn('saveToStorage failed during autosave, attempting IndexedDB fallback', e && e.message ? e.message : e);
-            if (StorageManager.saveToIndexedDB) {
-              StorageManager.saveToIndexedDB(leftContent, rightContent).catch((err) => console.error('IndexedDB autosave failed', err));
-            }
-          }
-
-          updateClearButtonsVisibility();
-        };
-
-  leftEditor.on("change", (instance, changeObj) => {
-          // If this change was caused by a drop insertion we set a skip flag to avoid re-processing
-          if (instance.__skipDropProcessing) {
-            try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
-            updateDiffStatus(mv);
-            return;
-          }
-
-          if (changeObj.origin === "paste") {
-            try {
-              // Get pasted fragment
-              const pastedText = (changeObj.text || []).join('\n');
-              // If auto conversion is enabled, keep old behavior
-              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
-              const looksLikeCSV = pastedText && window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(pastedText);
-              if (autoCsv && looksLikeCSV) {
-                try {
-                  // If pasted text is large, offload CSV->JSON to worker
-                  const fallback = () => JSON.stringify(window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true }), null, 3);
-                  window.LargeDataHelpers.runHeavyTask('csvToJsonString', { text: pastedText }, fallback).then((jsonStr) => {
-                    instance.setValue(jsonStr);
-                    // Auto-sort if enabled (use worker if large)
-                    try {
-                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                      if (autoSort) {
-                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: jsonStr }, () => {
-                          const obj = parseFlexibleJSON(jsonStr);
-                          const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
-                          return JSON.stringify(out, null, 3);
-                        }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
-                      }
-                    } catch (esort) { /* ignore sort errors */ }
-                  }).catch((err) => { showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err))); });
-                } catch (err) {
-                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-                }
-              } else {
-                // Show conversion buttons when appropriate
-                const isCSV = looksLikeCSV;
-                const isJSON = (() => { try { JSON.parse(instance.getValue()); return true; } catch { return false; }})();
-                const conv = instance === leftEditor ? leftConversion : rightConversion;
-                if (conv) {
-                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
-                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
-                }
-                // If pasted content is JSON and auto-sort-on-paste is enabled, sort it (worker for large)
-                try {
-                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                  if (isJSON && autoSort) {
-                    const txt = instance.getValue();
-                    window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: txt }, () => {
-                      const obj = parseFlexibleJSON(txt);
-                      const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
-                      return JSON.stringify(out, null, 3);
-                    }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
-                  }
-                } catch (err2) {
-                  // ignore sorting errors
-                }
-              }
-            } catch (e) {
-              // Ignore any unexpected errors during paste handling
-            }
-          }
-          try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
-          updateDiffStatus(mv);
-        });
-
-  rightEditor.on("change", (instance, changeObj) => {
-          // Avoid processing changes that were inserted by a drop handler
-          if (instance.__skipDropProcessing) {
-            try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
-            updateDiffStatus(mv);
-            return;
-          }
-
-          if (changeObj.origin === "paste") {
-            try {
-              const pastedText = (changeObj.text || []).join('\n');
-              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
-              const looksLikeCSV = pastedText && window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(pastedText);
-              if (autoCsv && looksLikeCSV) {
-                try {
-                  // Use async parser
-                  window.CSVUtils.csvToJSONAsync(pastedText, { coerceTypes: true }).then(jsonArray => {
-                    instance.setValue(JSON.stringify(jsonArray, null, 3));
-                    // Auto-sort after CSV conversion when enabled
-                    try {
-                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                      if (autoSort) {
-                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: instance.getValue() }, () => {
-                          const obj = parseFlexibleJSON(instance.getValue());
-                          const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
-                          return JSON.stringify(out, null, 3);
-                        }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
-                      }
-                    } catch (esort) { /* noop */ }
-                  }).catch(err => { showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err))); });
-                } catch (err) {
-                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-                }
-              } else {
-                const isCSV = looksLikeCSV;
-                const isJSON = (() => { try { JSON.parse(instance.getValue()); return true; } catch { return false; }})();
-                const conv = instance === leftEditor ? leftConversion : rightConversion;
-                if (conv) {
-                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
-                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
-                }
-                try {
-                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                  if (isJSON && autoSort) {
-                    let obj = parseFlexibleJSON(instance.getValue());
-                    if (Array.isArray(obj)) obj = sortJSONArray(obj);
-                    else obj = sortJSONKeys(obj);
-                    instance.setValue(JSON.stringify(obj, null, 3));
-                  }
-                } catch (err2) {
-                  // ignore
-                }
-              }
-            } catch (e) {
-              // Ignore unexpected errors
-            }
-          }
-          try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
-          updateDiffStatus(mv);
-        });
-
-        // Helper: show conversion error message temporarily
-        function showConversionError(msg) {
-          errorArea.textContent = msg;
-          errorArea.style.display = 'block';
-          setTimeout(() => {
-            errorArea.style.display = 'none';
-          }, 6000);
-        }
-
-        // Handle file drop on an editor: convert CSV -> JSON if applicable
-        function handleEditorFileDrop(editor, files) {
-          if (!files || files.length === 0) return;
-          const file = files[0];
-          const reader = new FileReader();
-          reader.onerror = function (e) {
-            showConversionError('Failed to read dropped file.');
-          };
-          reader.onload = function (e) {
-            const text = e.target.result;
-
-            // Determine file type: JSON vs CSV vs other text
-            const name = file.name || '';
-            const isJSONByName = name.toLowerCase().endsWith('.json');
-            const isCSVByName = name.toLowerCase().endsWith('.csv');
-            const looksLikeCSV = text && /[,;\t][^\n]*\n/.test(text);
-            // Try to detect JSON content but don't treat JSON as CSV even if it contains commas
-            let looksLikeJSON = false;
-            try {
-              if (text && typeof text === 'string') {
-                // A quick try-parse to detect JSON content
-                JSON.parse(text);
-                looksLikeJSON = true;
-              }
-            } catch (e) {
-              looksLikeJSON = false;
-            }
-
-            // If the file is explicitly JSON or the content parses as JSON, insert raw JSON text and skip CSV conversion
-            // Important: do NOT parse/format the JSON here — dropping JSON should insert the user's original text unmodified
-            if (isJSONByName || looksLikeJSON) {
-              try {
-                // Mark editor to skip automatic change-based conversions while we insert the dropped content
-                try { editor.__skipDropProcessing = true; } catch (err) { /* noop */ }
-                editor.setValue(text);
-                // Clear the flag on next tick to allow normal change handling afterwards
-                setTimeout(() => { try { editor.__skipDropProcessing = false; } catch (err) { /* noop */ } }, 0);
-                // Save and update URL (do not auto-sort or re-parse the JSON)
-                try {
-                  StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
-                } catch (e) {
-                  if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
-                }
-                
-                updateDiffStatus(mv);
-              } catch (err) {
-                console.error('Dropped JSON handling failed', err);
-                editor.setValue(text);
-              }
-            } else if (isCSVByName || looksLikeCSV) {
-              try {
-                // Use async CSV parser when available to avoid blocking
-                window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then((jsonArray) => {
-                  editor.setValue(JSON.stringify(jsonArray, null, 3));
-                  // Auto-sort after CSV file conversion when enabled
-                  try {
-                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                    if (autoSort) {
-                      window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: editor.getValue() }, () => {
-                        let obj = parseFlexibleJSON(editor.getValue());
-                        if (Array.isArray(obj)) obj = sortJSONArray(obj);
-                        else obj = sortJSONKeys(obj);
-                        return JSON.stringify(obj, null, 3);
-                      }).then(sorted => { editor.setValue(sorted); }).catch(() => {});
-                    }
-                  } catch (esort) { /* ignore */ }
-
-                  // Save and update URL
-                  try {
-                    StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
-                  } catch (e) {
-                    if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
-                  }
-                  URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
-                  updateDiffStatus(mv);
-                }).catch((err) => {
-                  // Fallback to synchronous parser if async fails
-                  const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
-                  editor.setValue(JSON.stringify(jsonArray, null, 3));
-                });
-                // Auto-sort after CSV file conversion when enabled
-                try {
-                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                  if (autoSort) {
-                    let obj = parseFlexibleJSON(editor.getValue());
-                    if (Array.isArray(obj)) obj = sortJSONArray(obj);
-                    else obj = sortJSONKeys(obj);
-                    editor.setValue(JSON.stringify(obj, null, 3));
-                  }
-                } catch (esort) { /* ignore */ }
-
-                // Save and update URL
-                try {
-                  StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
-                } catch (e) {
-                  if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
-                }
-                
-                updateDiffStatus(mv);
-              } catch (err) {
-                console.error('CSV -> JSON conversion failed', err);
-                showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-                // Do not modify editor content on failure
-              }
-            } else {
-              // Not JSON or CSV - just insert the raw text
-              editor.setValue(text);
-            }
-          };
-          reader.readAsText(file);
-        }
-
-        // Register native drop handlers on editor wrappers
-        function registerDropOnEditor(editor, side) {
-          const wrapper = editor.getWrapperElement();
-          const parent = wrapper.parentNode;
-          // Use capture phase and stop propagation so CodeMirror's internal drag/drop handlers don't also insert content
-          parent.addEventListener('dragover', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.dataTransfer.dropEffect = 'copy';
-          }, true);
-
-          parent.addEventListener('drop', function (e) {
-            // Intercept in capture phase and prevent CodeMirror from handling the same event
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-
-            const files = e.dataTransfer.files;
-            if (files && files.length) {
-              handleEditorFileDrop(editor, files);
-            } else {
-              // If plain text was dropped, read from dataTransfer and show conversion suggestion
-              const text = e.dataTransfer.getData('text/plain');
-              if (text) {
-                const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(text);
-                const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
-                if (autoCsv && isCSV) {
-                  try {
-                    window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then(jsonArray => {
-                      editor.setValue(JSON.stringify(jsonArray, null, 3));
-                    }).catch(err => {
-                      try {
-                        const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
-                        editor.setValue(JSON.stringify(jsonArray, null, 3));
-                      } catch (err2) {
-                        showConversionError('CSV conversion failed: ' + (err2 && err2.message ? err2.message : String(err2)));
-                        editor.setValue(text);
-                      }
-                    });
-                  } catch (err) {
-                    showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-                    editor.setValue(text);
-                  }
-                } else {
-                  editor.setValue(text);
-                  const conv = editor === leftEditor ? leftConversion : rightConversion;
-                  if (conv) {
-                    conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
-                    // Removed JSON parsing check for dropped content to avoid re-processing JSON data
-                  }
-                }
-              }
-            }
-          }, true);
-
-          // Intercept paste in capture phase to prevent CodeMirror from inserting raw CSV text first
-          wrapper.addEventListener('paste', function (e) {
-            try {
-              const clipboardText = (e.clipboardData || window.clipboardData).getData('text/plain');
-              if (!clipboardText) return;
-              const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(clipboardText);
-              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
-              if (isCSV && autoCsv) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                try {
-                  window.CSVUtils.csvToJSONAsync(clipboardText, { coerceTypes: true }).then((jsonArray) => {
-                    editor.setValue(JSON.stringify(jsonArray, null, 3));
-                    // Update storage and URL
-                    try {
-                      StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
-                    } catch (e) {
-                      if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
-                    }
-                    
-                    updateDiffStatus(mv);
-                    // Auto-sort after clipboard CSV conversion when enabled
-                    try {
-                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
-                      if (autoSort) {
-                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: editor.getValue() }, () => {
-                          let obj = parseFlexibleJSON(editor.getValue());
-                          if (Array.isArray(obj)) obj = sortJSONArray(obj);
-                          else obj = sortJSONKeys(obj);
-                          return JSON.stringify(obj, null, 3);
-                        }).then(sorted => { editor.setValue(sorted); }).catch(() => {});
-                      }
-                    } catch (esort) { /* noop */ }
-                  }).catch((err) => {
-                    showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-                  });
-                } catch (err) {
-                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
-                }
-              } else {
-                // Not auto-converting: show conversion buttons when appropriate
-                const conv = editor === leftEditor ? leftConversion : rightConversion;
-                if (conv) {
-                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
-                  const isJSON = (() => { try { JSON.parse(clipboardText); return true; } catch { return false; }})();
-                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
-                }
-              }
-            } catch (err) {
-              // ignore
-            }
-          }, true);
-        }
-
-        registerDropOnEditor(leftEditor, 'left');
-        registerDropOnEditor(rightEditor, 'right');
-
-        // Enhance format button
-        document.getElementById("btn-format").onclick = function () {
-          const leftContent = leftEditor.getValue().trim();
-          const rightContent = rightEditor.getValue().trim();
-
-          // Only proceed if both sides have content
-          if (!leftContent || !rightContent) {
-            document.getElementById("diff-status").textContent =
-              "Please provide content in both panels";
-            return;
-          }
-
-          try {
-            leftEditor.setValue(JSON.stringify(parseFlexibleJSON(leftEditor.getValue()), null, 3));
-            rightEditor.setValue(JSON.stringify(parseFlexibleJSON(rightEditor.getValue()), null, 3));
-            mv.right.operation(() => {
-              mv.alignChunks();
-            });
-          } catch (e) {
-            // alert("Invalid JSON detected. Please check your input.");
-          }
-          updateDiffStatus(mv);
-        };
-
-        updateDiffStatus(mv);
+        // Add per-pane control buttons
+        addPaneControls();
+
+        // Setup synchronized scrolling
+        setupSynchronizedScrolling();
+
+        // Set up button event handlers
+        setupButtons();
+        
+        // Add placeholders to guide users
+        addPlaceholders();
+
+        // Update diff status initially
+        updateDiffStatus();
 
         // Clear URL parameters if content was loaded from URL (keep URL clean)
         if (urlContent) {
@@ -1319,33 +678,862 @@
           console.log('URL parameters cleared after loading content from URL');
         }
 
-        return mv;
+        // Update diff status initially
+        updateDiffStatus();
+        
+        // Initialize settings panel and theme selector
+        initializeSettingsPanel();
+        initializeThemeSelector();
       }
 
-      function updateDiffStatus(mv) {
-        const leftContent = mv.editor().getValue().trim();
-        const rightContent = mv.rightOriginal().getValue().trim();
+      // Load merge settings from localStorage
+      function loadMergeSettings() {
+        return {
+          highlightChanges: SettingsManager.get('highlightChanges'),
+          gutter: SettingsManager.get('gutter'),
+          collapseUnchanged: SettingsManager.get('collapseUnchanged'),
+          orientation: SettingsManager.get('orientation'),
+          revertControls: SettingsManager.get('revertControls'),
+          scanLimit: SettingsManager.get('scanLimit'),
+        };
+      }
 
-        // Only count differences if both sides have content
+      // Initialize settings panel
+      function initializeSettingsPanel() {
+        const btnSettings = document.getElementById('btn-settings');
+        const settingsPanel = document.getElementById('settings-panel');
+        
+        // Load current settings into UI
+        const settings = loadMergeSettings();
+        document.getElementById('setting-word-wrap').checked = wordWrapEnabled;
+        document.getElementById('setting-scroll-lock').checked = scrollLocked;
+        document.getElementById('setting-highlight-changes').checked = settings.highlightChanges;
+        document.getElementById('setting-gutter').checked = settings.gutter;
+        document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
+        document.getElementById('setting-orientation').value = settings.orientation;
+        document.getElementById('setting-revert-controls').value = settings.revertControls;
+        document.getElementById('setting-scan-limit').value = settings.scanLimit;
+        
+        // Toggle panel visibility
+        btnSettings.addEventListener('click', (e) => {
+          e.stopPropagation();
+          settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+        });
+        
+        // Close panel when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!settingsPanel.contains(e.target) && e.target !== btnSettings) {
+            settingsPanel.style.display = 'none';
+          }
+        });
+        
+        // Add live change listeners to all settings
+        document.getElementById('setting-word-wrap').addEventListener('change', applyWordWrap);
+        document.getElementById('setting-scroll-lock').addEventListener('change', applyScrollLock);
+        document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-collapse-unchanged').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
+      }
+
+      // Initialize theme selector (separate from settings panel)
+      function initializeThemeSelector() {
+        const themeSelector = document.getElementById('theme-selector');
+        themeSelector.value = currentTheme;
+        themeSelector.addEventListener('change', applyTheme);
+      }
+
+      // Apply word wrap setting (live, no recreation needed)
+      function applyWordWrap() {
+        wordWrapEnabled = document.getElementById('setting-word-wrap').checked;
+        SettingsManager.set('wordWrap', wordWrapEnabled);
+        
+        const wrapExtension = wordWrapEnabled ? EditorView.lineWrapping : [];
+        
+        mergeView.a.dispatch({
+          effects: wordWrapCompartment.reconfigure(wrapExtension)
+        });
+        
+        mergeView.b.dispatch({
+          effects: wordWrapCompartment.reconfigure(wrapExtension)
+        });
+        
+        updateStatus(wordWrapEnabled ? 'Word wrap enabled' : 'Word wrap disabled');
+      }
+
+      // Apply scroll lock setting (live, no recreation needed)
+      function applyScrollLock() {
+        scrollLocked = document.getElementById('setting-scroll-lock').checked;
+        SettingsManager.set('scrollLock', scrollLocked);
+        updateStatus(scrollLocked ? 'Scroll lock enabled' : 'Scroll lock disabled');
+      }
+
+      // Apply theme setting (live, no recreation needed)
+      function applyTheme() {
+        currentTheme = document.getElementById('theme-selector').value;
+        SettingsManager.set('theme', currentTheme);
+        
+        const themeExtension = getThemeExtension(currentTheme);
+        
+        mergeView.a.dispatch({
+          effects: themeCompartment.reconfigure(themeExtension)
+        });
+        
+        mergeView.b.dispatch({
+          effects: themeCompartment.reconfigure(themeExtension)
+        });
+        
+        const themeNames = { 
+          default: 'Default', 
+          light: 'Light', 
+          dark: 'Dark',
+          oneDark: 'One Dark'
+        };
+        updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
+      }
+
+      // Apply merge settings and recreate merge view
+      function applyMergeSettings() {
+        // Get current settings from UI
+        const newWordWrap = document.getElementById('setting-word-wrap').checked;
+        const newScrollLock = document.getElementById('setting-scroll-lock').checked;
+        const newSettings = {
+          highlightChanges: document.getElementById('setting-highlight-changes').checked,
+          gutter: document.getElementById('setting-gutter').checked,
+          collapseUnchanged: document.getElementById('setting-collapse-unchanged').checked,
+          orientation: document.getElementById('setting-orientation').value,
+          revertControls: document.getElementById('setting-revert-controls').value,
+          scanLimit: parseInt(document.getElementById('setting-scan-limit').value, 10),
+        };
+        
+        // Update global word wrap and scroll lock
+        wordWrapEnabled = newWordWrap;
+        scrollLocked = newScrollLock;
+        
+        // Save all settings to localStorage
+        SettingsManager.set('wordWrap', newWordWrap);
+        SettingsManager.set('scrollLock', newScrollLock);
+        SettingsManager.set('highlightChanges', newSettings.highlightChanges);
+        SettingsManager.set('gutter', newSettings.gutter);
+        SettingsManager.set('collapseUnchanged', newSettings.collapseUnchanged);
+        SettingsManager.set('orientation', newSettings.orientation);
+        SettingsManager.set('revertControls', newSettings.revertControls);
+        SettingsManager.set('scanLimit', newSettings.scanLimit);
+        
+        // Get current content
+        const leftContent = mergeView.a.state.doc.toString();
+        const rightContent = mergeView.b.state.doc.toString();
+        
+        // Destroy existing merge view
+        const container = document.getElementById("view-container");
+        container.innerHTML = '';
+        
+        // Recreate merge view with new settings
+        mergeView = new MergeView({
+          a: {
+            doc: leftContent,
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+          },
+          b: {
+            doc: rightContent,
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+          },
+          parent: container,
+          orientation: newSettings.orientation,
+          connect: "align",
+          collapseIdentical: false,
+          highlightChanges: newSettings.highlightChanges,
+          gutter: newSettings.gutter,
+          allowEditingOriginals: true,
+          revertControls: newSettings.revertControls === "none" ? undefined : newSettings.revertControls,
+          collapseUnchanged: newSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
+          diffConfig: { scanLimit: newSettings.scanLimit },
+        });
+        
+        // Re-add pane controls
+        addPaneControls();
+        
+        // Re-setup synchronized scrolling
+        setupSynchronizedScrolling();
+        
+        // Re-add placeholders
+        addPlaceholders();
+        
+        updateStatus('Settings applied successfully');
+        updateDiffStatus();
+      }
+
+      // Add placeholder overlays to empty editors
+      function addPlaceholders() {
+        const editors = document.querySelectorAll('.cm-mergeViewEditor');
+        
+        if (editors.length >= 2) {
+          addPlaceholderToPane(editors[0], 'left');
+          addPlaceholderToPane(editors[1], 'right');
+        }
+        
+        // Update placeholder visibility based on content
+        updatePlaceholders();
+      }
+
+      function addPlaceholderToPane(paneElement, side) {
+        const placeholder = document.createElement('div');
+        placeholder.className = `placeholder-overlay placeholder-${side}`;
+        placeholder.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          pointer-events: none;
+          background: #f8f9fa;
+          z-index: 1;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+        
+        placeholder.innerHTML = `
+          <div style="text-align: center; color: #6c757d; padding: 40px;">
+            <div style="font-size: 48px; margin-bottom: 20px; opacity: 0.3;">📝</div>
+            <div style="font-size: 16px; font-weight: 500; margin-bottom: 12px; color: #495057;">
+              ${side === 'left' ? 'Left Panel' : 'Right Panel'}
+            </div>
+            <div style="font-size: 13px; line-height: 1.6; max-width: 280px;">
+              <div style="margin-bottom: 8px;">✏️ <strong>Paste</strong> JSON/CSV content</div>
+              <div style="margin-bottom: 8px;">📁 <strong>Drag & drop</strong> files here</div>
+              <div style="margin-bottom: 8px;">⌨️ Start <strong>typing</strong> directly</div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #dee2e6; font-size: 12px; opacity: 0.8;">
+                Use <strong>⚙️ Diff Settings</strong> for auto-format options
+              </div>
+            </div>
+          </div>
+        `;
+        
+        paneElement.appendChild(placeholder);
+      }
+
+      // Update placeholder visibility
+      function updatePlaceholders() {
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+        
+        const leftPlaceholder = document.querySelector('.placeholder-left');
+        const rightPlaceholder = document.querySelector('.placeholder-right');
+        
+        if (leftPlaceholder) {
+          leftPlaceholder.style.display = leftContent ? 'none' : 'flex';
+        }
+        
+        if (rightPlaceholder) {
+          rightPlaceholder.style.display = rightContent ? 'none' : 'flex';
+        }
+      }
+
+      // Add per-pane control buttons
+      function addPaneControls() {
+        // Find the editor elements
+        const editors = document.querySelectorAll('.cm-mergeViewEditor');
+        
+        if (editors.length >= 2) {
+          // Left pane controls
+          addControlsToPane(editors[0], 'left');
+          // Right pane controls
+          addControlsToPane(editors[1], 'right');
+        }
+      }
+
+      function addControlsToPane(paneElement, side) {
+        const controls = document.createElement('div');
+        controls.className = 'pane-controls';
+
+        // Copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = '📋 Copy';
+        copyBtn.title = 'Copy content';
+        copyBtn.className = 'copy-clear-btn'; // Add class for easy selection
+        copyBtn.onclick = async () => {
+          const editor = side === 'left' ? mergeView.a : mergeView.b;
+          const text = editor.state.doc.toString();
+          try {
+            await navigator.clipboard.writeText(text);
+            copyBtn.textContent = '✓ Copied';
+            setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1500);
+          } catch (err) {
+            updateStatus('Failed to copy: ' + err.message);
+          }
+        };
+
+        // Paste button
+        const pasteBtn = document.createElement('button');
+        pasteBtn.textContent = '📄 Paste';
+        pasteBtn.title = 'Paste from clipboard';
+        pasteBtn.onclick = async () => {
+          try {
+            const text = await navigator.clipboard.readText();
+            const editor = side === 'left' ? mergeView.a : mergeView.b;
+            
+            // Check for CSV and auto-convert if enabled
+            const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
+            const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
+
+            let content = text;
+            if (isCSV && autoCSV) {
+              try {
+                const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+                content = JSON.stringify(jsonData, null, 3);
+                showConversionMessage("CSV converted to JSON");
+              } catch (err) {
+                showErrorMessage("CSV conversion failed: " + err.message);
+              }
+            }
+
+            editor.dispatch({
+              changes: { from: 0, to: editor.state.doc.length, insert: content }
+            });
+            updateDiffStatus();
+          } catch (err) {
+            updateStatus('Failed to paste: ' + err.message);
+          }
+        };
+
+        // Clear button
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = '🗑 Clear';
+        clearBtn.title = 'Clear content';
+        clearBtn.className = 'copy-clear-btn'; // Add class for easy selection
+        clearBtn.onclick = () => {
+          const editor = side === 'left' ? mergeView.a : mergeView.b;
+          editor.dispatch({
+            changes: { from: 0, to: editor.state.doc.length, insert: "" }
+          });
+          updateDiffStatus();
+          updatePaneButtonVisibility();
+        };
+
+        controls.appendChild(copyBtn);
+        controls.appendChild(pasteBtn);
+        controls.appendChild(clearBtn);
+        
+        paneElement.style.position = 'relative';
+        paneElement.appendChild(controls);
+        
+        // Initial visibility update
+        updatePaneButtonVisibility();
+      }
+
+      // Update visibility of copy/clear buttons based on content
+      function updatePaneButtonVisibility() {
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+        
+        // Find all pane controls
+        const paneControls = document.querySelectorAll('.pane-controls');
+        
+        if (paneControls.length >= 2) {
+          // Left panel buttons
+          const leftButtons = paneControls[0].querySelectorAll('.copy-clear-btn');
+          leftButtons.forEach(btn => {
+            btn.style.display = leftContent ? 'inline-block' : 'none';
+          });
+          
+          // Right panel buttons
+          const rightButtons = paneControls[1].querySelectorAll('.copy-clear-btn');
+          rightButtons.forEach(btn => {
+            btn.style.display = rightContent ? 'inline-block' : 'none';
+          });
+        }
+      }
+
+      // Setup synchronized scrolling
+      function setupSynchronizedScrolling() {
+        let isScrolling = false;
+
+        // Get scroll containers
+        const leftScroller = mergeView.a.scrollDOM;
+        const rightScroller = mergeView.b.scrollDOM;
+
+        // Sync scroll from left to right
+        leftScroller.addEventListener('scroll', () => {
+          if (!scrollLocked || isScrolling) return;
+          isScrolling = true;
+          rightScroller.scrollTop = leftScroller.scrollTop;
+          rightScroller.scrollLeft = leftScroller.scrollLeft;
+          setTimeout(() => { isScrolling = false; }, 10);
+        });
+
+        // Sync scroll from right to left
+        rightScroller.addEventListener('scroll', () => {
+          if (!scrollLocked || isScrolling) return;
+          isScrolling = true;
+          leftScroller.scrollTop = rightScroller.scrollTop;
+          leftScroller.scrollLeft = rightScroller.scrollLeft;
+          setTimeout(() => { isScrolling = false; }, 10);
+        });
+      }
+
+      // Setup button handlers
+      function setupButtons() {
+        const btnFormat = document.getElementById("btn-format");
+        const btnSort = document.getElementById("btn-sort");
+        const btnShare = document.getElementById("btn-share");
+        const btnImport = document.getElementById("btn-import");
+        const fileImport = document.getElementById("file-import");
+        const selectTemplates = document.getElementById("select-templates");
+        const btnClearAll = document.getElementById("btn-clear-all");
+        const autoCSV = document.getElementById("auto-csv-conversion");
+
+        btnFormat.onclick = formatJSON;
+        btnSort.onclick = sortJSON;
+        
+        btnShare.onclick = shareURL;
+        
+        // Import snapshot
+        btnImport.onclick = () => fileImport.click();
+        fileImport.onchange = importSnapshot;
+
+        // Template selection
+        selectTemplates.onchange = (e) => {
+          const templateName = e.target.value;
+          if (templateName) {
+            loadTemplate(templateName);
+            e.target.value = ""; // Reset selection
+          }
+        };
+
+        // Auto CSV conversion
+        if (autoCSV) {
+          const savedSetting = SettingsManager.get('autoCsv');
+          autoCSV.checked = !!savedSetting;
+          autoCSV.addEventListener('change', (e) => {
+            SettingsManager.set('autoCsv', e.target.checked);
+          });
+        }
+        
+        if (btnClearAll) {
+          btnClearAll.onclick = clearAll;
+          updateClearButtonVisibility();
+        }
+
+        // Setup drag and drop handlers
+        setupDragDrop();
+
+        // Setup paste handlers
+        setupPasteHandlers();
+      }
+
+      // Format JSON in both editors
+      function formatJSON() {
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+
         if (!leftContent || !rightContent) {
-          document.getElementById("diff-status").textContent =
-            "Add JSON content to both sides to compare";
+          updateStatus("Please provide content in both panels");
           return;
         }
 
-        const diffs = mv.rightChunks().length;
-        document.getElementById(
-          "diff-status"
-        ).textContent = `Found ${diffs} differences`;
+        try {
+          const leftParsed = window.parseFlexibleJSON(leftContent);
+          const rightParsed = window.parseFlexibleJSON(rightContent);
+
+          const leftFormatted = JSON.stringify(leftParsed, null, 3);
+          const rightFormatted = JSON.stringify(rightParsed, null, 3);
+
+          mergeView.a.dispatch({
+            changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftFormatted }
+          });
+
+          mergeView.b.dispatch({
+            changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightFormatted }
+          });
+
+          updateStatus("Formatted successfully");
+          updateDiffStatus();
+        } catch (e) {
+          updateStatus("Error formatting: " + e.message);
+        }
+      }
+
+      // Sort JSON keys
+      function sortJSON() {
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+
+        if (!leftContent || !rightContent) {
+          updateStatus("Please provide content in both panels");
+          return;
+        }
+
+        try {
+          const leftParsed = window.parseFlexibleJSON(leftContent);
+          const rightParsed = window.parseFlexibleJSON(rightContent);
+
+          const leftSorted = window.sortJSONKeys(leftParsed);
+          const rightSorted = window.sortJSONKeys(rightParsed);
+
+          const leftFormatted = JSON.stringify(leftSorted, null, 3);
+          const rightFormatted = JSON.stringify(rightSorted, null, 3);
+
+          mergeView.a.dispatch({
+            changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftFormatted }
+          });
+
+          mergeView.b.dispatch({
+            changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightFormatted }
+          });
+
+          updateStatus("Sorted successfully");
+          updateDiffStatus();
+        } catch (e) {
+          updateStatus("Error sorting: " + e.message);
+        }
+      }
+
+      // Share URL functionality
+      async function shareURL() {
+        const leftContent = mergeView.a.state.doc.toString();
+        const rightContent = mergeView.b.state.doc.toString();
+
+        if (!leftContent.trim() && !rightContent.trim()) {
+          updateStatus("No content to share");
+          return;
+        }
+
+        const btn = document.getElementById("btn-share");
+        const originalText = btn.textContent;
+        btn.textContent = '⏳ Processing...';
+        btn.disabled = true;
+
+        try {
+          // Try to create compressed URL
+          const shareableURL = URLManager.generateShareableURL(leftContent, rightContent);
+          
+          // Check URL length (browser limit ~2000 chars)
+          if (shareableURL.length > 2000) {
+            // Fall back to snapshot download
+            const data = JSON.stringify({ left: leftContent, right: rightContent });
+            const compressed = pako.gzip(data);
+            const blob = new Blob([compressed], { type: 'application/gzip' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'json-compare-snapshot.json.gz';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            updateStatus("Content too large for URL - snapshot downloaded");
+            btn.textContent = originalText;
+            btn.disabled = false;
+            return;
+          }
+
+          // Copy to clipboard
+          await navigator.clipboard.writeText(shareableURL);
+          btn.textContent = '✓ Copied!';
+          updateStatus("Share URL copied to clipboard");
+
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.disabled = false;
+          }, 2000);
+        } catch (err) {
+          updateStatus("Failed to create share URL: " + err.message);
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      }
+
+      // Import snapshot file
+      async function importSnapshot(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          
+          let decompressed;
+          try {
+            decompressed = pako.ungzip(uint8Array, { to: 'string' });
+          } catch (err) {
+            // Try treating as uncompressed JSON
+            const decoder = new TextDecoder();
+            decompressed = decoder.decode(uint8Array);
+          }
+
+          const data = JSON.parse(decompressed);
+          
+          mergeView.a.dispatch({
+            changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
+          });
+
+          mergeView.b.dispatch({
+            changes: { from: 0, to: mergeView.b.state.doc.length, insert: data.right || "" }
+          });
+
+          URLManager.clearURL();
+          updateStatus("Snapshot imported successfully");
+          updateDiffStatus();
+        } catch (err) {
+          updateStatus("Failed to import snapshot: " + err.message);
+        } finally {
+          e.target.value = ""; // Reset file input
+        }
+      }
+
+      // Setup drag and drop handlers
+      function setupDragDrop() {
+        const leftEditor = mergeView.a.dom;
+        const rightEditor = mergeView.b.dom;
+
+        setupEditorDrop(leftEditor, 'left');
+        setupEditorDrop(rightEditor, 'right');
+      }
+
+      function setupEditorDrop(editorElement, side) {
+        editorElement.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'copy';
+        }, true);
+
+        editorElement.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const files = e.dataTransfer.files;
+          if (files && files.length > 0) {
+            await handleFileDrop(files[0], side);
+          }
+        }, true);
+      }
+
+      async function handleFileDrop(file, side) {
+        try {
+          const text = await file.text();
+          const editor = side === 'left' ? mergeView.a : mergeView.b;
+
+          // Check if it's CSV and auto-convert if enabled
+          const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
+          const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
+
+          let content = text;
+          if (isCSV && autoCSV) {
+            try {
+              const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+              content = JSON.stringify(jsonData, null, 3);
+              showConversionMessage("CSV converted to JSON");
+            } catch (err) {
+              showErrorMessage("CSV conversion failed: " + err.message);
+            }
+          }
+
+          editor.dispatch({
+            changes: { from: 0, to: editor.state.doc.length, insert: content }
+          });
+
+          updateDiffStatus();
+        } catch (err) {
+          showErrorMessage("Failed to read file: " + err.message);
+        }
+      }
+
+      // Setup paste handlers
+      function setupPasteHandlers() {
+        mergeView.a.dom.addEventListener('paste', (e) => handlePaste(e, 'left'), true);
+        mergeView.b.dom.addEventListener('paste', (e) => handlePaste(e, 'right'), true);
+      }
+
+      async function handlePaste(e, side) {
+        const clipboardData = e.clipboardData || window.clipboardData;
+        if (!clipboardData) return;
+
+        const text = clipboardData.getData('text');
+        if (!text) return;
+
+        const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
+        const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
+
+        if (isCSV && autoCSV) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const editor = side === 'left' ? mergeView.a : mergeView.b;
+
+          try {
+            const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+            const content = JSON.stringify(jsonData, null, 3);
+
+            editor.dispatch({
+              changes: { from: 0, to: editor.state.doc.length, insert: content }
+            });
+
+            showConversionMessage("CSV converted to JSON");
+            updateDiffStatus();
+          } catch (err) {
+            showErrorMessage("CSV conversion failed: " + err.message);
+          }
+        }
+      }
+
+      // Show conversion message
+      function showConversionMessage(message) {
+        updateStatus(message);
+      }
+
+      // Show error message
+      function showErrorMessage(message) {
+        const errorArea = document.getElementById('conversion-error-area');
+        if (errorArea) {
+          errorArea.textContent = message;
+          errorArea.style.display = 'block';
+          setTimeout(() => {
+            errorArea.style.display = 'none';
+          }, 6000);
+        } else {
+          updateStatus(message);
+        }
+      }
+
+      // Load template
+      function loadTemplate(templateName) {
+        const template = DefaultTemplates[templateName];
+        if (!template) return;
+
+        const leftHas = mergeView.a.state.doc.toString().trim().length > 0;
+        const rightHas = mergeView.b.state.doc.toString().trim().length > 0;
+
+        if (leftHas || rightHas) {
+          if (!confirm("This will replace current content. Continue?")) {
+            return;
+          }
+        }
+
+        mergeView.a.dispatch({
+          changes: { from: 0, to: mergeView.a.state.doc.length, insert: template.left }
+        });
+
+        mergeView.b.dispatch({
+          changes: { from: 0, to: mergeView.b.state.doc.length, insert: template.right }
+        });
+
+        updateStatus("Template loaded");
+        updateDiffStatus();
+      }
+
+      // Clear all content
+      function clearAll() {
+        if (!confirm("Clear all content?")) return;
+
+        mergeView.a.dispatch({
+          changes: { from: 0, to: mergeView.a.state.doc.length, insert: "" }
+        });
+
+        mergeView.b.dispatch({
+          changes: { from: 0, to: mergeView.b.state.doc.length, insert: "" }
+        });
+
+        updateStatus("Content cleared");
+        updateDiffStatus();
+      }
+
+      // Save content to storage (called by auto-save extension)
+      function saveContent() {
+        const leftContent = mergeView.a.state.doc.toString();
+        const rightContent = mergeView.b.state.doc.toString();
+
+        try {
+          StorageManager.saveToStorage(leftContent, rightContent);
+        } catch (e) {
+          console.warn('saveToStorage failed during autosave', e);
+          if (StorageManager.saveToIndexedDB) {
+            StorageManager.saveToIndexedDB(leftContent, rightContent).catch(err => {
+              console.error('IndexedDB fallback failed:', err);
+            });
+          }
+        }
+
+        updateClearButtonVisibility();
+        updateDiffStatus();
+        updatePlaceholders();
+        updatePaneButtonVisibility();
+      }
+
+      // Update diff status
+      function updateDiffStatus() {
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+        const statusDiv = document.getElementById("diff-status");
+        
+        if (!leftContent || !rightContent) {
+          statusDiv.textContent = "Add content to both panels to compare";
+          return;
+        }
+
+        if (leftContent === rightContent) {
+          statusDiv.textContent = "No differences found";
+          return;
+        }
+
+        // Calculate actual differences using diff_match_patch if available
+        if (typeof diff_match_patch !== 'undefined') {
+          try {
+            const dmp = new diff_match_patch();
+            const diffs = dmp.diff_main(leftContent, rightContent);
+            dmp.diff_cleanupSemantic(diffs);
+            
+            // Count number of diff chunks (contiguous blocks of changes)
+            let diffCount = 0;
+            let inDiffChunk = false;
+            
+            for (const [op, text] of diffs) {
+              if (op !== 0) { // DIFF_INSERT (-1) or DIFF_DELETE (1)
+                if (!inDiffChunk) {
+                  diffCount++;
+                  inDiffChunk = true;
+                }
+              } else { // DIFF_EQUAL (0)
+                inDiffChunk = false;
+              }
+            }
+            
+            statusDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''}`;
+            return;
+          } catch (err) {
+            console.warn('Diff calculation failed:', err);
+          }
+        }
+
+        // Fallback if diff_match_patch not available
+        statusDiv.textContent = "Differences detected";
+      }
+
+      // Update status message
+      function updateStatus(message) {
+        const statusDiv = document.getElementById("diff-status");
+        statusDiv.textContent = message;
+      }
+
+      // Update clear button visibility
+      function updateClearButtonVisibility() {
+        const btnClearAll = document.getElementById("btn-clear-all");
+        if (!btnClearAll) return;
+
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+
+        btnClearAll.style.display = (leftContent || rightContent) ? "inline-block" : "none";
       }
 
       // Initialize when DOM is ready
-      document.addEventListener("DOMContentLoaded", () => {
-        const target = document.getElementById("view");
-        const mv = initializeMergeView(target);
-        
-  // No notification UI — intentionally removed to keep page free of toasts
-      });
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeApp);
+      } else {
+        initializeApp();
+      }
     </script>
   </body>
 </html>
