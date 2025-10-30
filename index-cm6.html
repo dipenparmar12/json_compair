@@ -395,9 +395,23 @@
       // Import Compartment for dynamic configuration
       import { Compartment } from "@codemirror/state";
 
+      // Auto-save extension for CodeMirror 6
+      const autoSaveExtension = EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          // Debounce saves to avoid excessive localStorage writes
+          clearTimeout(window.autoSaveTimer);
+          window.autoSaveTimer = setTimeout(() => {
+            saveContent();
+          }, 300);
+        }
+      });
+
       // Word wrap compartment for dynamic reconfiguration
       const wordWrapCompartment = new Compartment();
-      let wordWrapEnabled = true; // Default to enabled
+      
+      // Load settings from localStorage
+      let wordWrapEnabled = SettingsManager.get('wordWrap');
+      let scrollLocked = SettingsManager.get('scrollLock');
 
       // Basic editor extensions for both sides
       const basicSetup = [
@@ -447,11 +461,11 @@
         mergeView = new MergeView({
           a: {
             doc: initialContent.left,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(EditorView.lineWrapping)],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
           },
           b: {
             doc: initialContent.right,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(EditorView.lineWrapping)],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), autoSaveExtension],
           },
           parent: container,
           // Align matching lines and leave empty blocks for unmatched chunks (Git-like split view)
@@ -477,8 +491,8 @@
         // Set up button event handlers
         setupButtons();
 
-        // Set up auto-save
-        setupAutoSave();
+        // Update diff status initially
+        updateDiffStatus();
 
         // Clear URL parameters if content was loaded from URL (keep URL clean)
         if (urlContent) {
@@ -578,7 +592,6 @@
 
       // Setup synchronized scrolling
       function setupSynchronizedScrolling() {
-        let scrollLocked = true;
         let isScrolling = false;
 
         // Get scroll containers
@@ -605,13 +618,14 @@
 
         // Add scroll lock toggle button
         const scrollLockBtn = document.createElement('button');
-        scrollLockBtn.textContent = '🔗 Scroll Lock';
-        scrollLockBtn.className = 'active';
+        scrollLockBtn.textContent = scrollLocked ? '🔗 Scroll Lock' : '🔓 Scroll Unlocked';
+        scrollLockBtn.className = scrollLocked ? 'active' : '';
         scrollLockBtn.title = 'Toggle synchronized scrolling';
         scrollLockBtn.onclick = () => {
           scrollLocked = !scrollLocked;
           scrollLockBtn.classList.toggle('active');
           scrollLockBtn.textContent = scrollLocked ? '🔗 Scroll Lock' : '🔓 Scroll Unlocked';
+          SettingsManager.set('scrollLock', scrollLocked);
         };
 
         // Add to intro controls
@@ -639,8 +653,11 @@
         btnFormat.onclick = formatJSON;
         btnSort.onclick = sortJSON;
         
-        // Word wrap toggle
+        // Word wrap toggle - initialize button state
         if (btnWordWrap) {
+          btnWordWrap.textContent = wordWrapEnabled ? '📄 Word Wrap' : '📏 No Wrap';
+          btnWordWrap.className = wordWrapEnabled ? 'active' : '';
+          
           btnWordWrap.onclick = () => {
             wordWrapEnabled = !wordWrapEnabled;
             btnWordWrap.classList.toggle('active');
@@ -657,6 +674,8 @@
               effects: wordWrapCompartment.reconfigure(wrapExtension)
             });
             
+            // Save to settings
+            SettingsManager.set('wordWrap', wordWrapEnabled);
             updateStatus(wordWrapEnabled ? 'Word wrap enabled' : 'Word wrap disabled');
           };
         }
@@ -1012,13 +1031,7 @@
         updateDiffStatus();
       }
 
-      // Auto-save to storage
-      function setupAutoSave() {
-        // Listen to changes in both editors
-        mergeView.a.dom.addEventListener('input', saveContent);
-        mergeView.b.dom.addEventListener('input', saveContent);
-      }
-
+      // Save content to storage (called by auto-save extension)
       function saveContent() {
         const leftContent = mergeView.a.state.doc.toString();
         const rightContent = mergeView.b.state.doc.toString();

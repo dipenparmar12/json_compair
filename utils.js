@@ -185,13 +185,15 @@
     return loadSnapshotFromIDB(this.STORAGE_KEY);
   };
 
-  // Settings Manager: persists small UI settings in localStorage (with simple fallback)
+    // Settings Manager: persists small UI settings in localStorage (with simple fallback)
   const SettingsManager = {
-    KEY: 'json_compair_settings',
+    KEY: "json_compair_settings",
     defaults: {
       autoCsv: false,
       autoSortOnPaste: true,
-      showOnlyDiffs: false
+      showOnlyDiffs: false,
+      wordWrap: true,       // Default word wrap enabled
+      scrollLock: true,     // Default scroll lock enabled
     },
 
     loadAll: function () {
