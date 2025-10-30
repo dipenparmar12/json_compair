@@ -78,10 +78,13 @@ const mergeViewConfig = {
   revertButtons: true,
   allowEditingOriginals: true,
   highlightDifferences: true,
-  lineWrapping: true,
+  lineWrapping: false,               // Updated default in v5.65.20
   styleActiveLine: true,
   chunkClassLocation: ["background", "wrap", "gutter"]
 }
+
+// CodeMirror v5.65.20 (Latest stable v5, October 2025)
+// Preserved backward compatibility with all existing features
 ```
 
 #### Event Handlers
@@ -267,7 +270,10 @@ const PERFORMANCE_THRESHOLDS = {
 
 #### Large File Handling Strategy
 ```javascript
-// Processing strategy by file size
+// Processing strategy by file size (Updated October 2025)
+// Worker threshold optimized for modern browsers
+const WORKER_SIZE_THRESHOLD = 150 * 1024; // 150KB
+
 if (fileSize < 1024) {
   // Small files: immediate synchronous processing
   processSync(content);

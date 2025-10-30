@@ -265,7 +265,7 @@
 
 ### 6.1 Library Version Dependencies
 **CodeMirror Version Lock**:
-- Version 5.65.3 required for current implementation
+- Version 5.65.20 required for current implementation (latest stable v5)
 - CodeMirror 6.x requires significant refactoring
 - Breaking changes in newer versions
 - Custom modifications may prevent easy upgrades

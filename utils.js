@@ -185,13 +185,24 @@
     return loadSnapshotFromIDB(this.STORAGE_KEY);
   };
 
-  // Settings Manager: persists small UI settings in localStorage (with simple fallback)
+    // Settings Manager: persists small UI settings in localStorage (with simple fallback)
   const SettingsManager = {
-    KEY: 'json_compair_settings',
+    KEY: "json_compair_settings",
     defaults: {
       autoCsv: false,
-      autoSortOnPaste: true,
-      showOnlyDiffs: false
+      autoFormatJson: true,     // Auto-format JSON on paste/drop
+      autoSortKeys: false,      // Auto-sort keys on paste/drop
+      showOnlyDiffs: false,
+      wordWrap: true,       // Default word wrap enabled
+      scrollLock: true,     // Default scroll lock enabled
+      theme: "default",     // default, light, or dark
+      // Merge view settings
+      highlightChanges: true,
+      gutter: true,
+      collapseUnchanged: false,
+      orientation: "a-b",
+      revertControls: "none",
+      scanLimit: 500,
     },
 
     loadAll: function () {

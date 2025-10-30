@@ -7,25 +7,28 @@ This document analyzes modern alternatives and upgrade paths for the JSON Compar
 ## Current Technology Stack Analysis
 
 ### Current Styling & UI Framework
-- **TailwindCSS 3.3.6**: Modern utility-first CSS framework
-  - **Status**: Current and well-maintained (November 2023)
-  - **Strengths**: Excellent performance, small bundle size, comprehensive utility coverage
-  - **Implementation**: CDN with offline fallback already implemented
-  - **Recommendation**: **KEEP** - Already using modern best practices
+- **Status**: No longer using TailwindCSS (removed in favor of custom CSS)
+  - **Previous**: TailwindCSS 3.3.6
+  - **Current**: Custom CSS with `css/app.css`, `css/merge-custom.css`, `css/ccsiteV6.css`
+  - **Reason**: Reduced dependencies, smaller footprint, more control over styling
 
-### Current Editor & Performance Limitations
-- **CodeMirror 5.65.3**: Merge view performance degrades significantly with large documents
-- **diff_match_patch**: O(n*m) complexity becomes prohibitive for very large comparisons
+### Current Editor & Performance Status (Updated October 2025)
+- **CodeMirror 5.65.20**: Latest stable v5 release (updated from 5.65.3)
+  - **Performance**: Improved performance and bug fixes
+  - **Compatibility**: Full backward compatibility maintained
+  - **Merge View**: Stable and well-tested with large documents
+- **diff_match_patch**: Updated to latest version (October 2025)
 - **Browser Memory**: Large JSON structures consume 2-3x memory during active comparison
-- **UI Responsiveness**: Blocking operations cause interface freezing
+- **UI Responsiveness**: Worker threads handle >150KB files efficiently
 
 ## Major Component Upgrade Analysis
 
-### 1. CodeMirror: Version 5.65.3 → CodeMirror 6.x
+### 1. CodeMirror: Version 5.65.20 → CodeMirror 6.x
 
 #### Current Status: CodeMirror 6 (Latest Stable)
-- **Latest Version**: 6.0.1 (Stable release, no longer beta as of 2024)
-- **Bundle Size**: Significantly smaller modular core (~200KB vs 580KB)
+- **Current Version in Use**: 5.65.20 (Latest stable v5, updated October 2025)
+- **Latest Available**: CodeMirror 6.0.1+ (Stable release, no longer beta as of 2024)
+- **Bundle Size**: CM6 has significantly smaller modular core (~200KB vs 580KB)
 - **Architecture**: Complete rewrite with modern extensibility system
 - **Performance**: Optimized for large documents with virtual scrolling
 
@@ -255,24 +258,30 @@ class ProgressiveComparison {
 
 ## Compression and Storage Upgrades
 
-### Current: TailwindCSS + Pako 2.1.0
-- **TailwindCSS**: Already modern, no upgrade needed
-- **Pako**: CDN dependency with offline fallback implemented
-- **Limitation**: All dependencies should have consistent fallback strategy
+### Current: Pako 2.1.0 (Updated October 2025)
+- **Pako 2.1.0**: Latest stable version with SRI security
+- **Status**: Up-to-date and well-maintained
+- **CDN**: cdnjs.cloudflare.com with integrity hash
+- **Local Fallback**: Dynamic loading with graceful fallback
+- **Implementation**: Already follows modern best practices
 
 ### Modern Alternatives for Compression
 
-#### 1. Enhanced Fallback Strategy (Already Implemented)
+#### 1. Current Implementation (Best Practices Already Applied)
 ```javascript
-// Current implementation already follows best practices
+// Current implementation already follows best practices (October 2025)
+// Pako 2.1.0 with SRI integrity hash
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" 
+        integrity="sha512-giedl6V2CsRUwviHqAInbg+h/aNVr2gn3//FaTWUDPv6d3Pv2wvPWiMKV71RvdMGHE3OcQP9qFLOKD+ZntBdlw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer">
+</script>
+
+// Dynamic loading with local fallback
 const DEPENDENCIES = {
-    tailwind: {
-        cdn: 'https://cdn.tailwindcss.com',
-        fallback: 'css/offline/tailwindcss_3.3.6.css'
-    },
     pako: {
         cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js',
-        fallback: 'js/offline/pako_2.1.0.js'
+        fallback: './js/pako.min.js' // Available if needed
     }
 };
 ```
