@@ -322,7 +322,6 @@
       <div class="intro">
         <button id="btn-format">Format JSON</button>
         <button id="btn-sort">Sort Keys</button>
-        <button id="btn-word-wrap" class="active">📄 Word Wrap</button>
         <button id="btn-share">📋 Share URL</button>
         <button id="btn-import">Import Snapshot</button>
         <input type="file" id="file-import" accept=".gz,.gzip,application/gzip,application/octet-stream,.json" style="display: none" />
@@ -333,8 +332,20 @@
         </select>
         <div class="settings-dropdown" style="position: relative; display: inline-block;">
           <button id="btn-settings" style="font-size: 13px;">⚙️ Diff Settings</button>
-          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 12px; min-width: 280px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; margin-top: 4px;">
-            <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee;">Merge View Settings</div>
+          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 12px; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; margin-top: 4px;">
+            <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee;">Editor Settings</div>
+            
+            <label style="display: block; margin-bottom: 8px; font-size: 12px;">
+              <input type="checkbox" id="setting-word-wrap" checked /> Word Wrap
+              <div style="color: #666; font-size: 11px; margin-left: 20px;">Wrap long lines to fit editor width</div>
+            </label>
+            
+            <label style="display: block; margin-bottom: 12px; font-size: 12px;">
+              <input type="checkbox" id="setting-scroll-lock" checked /> Synchronized Scrolling
+              <div style="color: #666; font-size: 11px; margin-left: 20px;">Lock scroll between left and right panels</div>
+            </label>
+            
+            <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 8px; padding-top: 8px; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">Diff View Settings</div>
             
             <label style="display: block; margin-bottom: 8px; font-size: 12px;">
               <input type="checkbox" id="setting-highlight-changes" checked /> Highlight Changes
@@ -577,6 +588,8 @@
         
         // Load current settings into UI
         const settings = loadMergeSettings();
+        document.getElementById('setting-word-wrap').checked = wordWrapEnabled;
+        document.getElementById('setting-scroll-lock').checked = scrollLocked;
         document.getElementById('setting-highlight-changes').checked = settings.highlightChanges;
         document.getElementById('setting-gutter').checked = settings.gutter;
         document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
@@ -607,6 +620,8 @@
       // Apply merge settings and recreate merge view
       function applyMergeSettings() {
         // Get current settings from UI
+        const newWordWrap = document.getElementById('setting-word-wrap').checked;
+        const newScrollLock = document.getElementById('setting-scroll-lock').checked;
         const newSettings = {
           highlightChanges: document.getElementById('setting-highlight-changes').checked,
           gutter: document.getElementById('setting-gutter').checked,
@@ -616,7 +631,13 @@
           scanLimit: parseInt(document.getElementById('setting-scan-limit').value, 10),
         };
         
-        // Save to localStorage
+        // Update global word wrap and scroll lock
+        wordWrapEnabled = newWordWrap;
+        scrollLocked = newScrollLock;
+        
+        // Save all settings to localStorage
+        SettingsManager.set('wordWrap', newWordWrap);
+        SettingsManager.set('scrollLock', newScrollLock);
         SettingsManager.set('highlightChanges', newSettings.highlightChanges);
         SettingsManager.set('gutter', newSettings.gutter);
         SettingsManager.set('collapseUnchanged', newSettings.collapseUnchanged);
@@ -775,34 +796,12 @@
           leftScroller.scrollLeft = rightScroller.scrollLeft;
           setTimeout(() => { isScrolling = false; }, 10);
         });
-
-        // Add scroll lock toggle button
-        const scrollLockBtn = document.createElement('button');
-        scrollLockBtn.textContent = scrollLocked ? '🔗 Scroll Lock' : '🔓 Scroll Unlocked';
-        scrollLockBtn.className = scrollLocked ? 'active' : '';
-        scrollLockBtn.title = 'Toggle synchronized scrolling';
-        scrollLockBtn.onclick = () => {
-          scrollLocked = !scrollLocked;
-          scrollLockBtn.classList.toggle('active');
-          scrollLockBtn.textContent = scrollLocked ? '🔗 Scroll Lock' : '🔓 Scroll Unlocked';
-          SettingsManager.set('scrollLock', scrollLocked);
-        };
-
-        // Add to intro controls
-        const intro = document.querySelector('.intro');
-        const clearBtn = document.getElementById('btn-clear-all');
-        if (clearBtn) {
-          intro.insertBefore(scrollLockBtn, clearBtn);
-        } else {
-          intro.appendChild(scrollLockBtn);
-        }
       }
 
       // Setup button handlers
       function setupButtons() {
         const btnFormat = document.getElementById("btn-format");
         const btnSort = document.getElementById("btn-sort");
-        const btnWordWrap = document.getElementById("btn-word-wrap");
         const btnShare = document.getElementById("btn-share");
         const btnImport = document.getElementById("btn-import");
         const fileImport = document.getElementById("file-import");
@@ -812,33 +811,6 @@
 
         btnFormat.onclick = formatJSON;
         btnSort.onclick = sortJSON;
-        
-        // Word wrap toggle - initialize button state
-        if (btnWordWrap) {
-          btnWordWrap.textContent = wordWrapEnabled ? '📄 Word Wrap' : '📏 No Wrap';
-          btnWordWrap.className = wordWrapEnabled ? 'active' : '';
-          
-          btnWordWrap.onclick = () => {
-            wordWrapEnabled = !wordWrapEnabled;
-            btnWordWrap.classList.toggle('active');
-            btnWordWrap.textContent = wordWrapEnabled ? '📄 Word Wrap' : '📏 No Wrap';
-            
-            // Update both editors simultaneously
-            const wrapExtension = wordWrapEnabled ? EditorView.lineWrapping : [];
-            
-            mergeView.a.dispatch({
-              effects: wordWrapCompartment.reconfigure(wrapExtension)
-            });
-            
-            mergeView.b.dispatch({
-              effects: wordWrapCompartment.reconfigure(wrapExtension)
-            });
-            
-            // Save to settings
-            SettingsManager.set('wordWrap', wordWrapEnabled);
-            updateStatus(wordWrapEnabled ? 'Word wrap enabled' : 'Word wrap disabled');
-          };
-        }
         
         btnShare.onclick = shareURL;
         
