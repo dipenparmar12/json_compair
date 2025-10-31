@@ -14,7 +14,7 @@
     />
     <link rel="shortcut icon" href="./img/onlinetextcompare.png" />
     <link rel="stylesheet" href="./css/ccsiteV6.css" />
-    <link rel="stylesheet" type="text/css" href="./css/app.css" />
+  <link rel="stylesheet" type="text/css" href="./css/app.css" />
 
     <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
     <script
@@ -71,7 +71,7 @@
       }
 
       .intro {
-        padding: 5px;
+        padding: 8px 10px;
         background: #f8f9fa;
         border-bottom: 1px solid #ddd;
         flex-shrink: 0;
@@ -79,6 +79,18 @@
         align-items: center;
         gap: 8px;
       }
+
+      .intro-left,
+      .intro-center,
+      .intro-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .intro-left { flex: 1; }
+      .intro-center { justify-content: center; flex: 1; }
+      .intro-right { justify-content: flex-end; flex: 1; }
 
       #view-container {
         flex: 1;
@@ -237,19 +249,7 @@
         text-decoration: none !important;
       }
 
-      /* Status bar */
-      #diff-status {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        padding: 8px 16px;
-        background: #f8f9fa;
-        border-top: 1px solid #ddd;
-        font-size: 13px;
-        color: #333;
-        z-index: 1000;
-      }
+      /* Status bar removed (was #diff-status) */
 
       /* Error message area */
       #conversion-error-area {
@@ -298,6 +298,39 @@
         flex: 1;
       }
 
+      /* Dropdown panels */
+      .dropdown-panel {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 12px;
+        min-width: 260px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        z-index: 1000;
+        margin-top: 4px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        max-height: calc(100vh - 100px);
+        overflow-y: auto;
+      }
+
+      .dropdown-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 6px 8px;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      .dropdown-item + .dropdown-item { margin-top: 6px; }
+
       /* Responsive design */
       @media (max-width: 768px) {
         .intro {
@@ -313,145 +346,178 @@
           font-size: 10px;
           padding: 3px 6px;
         }
-      }
 
+        .intro-left, .intro-center, .intro-right { flex: 100%; justify-content: flex-start; }
+      }
+      button { white-space: nowrap; }
     </style>
   </head>
 
   <body>
     <div id="container">
       <div class="intro">
-        <button id="btn-format">Format JSON</button>
-        <button id="btn-sort">Sort Keys</button>
-        <button id="btn-share">📋 Share URL</button>
-        <button id="btn-import">Import Snapshot</button>
-        <input type="file" id="file-import" accept=".gz,.gzip,application/gzip,application/octet-stream,.json" style="display: none" />
-        <select id="select-templates">
-          <option value="">Examples...</option>
-          <option value="simple">Simple Template</option>
-          <option value="complex">Complex Template</option>
-        </select>
-        <div class="settings-dropdown" style="position: relative; display: inline-block;">
-          <button id="btn-settings" style="font-size: 13px; font-weight: 400;">⚙️ Diff Settings</button>
-          <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 16px; min-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 1000; margin-top: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; max-height: calc(100vh - 100px); overflow-y: auto;">
-            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">EDITOR SETTINGS</div>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
-              <input type="checkbox" id="setting-word-wrap" checked style="margin-top: 2px; cursor: pointer;" />
-              <div style="margin-left: 10px;">
-                <div style="font-weight: 400; color: #222;">Word Wrap</div>
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Wrap long lines to fit editor width</div>
-              </div>
-            </label>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
-              <input type="checkbox" id="setting-scroll-lock" checked style="margin-top: 2px; cursor: pointer;" />
-              <div style="margin-left: 10px;">
-                <div style="font-weight: 400; color: #222;">Synchronized Scrolling</div>
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Lock scroll between left and right panels</div>
-              </div>
-            </label>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
-              <input type="checkbox" id="auto-csv-conversion" style="margin-top: 2px; cursor: pointer;" />
-              <div style="margin-left: 10px;">
-                <div style="font-weight: 400; color: #222;">Auto CSV→JSON</div>
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically convert CSV to JSON on paste/drop</div>
-              </div>
-            </label>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
-              <input type="checkbox" id="auto-format-json" checked style="margin-top: 2px; cursor: pointer;" />
-              <div style="margin-left: 10px;">
-                <div style="font-weight: 400; color: #222;">Auto Format JSON</div>
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically format JSON on paste/drop</div>
-              </div>
-            </label>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 14px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
-              <input type="checkbox" id="auto-sort-keys" style="margin-top: 2px; cursor: pointer;" />
-              <div style="margin-left: 10px;">
-                <div style="font-weight: 400; color: #222;">Auto Sort Keys</div>
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically sort JSON keys on paste/drop</div>
-              </div>
-            </label>
-            
-            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF VIEW SETTINGS</div>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
-              <input type="checkbox" id="setting-highlight-changes" checked style="margin-top: 2px; cursor: pointer;" />
-              <div style="margin-left: 10px;">
-                <div style="font-weight: 400; color: #222;">Highlight Changes</div>
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Show character-level diffs in chunks</div>
-              </div>
-            </label>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
-              <input type="checkbox" id="setting-gutter" checked style="margin-top: 2px; cursor: pointer;" />
-              <div style="margin-left: 10px;">
-                <div style="font-weight: 400; color: #222;">Show Gutter Markers</div>
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Display markers next to changed lines</div>
-              </div>
-            </label>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 12px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
-              <input type="checkbox" id="setting-collapse-unchanged" style="margin-top: 2px; cursor: pointer;" />
-              <div style="margin-left: 10px;">
-                <div style="font-weight: 400; color: #222;">Collapse Unchanged</div>
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Fold long sections of identical lines</div>
-              </div>
-            </label>
-            
-            <label style="display: flex; align-items: center; margin-bottom: 10px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
-              Orientation:
-              <select id="setting-orientation" style="margin-left: 10px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
-                <option value="a-b">A-B (Left-Right)</option>
-                <option value="b-a">B-A (Right-Left)</option>
-              </select>
-            </label>
-            
-            <label style="display: flex; align-items: center; margin-bottom: 14px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
-              Revert Controls:
-              <select id="setting-revert-controls" style="margin-left: 10px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
-                <option value="none">None</option>
-                <option value="a-to-b">A → B</option>
-                <option value="b-to-a">B → A</option>
-              </select>
-            </label>
-            
-            <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF ALGORITHM</div>
-            
-            <label style="display: flex; align-items: flex-start; margin-bottom: 8px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
-              <div style="flex: 1;">
-                Scan Limit:
-                <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-weight: 400; font-family: 'Segoe UI', system-ui, sans-serif;">Max characters to scan (higher = slower)</div>
-              </div>
-              <input type="number" id="setting-scan-limit" value="500" min="100" max="10000" step="100" style="width: 90px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: 'Segoe UI', system-ui, sans-serif;" />
-            </label>
+        <div class="intro-left">
+          <button id="btn-format">Format JSON</button>
+          <button id="btn-sort">Sort Keys</button>
+
+          <!-- Quick toggles -->
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px;">
+            <input type="checkbox" id="quick-collapse-unchanged" /> Collapse Unchanged
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px;">
+            <input type="checkbox" id="quick-highlight-changes" checked /> Highlight Changes
+          </label>
+
+          <!-- Diff Settings dropdown -->
+          <div class="settings-dropdown" style="position: relative; display: inline-block;">
+            <button id="btn-settings" style="font-size: 13px; font-weight: 400;">⚙️ Diff Settings</button>
+            <div id="settings-panel" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 16px; min-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 1000; margin-top: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; max-height: calc(100vh - 100px); overflow-y: auto;">
+              <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">EDITOR SETTINGS</div>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="setting-word-wrap" checked style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">Word Wrap</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Wrap long lines to fit editor width</div>
+                </div>
+              </label>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="setting-scroll-lock" checked style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">Synchronized Scrolling</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Lock scroll between left and right panels</div>
+                </div>
+              </label>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="auto-csv-conversion" style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">Auto CSV→JSON</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically convert CSV to JSON on paste/drop</div>
+                </div>
+              </label>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="auto-format-json" checked style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">Auto Format JSON</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically format JSON on paste/drop</div>
+                </div>
+              </label>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 14px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="auto-sort-keys" style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">Auto Sort Keys</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Automatically sort JSON keys on paste/drop</div>
+                </div>
+              </label>
+              
+              <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF VIEW SETTINGS</div>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="setting-highlight-changes" checked style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">Highlight Changes</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Show character-level diffs in chunks</div>
+                </div>
+              </label>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="setting-gutter" checked style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">Show Gutter Markers</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Display markers next to changed lines</div>
+                </div>
+              </label>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 12px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="setting-collapse-unchanged" style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">Collapse Unchanged</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Fold long sections of identical lines</div>
+                </div>
+              </label>
+              
+              <label style="display: flex; align-items: center; margin-bottom: 10px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
+                Orientation:
+                <select id="setting-orientation" style="margin-left: 10px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
+                  <option value="a-b">A-B (Left-Right)</option>
+                  <option value="b-a">B-A (Right-Left)</option>
+                </select>
+              </label>
+              
+              <label style="display: flex; align-items: center; margin-bottom: 14px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
+                Revert Controls:
+                <select id="setting-revert-controls" style="margin-left: 10px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; background: white; font-family: 'Segoe UI', system-ui, sans-serif; cursor: pointer;">
+                  <option value="none">None</option>
+                  <option value="a-to-b">A → B</option>
+                  <option value="b-to-a">B → A</option>
+                </select>
+              </label>
+              
+              <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF ALGORITHM</div>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 8px; padding: 6px; font-size: 12px; font-weight: 400; color: #222;">
+                <div style="flex: 1;">
+                  Scan Limit:
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-weight: 400; font-family: 'Segoe UI', system-ui, sans-serif;">Max characters to scan (higher = slower)</div>
+                </div>
+                <input type="number" id="setting-scan-limit" value="500" min="100" max="10000" step="100" style="width: 90px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: 'Segoe UI', system-ui, sans-serif;" />
+              </label>
+            </div>
           </div>
         </div>
-        <select id="theme-selector" style="font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-          <option value="default">🎨 Default</option>
-          <option value="light">☀️ Light</option>
-          <option value="dark">🌙 Dark</option>
-          <option value="oneDark">🌃 One Dark</option>
-        </select>
-        <button id="btn-clear-all" style="display: none">Clear All</button>
-        <span style="margin-left: auto; font-size: 13px; color: #666; display: flex; align-items: center; gap: 10px;">
-          <strong>JsonCompair</strong>
-          <a href="https://github.com/dipenparmar12/json_compair" target="_blank" rel="noopener noreferrer">
-            <img src="https://github.githubassets.com/images/modules/site/icons/footer/github-mark.svg" alt="GitHub" width="16" height="16" style="vertical-align: middle; margin-right: 5px;"> - Dipenparmar12
-          </a>
+
+        <div class="intro-center" style="gap: 12px;">
+          <div id="diff-summary" style="font-size: 13px; color: #333;">Ready to compare JSON</div>
+          <button id="btn-clear-all" style="display: none">Clear All</button>
+        </div>
+
+        <div class="intro-right">
+          <!-- Extra Settings Dropdown -->
+          <div class="extra-settings-dropdown" style="position: relative; display: inline-block;">
+            <button id="btn-extra-settings" title="Extra Settings">⚙️ Extra Settings</button>
+            <div id="extra-settings-panel" class="dropdown-panel">
+              <button id="btn-share" class="dropdown-item">📋 Share URL</button>
+              <button id="btn-import" class="dropdown-item">📥 Import Snapshot</button>
+              <input type="file" id="file-import" accept=".gz,.gzip,application/gzip,application/octet-stream,.json" style="display: none" />
+              <div style="margin-top: 8px; font-size: 12px; color: #555;">Examples</div>
+              <select id="select-templates" style="width: 100%; margin-top: 4px; font-size: 12px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; background: white;">
+                <option value="">Choose example...</option>
+                <option value="simple">Simple Template</option>
+                <option value="complex">Complex Template</option>
+              </select>
+              <div style="margin-top: 10px; font-size: 12px; color: #555;">Theme</div>
+              <select id="theme-selector" style="width: 100%; margin-top: 4px; font-size: 12px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; background: white;">
+                <option value="default">🎨 Default</option>
+                <option value="light">☀️ Light</option>
+                <option value="dark">🌙 Dark</option>
+                <option value="oneDark">🌃 One Dark</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- v5 link -->
           <a href="index-v5.html" style="font-size: 12px; padding: 4px 12px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; display: inline-flex; align-items: center; gap: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; transition: background 0.2s;" onmouseover="this.style.background='#e0e0e0'" onmouseout="this.style.background='#f0f0f0'">
             <span style="font-size: 14px;">↩️</span> v5
           </a>
-        </span>
+
+          <!-- Info Dropdown -->
+          <div class="info-dropdown" style="position: relative; display: inline-block;">
+            <button id="btn-info" title="Info">ℹ️ Info</button>
+            <div id="info-panel" class="dropdown-panel" style="min-width: 220px;">
+              <button id="btn-dev-info" class="dropdown-item">🧪 Dev Info</button>
+              <a href="https://github.com/dipenparmar12/json_compair" target="_blank" rel="noopener noreferrer" class="dropdown-item" style="text-decoration:none; color: inherit; display:block;">💻 GitHub Repo</a>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="view-container"></div>
 
       <div id="conversion-error-area" style="display: none"></div>
-      <div id="diff-status">Ready to compare JSON</div>
     </div>
 
     <script type="module">
@@ -681,9 +747,12 @@
         // Update diff status initially
         updateDiffStatus();
         
-        // Initialize settings panel and theme selector
+        // Initialize settings panel, toggles, extra settings and theme selector
         initializeSettingsPanel();
         initializeThemeSelector();
+        initializeQuickToggles();
+        initializeExtraSettingsPanel();
+        initializeInfoDropdown();
       }
 
       // Load merge settings from localStorage
@@ -713,6 +782,11 @@
         document.getElementById('setting-orientation').value = settings.orientation;
         document.getElementById('setting-revert-controls').value = settings.revertControls;
         document.getElementById('setting-scan-limit').value = settings.scanLimit;
+        // Sync quick toggles
+        const quickCollapse = document.getElementById('quick-collapse-unchanged');
+        const quickHighlight = document.getElementById('quick-highlight-changes');
+        if (quickCollapse) quickCollapse.checked = settings.collapseUnchanged;
+        if (quickHighlight) quickHighlight.checked = settings.highlightChanges;
         
         // Toggle panel visibility
         btnSettings.addEventListener('click', (e) => {
@@ -736,6 +810,67 @@
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
+      }
+
+      // Initialize quick header toggles
+      function initializeQuickToggles() {
+        const quickCollapse = document.getElementById('quick-collapse-unchanged');
+        const quickHighlight = document.getElementById('quick-highlight-changes');
+        if (quickCollapse) {
+          quickCollapse.addEventListener('change', (e) => {
+            const val = e.target.checked;
+            const setting = document.getElementById('setting-collapse-unchanged');
+            if (setting) setting.checked = val;
+            applyMergeSettings();
+          });
+        }
+        if (quickHighlight) {
+          quickHighlight.addEventListener('change', (e) => {
+            const val = e.target.checked;
+            const setting = document.getElementById('setting-highlight-changes');
+            if (setting) setting.checked = val;
+            applyMergeSettings();
+          });
+        }
+      }
+
+      // Initialize Extra Settings dropdown (Share, Import, Examples, Theme)
+      function initializeExtraSettingsPanel() {
+        const btn = document.getElementById('btn-extra-settings');
+        const panel = document.getElementById('extra-settings-panel');
+        if (!btn || !panel) return;
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          panel.style.display = panel.style.display === 'none' || panel.style.display === '' ? 'block' : 'none';
+        });
+        document.addEventListener('click', (e) => {
+          if (!panel.contains(e.target) && e.target !== btn) {
+            panel.style.display = 'none';
+          }
+        });
+      }
+
+      // Initialize Info dropdown
+      function initializeInfoDropdown() {
+        const btn = document.getElementById('btn-info');
+        const panel = document.getElementById('info-panel');
+        const devInfo = document.getElementById('btn-dev-info');
+        if (!btn || !panel) return;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          panel.style.display = panel.style.display === 'none' || panel.style.display === '' ? 'block' : 'none';
+        });
+        document.addEventListener('click', (e) => {
+          if (!panel.contains(e.target) && e.target !== btn) {
+            panel.style.display = 'none';
+          }
+        });
+        if (devInfo) {
+          devInfo.addEventListener('click', () => {
+            alert('JSON Compare Tool\n\nClient-side only web app for comparing and formatting JSON/CSV.\n- CodeMirror 6 Merge View\n- URL sharing with gzip compression\n- CSV auto-conversion\n\nSee docs folder for details.');
+          });
+        }
       }
 
       // Initialize theme selector (separate from settings panel)
@@ -1079,8 +1214,8 @@
       function setupButtons() {
         const btnFormat = document.getElementById("btn-format");
         const btnSort = document.getElementById("btn-sort");
-        const btnShare = document.getElementById("btn-share");
-        const btnImport = document.getElementById("btn-import");
+  const btnShare = document.getElementById("btn-share");
+  const btnImport = document.getElementById("btn-import");
         const fileImport = document.getElementById("file-import");
         const selectTemplates = document.getElementById("select-templates");
         const btnClearAll = document.getElementById("btn-clear-all");
@@ -1466,15 +1601,15 @@
       function updateDiffStatus() {
         const leftContent = mergeView.a.state.doc.toString().trim();
         const rightContent = mergeView.b.state.doc.toString().trim();
-        const statusDiv = document.getElementById("diff-status");
+        const summaryDiv = document.getElementById("diff-summary");
         
         if (!leftContent || !rightContent) {
-          statusDiv.textContent = "Add content to both panels to compare";
+          if (summaryDiv) summaryDiv.textContent = "Add content to both panels to compare";
           return;
         }
 
         if (leftContent === rightContent) {
-          statusDiv.textContent = "No differences found";
+          if (summaryDiv) summaryDiv.textContent = "No differences found";
           return;
         }
 
@@ -1500,7 +1635,7 @@
               }
             }
             
-            statusDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''}`;
+            if (summaryDiv) summaryDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''}`;
             return;
           } catch (err) {
             console.warn('Diff calculation failed:', err);
@@ -1508,13 +1643,13 @@
         }
 
         // Fallback if diff_match_patch not available
-        statusDiv.textContent = "Differences detected";
+        if (summaryDiv) summaryDiv.textContent = "Differences detected";
       }
 
       // Update status message
       function updateStatus(message) {
-        const statusDiv = document.getElementById("diff-status");
-        statusDiv.textContent = message;
+        const summaryDiv = document.getElementById("diff-summary");
+        if (summaryDiv) summaryDiv.textContent = message;
       }
 
       // Update clear button visibility
