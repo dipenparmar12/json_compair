@@ -577,6 +577,12 @@
           window.autoSaveTimer = setTimeout(() => {
             saveContent();
           }, 300);
+          
+          // Debounce merge view refresh for diff recalculation
+          clearTimeout(window.diffRefreshTimer);
+          window.diffRefreshTimer = setTimeout(() => {
+            refreshMergeViewIfNeeded();
+          }, 500);
         }
       });
 
@@ -957,6 +963,47 @@
         SettingsManager.set('revertControls', newSettings.revertControls);
         SettingsManager.set('scanLimit', newSettings.scanLimit);
         
+        // Sync quick toggles
+        const quickCollapse = document.getElementById('quick-collapse-unchanged');
+        const quickHighlight = document.getElementById('quick-highlight-changes');
+        if (quickCollapse) quickCollapse.checked = newSettings.collapseUnchanged;
+        if (quickHighlight) quickHighlight.checked = newSettings.highlightChanges;
+        
+        // Recreate merge view
+        recreateMergeView(newSettings, newWordWrap);
+        
+        updateStatus('Settings applied successfully');
+        updateDiffStatus();
+      }
+
+      // Refresh merge view only if collapse unchanged is enabled
+      function refreshMergeViewIfNeeded() {
+        const collapseUnchanged = document.getElementById('setting-collapse-unchanged')?.checked;
+        const highlightChanges = document.getElementById('setting-highlight-changes')?.checked;
+        
+        // Only refresh if collapse unchanged is enabled or highlight changes setting might need reapplication
+        if (collapseUnchanged) {
+          const leftContent = mergeView.a.state.doc.toString().trim();
+          const rightContent = mergeView.b.state.doc.toString().trim();
+          
+          // Only refresh if both panels have content
+          if (leftContent && rightContent) {
+            const currentSettings = {
+              highlightChanges: highlightChanges ?? true,
+              gutter: document.getElementById('setting-gutter')?.checked ?? true,
+              collapseUnchanged: collapseUnchanged,
+              orientation: document.getElementById('setting-orientation')?.value || 'a-b',
+              revertControls: document.getElementById('setting-revert-controls')?.value || 'none',
+              scanLimit: parseInt(document.getElementById('setting-scan-limit')?.value || '500', 10),
+            };
+            
+            recreateMergeView(currentSettings, wordWrapEnabled);
+          }
+        }
+      }
+
+      // Recreate merge view with new settings (extracted common logic)
+      function recreateMergeView(newSettings, newWordWrap) {
         // Get current content
         const leftContent = mergeView.a.state.doc.toString();
         const rightContent = mergeView.b.state.doc.toString();
@@ -969,11 +1016,11 @@
         mergeView = new MergeView({
           a: {
             doc: leftContent,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
           },
           b: {
             doc: rightContent,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+            extensions: [basicSetup, json(), wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
           },
           parent: container,
           orientation: newSettings.orientation,
@@ -996,7 +1043,12 @@
         // Re-add placeholders
         addPlaceholders();
         
-        updateStatus('Settings applied successfully');
+        // Re-setup drag and drop handlers
+        setupDragDrop();
+        
+        // Re-setup paste handlers
+        setupPasteHandlers();
+        
         updateDiffStatus();
       }
 
@@ -1114,6 +1166,8 @@
             // Check for CSV and auto-convert if enabled
             const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
             const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
+            const autoFormat = document.getElementById('auto-format-json')?.checked;
+            const autoSort = document.getElementById('auto-sort-keys')?.checked;
 
             let content = text;
             if (isCSV && autoCSV) {
@@ -1124,12 +1178,31 @@
               } catch (err) {
                 showErrorMessage("CSV conversion failed: " + err.message);
               }
+            } else if (autoFormat || autoSort) {
+              // Try to parse and format/sort JSON
+              try {
+                let parsed = window.parseFlexibleJSON(content);
+                if (autoSort) {
+                  parsed = window.sortJSONKeys(parsed);
+                }
+                content = JSON.stringify(parsed, null, 3);
+              } catch (err) {
+                // If parsing fails, use original content
+                console.warn('Auto-format/sort failed:', err);
+              }
             }
 
             editor.dispatch({
               changes: { from: 0, to: editor.state.doc.length, insert: content }
             });
-            updateDiffStatus();
+            
+            // Force immediate diff refresh
+            setTimeout(() => {
+              refreshMergeViewIfNeeded();
+              updateDiffStatus();
+              updatePlaceholders();
+              updatePaneButtonVisibility();
+            }, 100);
           } catch (err) {
             updateStatus('Failed to paste: ' + err.message);
           }
@@ -1454,6 +1527,8 @@
           // Check if it's CSV and auto-convert if enabled
           const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
           const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
+          const autoFormat = document.getElementById('auto-format-json')?.checked;
+          const autoSort = document.getElementById('auto-sort-keys')?.checked;
 
           let content = text;
           if (isCSV && autoCSV) {
@@ -1464,13 +1539,31 @@
             } catch (err) {
               showErrorMessage("CSV conversion failed: " + err.message);
             }
+          } else if (autoFormat || autoSort) {
+            // Try to parse and format/sort JSON
+            try {
+              let parsed = window.parseFlexibleJSON(content);
+              if (autoSort) {
+                parsed = window.sortJSONKeys(parsed);
+              }
+              content = JSON.stringify(parsed, null, 3);
+            } catch (err) {
+              // If parsing fails, use original content
+              console.warn('Auto-format/sort failed:', err);
+            }
           }
 
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: content }
           });
 
-          updateDiffStatus();
+          // Force immediate diff refresh
+          setTimeout(() => {
+            refreshMergeViewIfNeeded();
+            updateDiffStatus();
+            updatePlaceholders();
+            updatePaneButtonVisibility();
+          }, 100);
         } catch (err) {
           showErrorMessage("Failed to read file: " + err.message);
         }
@@ -1490,6 +1583,8 @@
         if (!text) return;
 
         const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
+        const autoFormat = document.getElementById('auto-format-json')?.checked;
+        const autoSort = document.getElementById('auto-sort-keys')?.checked;
         const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
 
         if (isCSV && autoCSV) {
@@ -1507,10 +1602,47 @@
             });
 
             showConversionMessage("CSV converted to JSON");
-            updateDiffStatus();
+            
+            // Force immediate diff refresh
+            setTimeout(() => {
+              refreshMergeViewIfNeeded();
+              updateDiffStatus();
+              updatePlaceholders();
+              updatePaneButtonVisibility();
+            }, 100);
           } catch (err) {
             showErrorMessage("CSV conversion failed: " + err.message);
           }
+        } else if (autoFormat || autoSort) {
+          // Handle auto-format and auto-sort for JSON
+          e.preventDefault();
+          e.stopPropagation();
+
+          const editor = side === 'left' ? mergeView.a : mergeView.b;
+          let content = text;
+
+          try {
+            let parsed = window.parseFlexibleJSON(content);
+            if (autoSort) {
+              parsed = window.sortJSONKeys(parsed);
+            }
+            content = JSON.stringify(parsed, null, 3);
+          } catch (err) {
+            // If parsing fails, use original content
+            console.warn('Auto-format/sort failed:', err);
+          }
+
+          editor.dispatch({
+            changes: { from: 0, to: editor.state.doc.length, insert: content }
+          });
+
+          // Force immediate diff refresh
+          setTimeout(() => {
+            refreshMergeViewIfNeeded();
+            updateDiffStatus();
+            updatePlaceholders();
+            updatePaneButtonVisibility();
+          }, 100);
         }
       }
 
