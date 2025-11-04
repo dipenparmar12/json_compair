@@ -695,13 +695,30 @@
 
       // Initialize the application
       function initializeApp() {
-        // Load saved merge settings
-        const mergeSettings = loadMergeSettings();
-        
         // Load content from URL parameters first, then from storage, then use defaults
         const urlContent = URLManager.loadFromURL();
         const savedContent = StorageManager.loadFromStorage();
+        
+        // Apply settings from URL if present (before other initialization)
+        if (urlContent && urlContent.settings) {
+          try {
+            // Apply all settings from URL to SettingsManager
+            Object.keys(urlContent.settings).forEach(key => {
+              SettingsManager.set(key, urlContent.settings[key]);
+            });
+            console.log('Settings loaded from URL:', urlContent.settings);
+          } catch (err) {
+            console.warn('Failed to apply URL settings:', err);
+          }
+        }
+        
+        // Reload global settings after potentially updating them
+        wordWrapEnabled = SettingsManager.get('wordWrap');
+        scrollLocked = SettingsManager.get('scrollLock');
+        currentTheme = SettingsManager.get('theme');
+        
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
+        const mergeSettings = loadMergeSettings();
 
         // Create merge view container
         const container = document.getElementById("view-container");
@@ -1416,13 +1433,20 @@
         btn.disabled = true;
 
         try {
-          // Try to create compressed URL
+          // Get all current settings
+          const currentSettings = SettingsManager.loadAll();
+          
+          // Try to create compressed URL with settings
           const shareableURL = URLManager.generateShareableURL(leftContent, rightContent);
           
           // Check URL length (browser limit ~2000 chars)
           if (shareableURL.length > 2000) {
-            // Fall back to snapshot download
-            const data = JSON.stringify({ left: leftContent, right: rightContent });
+            // Fall back to snapshot download with settings
+            const data = JSON.stringify({ 
+              left: leftContent, 
+              right: rightContent,
+              settings: currentSettings 
+            });
             const compressed = pako.gzip(data);
             const blob = new Blob([compressed], { type: 'application/gzip' });
             const url = URL.createObjectURL(blob);
@@ -1432,7 +1456,7 @@
             a.click();
             URL.revokeObjectURL(url);
             
-            updateStatus("Content too large for URL - snapshot downloaded");
+            updateStatus("Content too large for URL - snapshot with settings downloaded");
             btn.textContent = originalText;
             btn.disabled = false;
             return;
@@ -1441,7 +1465,7 @@
           // Copy to clipboard
           await navigator.clipboard.writeText(shareableURL);
           btn.textContent = '✓ Copied!';
-          updateStatus("Share URL copied to clipboard");
+          updateStatus("Share URL with settings copied to clipboard");
 
           setTimeout(() => {
             btn.textContent = originalText;
@@ -1474,6 +1498,23 @@
 
           const data = JSON.parse(decompressed);
           
+          // Apply settings from snapshot if present
+          if (data.settings && typeof data.settings === 'object') {
+            try {
+              Object.keys(data.settings).forEach(key => {
+                SettingsManager.set(key, data.settings[key]);
+              });
+              console.log('Settings loaded from snapshot:', data.settings);
+              
+              // Reload global settings
+              wordWrapEnabled = SettingsManager.get('wordWrap');
+              scrollLocked = SettingsManager.get('scrollLock');
+              currentTheme = SettingsManager.get('theme');
+            } catch (err) {
+              console.warn('Failed to apply snapshot settings:', err);
+            }
+          }
+          
           mergeView.a.dispatch({
             changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
           });
@@ -1483,7 +1524,25 @@
           });
 
           URLManager.clearURL();
-          updateStatus("Snapshot imported successfully");
+          
+          // Recreate merge view with new settings if they were present
+          if (data.settings && typeof data.settings === 'object') {
+            setTimeout(() => {
+              const currentSettings = {
+                highlightChanges: SettingsManager.get('highlightChanges'),
+                gutter: SettingsManager.get('gutter'),
+                collapseUnchanged: SettingsManager.get('collapseUnchanged'),
+                orientation: SettingsManager.get('orientation'),
+                revertControls: SettingsManager.get('revertControls'),
+                scanLimit: SettingsManager.get('scanLimit'),
+              };
+              recreateMergeView(currentSettings, wordWrapEnabled);
+              initializeSettingsPanel();
+              initializeThemeSelector();
+            }, 100);
+          }
+          
+          updateStatus("Snapshot imported successfully with settings");
           updateDiffStatus();
         } catch (err) {
           updateStatus("Failed to import snapshot: " + err.message);

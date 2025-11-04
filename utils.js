@@ -29,13 +29,27 @@
       const params = new URLSearchParams(window.location.search);
       const leftParam = params.get("left");
       const rightParam = params.get("right");
+      const settingsParam = params.get("settings");
 
       if (!leftParam && !rightParam) return null;
 
-      return {
+      const result = {
         left: leftParam ? this.decompress(leftParam) : "",
         right: rightParam ? this.decompress(rightParam) : "",
+        settings: null,
       };
+
+      // Decode settings if present
+      if (settingsParam) {
+        try {
+          const decompressed = this.decompress(settingsParam);
+          result.settings = JSON.parse(decompressed);
+        } catch (err) {
+          console.warn('Failed to decode settings from URL:', err);
+        }
+      }
+
+      return result;
     },
 
     generateShareableURL: function (leftContent, rightContent) {
@@ -46,6 +60,15 @@
       }
       if (rightContent.trim()) {
         params.set("right", this.compress(rightContent));
+      }
+
+      // Encode current settings in URL
+      try {
+        const currentSettings = SettingsManager.loadAll();
+        const settingsStr = JSON.stringify(currentSettings);
+        params.set("settings", this.compress(settingsStr));
+      } catch (err) {
+        console.warn('Failed to encode settings in URL:', err);
       }
 
       return (
