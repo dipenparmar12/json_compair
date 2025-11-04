@@ -225,7 +225,8 @@
       collapseUnchanged: false,
       orientation: "a-b",
       revertControls: "none",
-      scanLimit: 500,
+      scanLimit: 6000,     // Increased from 500 to better detect identical lines in different positions
+      timeout: 5000,        // Max 5 seconds for detailed diff computation
     },
 
     loadAll: function () {
