@@ -38,6 +38,7 @@
     <script src="./utils.js"></script>
     <script src="./json_utils.js"></script>
     <script src="./utils_csv.js"></script>
+    <script src="./utils_zip.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -1452,48 +1453,12 @@
           
           // Check URL length (browser limit ~2000 chars)
           if (shareableURL.length > 2000) {
-            // Fall back to ZIP snapshot download with separate files
-            if (typeof JSZip === 'undefined') {
-              throw new Error('JSZip library not loaded');
-            }
-            
-            const zip = new JSZip();
-            
-            // Add files to ZIP with formatted JSON (not stringified strings)
-            // Parse and format left content if it's valid JSON
-            try {
-              const leftParsed = window.parseFlexibleJSON(leftContent);
-              zip.file('left-content.json', JSON.stringify(leftParsed, null, 2));
-            } catch (e) {
-              // If not valid JSON, save as-is
-              zip.file('left-content.json', leftContent);
-            }
-            
-            // Parse and format right content if it's valid JSON
-            try {
-              const rightParsed = window.parseFlexibleJSON(rightContent);
-              zip.file('right-content.json', JSON.stringify(rightParsed, null, 2));
-            } catch (e) {
-              // If not valid JSON, save as-is
-              zip.file('right-content.json', rightContent);
-            }
-            
-            // Add settings as separate JSON file
-            zip.file('settings.json', JSON.stringify(currentSettings, null, 2));
-            
-            // Generate ZIP file
-            const zipBlob = await zip.generateAsync({ 
-              type: 'blob',
-              compression: 'DEFLATE',
-              compressionOptions: { level: 9 }
-            });
-            
-            const url = URL.createObjectURL(zipBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'json-compare-snapshot.zip';
-            a.click();
-            URL.revokeObjectURL(url);
+            // Fall back to ZIP snapshot download using utility
+            await window.SnapshotHandler.createAndDownload(
+              leftContent,
+              rightContent,
+              currentSettings
+            );
             
             updateStatus("Content too large for URL - ZIP snapshot downloaded");
             btn.textContent = originalText;
@@ -1517,164 +1482,65 @@
         }
       }
 
-      // Import snapshot file
+      // Import snapshot file (supports both ZIP and legacy formats)
       async function importSnapshot(e) {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
 
         try {
-          // Check if it's a ZIP file
-          if (file.name.endsWith('.zip')) {
-            if (typeof JSZip === 'undefined') {
-              throw new Error('JSZip library not loaded');
-            }
-            
-            const arrayBuffer = await file.arrayBuffer();
-            const zip = await JSZip.loadAsync(arrayBuffer);
-            
-            // Extract files from ZIP
-            let leftContent = '';
-            let rightContent = '';
-            let settings = null;
-            
-            // Read left-content.json
-            const leftFile = zip.file('left-content.json');
-            if (leftFile) {
-              leftContent = await leftFile.async('string');
-            }
-            
-            // Read right-content.json
-            const rightFile = zip.file('right-content.json');
-            if (rightFile) {
-              rightContent = await rightFile.async('string');
-            }
-            
-            // Read settings.json
-            const settingsFile = zip.file('settings.json');
-            if (settingsFile) {
-              const settingsText = await settingsFile.async('string');
-              try {
-                settings = JSON.parse(settingsText);
-              } catch (err) {
-                console.warn('Failed to parse settings from ZIP:', err);
-              }
-            }
-            
-            // Apply settings if present
-            if (settings && typeof settings === 'object') {
-              try {
-                Object.keys(settings).forEach(key => {
-                  SettingsManager.set(key, settings[key]);
-                });
-                console.log('Settings loaded from ZIP:', settings);
-                
-                // Reload global settings
-                wordWrapEnabled = SettingsManager.get('wordWrap');
-                scrollLocked = SettingsManager.get('scrollLock');
-                currentTheme = SettingsManager.get('theme');
-              } catch (err) {
-                console.warn('Failed to apply ZIP settings:', err);
-              }
-            }
-            
-            // Update editors
-            mergeView.a.dispatch({
-              changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftContent }
-            });
-
-            mergeView.b.dispatch({
-              changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightContent }
-            });
-
-            URLManager.clearURL();
-            
-            // Recreate merge view with new settings if they were present
-            if (settings && typeof settings === 'object') {
-              setTimeout(() => {
-                const currentSettings = {
-                  highlightChanges: SettingsManager.get('highlightChanges'),
-                  gutter: SettingsManager.get('gutter'),
-                  collapseUnchanged: SettingsManager.get('collapseUnchanged'),
-                  orientation: SettingsManager.get('orientation'),
-                  revertControls: SettingsManager.get('revertControls'),
-                  scanLimit: SettingsManager.get('scanLimit'),
-                };
-                recreateMergeView(currentSettings, wordWrapEnabled);
-                initializeSettingsPanel();
-                initializeThemeSelector();
-              }, 100);
-            }
-            
-            updateStatus("ZIP snapshot imported successfully");
-            updateDiffStatus();
-            
-          } else {
-            // Handle old .json.gz format
-            const arrayBuffer = await file.arrayBuffer();
-            const uint8Array = new Uint8Array(arrayBuffer);
-            
-            let decompressed;
-            try {
-              decompressed = pako.ungzip(uint8Array, { to: 'string' });
-            } catch (err) {
-              // Try treating as uncompressed JSON
-              const decoder = new TextDecoder();
-              decompressed = decoder.decode(uint8Array);
-            }
-
-            const data = JSON.parse(decompressed);
-            
-            // Apply settings from snapshot if present
-            if (data.settings && typeof data.settings === 'object') {
-              try {
-                Object.keys(data.settings).forEach(key => {
-                  SettingsManager.set(key, data.settings[key]);
-                });
-                console.log('Settings loaded from snapshot:', data.settings);
-                
-                // Reload global settings
-                wordWrapEnabled = SettingsManager.get('wordWrap');
-                scrollLocked = SettingsManager.get('scrollLock');
-                currentTheme = SettingsManager.get('theme');
-              } catch (err) {
-                console.warn('Failed to apply snapshot settings:', err);
-              }
-            }
-            
-            mergeView.a.dispatch({
-              changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
-            });
-
-            mergeView.b.dispatch({
-              changes: { from: 0, to: mergeView.b.state.doc.length, insert: data.right || "" }
-            });
-
-            URLManager.clearURL();
-            
-            // Recreate merge view with new settings if they were present
-            if (data.settings && typeof data.settings === 'object') {
-              setTimeout(() => {
-                const currentSettings = {
-                  highlightChanges: SettingsManager.get('highlightChanges'),
-                  gutter: SettingsManager.get('gutter'),
-                  collapseUnchanged: SettingsManager.get('collapseUnchanged'),
-                  orientation: SettingsManager.get('orientation'),
-                  revertControls: SettingsManager.get('revertControls'),
-                  scanLimit: SettingsManager.get('scanLimit'),
-                };
-                recreateMergeView(currentSettings, wordWrapEnabled);
-                initializeSettingsPanel();
-                initializeThemeSelector();
-              }, 100);
-            }
-            
-            updateStatus("Snapshot imported successfully");
-            updateDiffStatus();
+          // Use unified snapshot handler to auto-detect format
+          const data = await window.SnapshotHandler.importSnapshot(file);
+          
+          // Apply settings if present
+          if (data.settings && typeof data.settings === 'object') {
+            applyImportedSettings(data.settings);
           }
+          
+          // Update editor content
+          mergeView.a.dispatch({
+            changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left }
+          });
+
+          mergeView.b.dispatch({
+            changes: { from: 0, to: mergeView.b.state.doc.length, insert: data.right }
+          });
+
+          URLManager.clearURL();
+          
+          // Recreate merge view with new settings if they were present
+          if (data.settings && typeof data.settings === 'object') {
+            setTimeout(() => {
+              const currentSettings = loadMergeSettings();
+              recreateMergeView(currentSettings, wordWrapEnabled);
+              initializeSettingsPanel();
+              initializeThemeSelector();
+            }, 100);
+          }
+          
+          const formatType = file.name.endsWith('.zip') ? 'ZIP' : 'legacy';
+          updateStatus(`${formatType} snapshot imported successfully`);
+          updateDiffStatus();
         } catch (err) {
           updateStatus("Failed to import snapshot: " + err.message);
         } finally {
           e.target.value = ""; // Reset file input
+        }
+      }
+
+      // Helper function to apply imported settings
+      function applyImportedSettings(settings) {
+        try {
+          Object.keys(settings).forEach(key => {
+            SettingsManager.set(key, settings[key]);
+          });
+          console.log('Settings imported:', settings);
+          
+          // Reload global settings variables
+          wordWrapEnabled = SettingsManager.get('wordWrap');
+          scrollLocked = SettingsManager.get('scrollLock');
+          currentTheme = SettingsManager.get('theme');
+        } catch (err) {
+          console.warn('Failed to apply imported settings:', err);
         }
       }
 
