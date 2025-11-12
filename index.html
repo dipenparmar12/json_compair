@@ -226,27 +226,79 @@
         white-space: pre !important;
       }
 
-      /* Diff highlighting (similar to CM5 red/green scheme) */
+      /* ====================================================================
+         DIFF HIGHLIGHTING - Enhanced Red/Green Scheme
+         Matches modern Git/GitHub diff visualization
+         ==================================================================== */
+
+      /* Changed line container - light background */
+      .cm-changedLine {
+        background-color: transparent !important;
+      }
+
+      /* Deleted lines (left side) - Red background */
+      .cm-deletedLine {
+        background-color: #ffebe9 !important;
+        display: inline-block !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      /* Inserted lines (right side) - Green background */
+      .cm-insertedLine {
+        background-color: #e6ffec !important;
+        display: inline-block !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      /* Changed text within deleted lines - Darker red highlight */
+      .cm-deletedLine .cm-changedText {
+        background-color: #ffc1ba !important;
+        font-weight: 500 !important;
+      }
+
+      /* Changed text within inserted lines - Darker green highlight */
+      .cm-insertedLine .cm-changedText {
+        background-color: #acf2bd !important;
+        font-weight: 500 !important;
+      }
+
+      /* Legacy chunk backgrounds (fallback for older code) */
       .cm-deletedChunk {
-        background-color: #FFC4C1 !important;
+        background-color: #ffebe9 !important;
       }
 
       .cm-insertedChunk {
-        background-color: #B5EFDB !important;
+        background-color: #e6ffec !important;
       }
 
-      .cm-changedLine {
-        background-color: #fff3cd !important;
-      }
-
+      /* Legacy text backgrounds (fallback) */
       .cm-deletedText {
-        background-color: #FF8983 !important;
+        background-color: #ffc1ba !important;
         text-decoration: none !important;
+        font-weight: 500 !important;
       }
 
       .cm-insertedText {
-        background-color: #6BDFB8 !important;
+        background-color: #acf2bd !important;
         text-decoration: none !important;
+        font-weight: 500 !important;
+      }
+
+      /* Remove underlines from del/ins elements */
+      del.cm-deletedLine,
+      ins.cm-insertedLine {
+        text-decoration: none !important;
+      }
+
+      /* Gutter markers for changed lines */
+      .cm-changedLineGutter {
+        background-color: #ffd33d !important;
+        width: 3px !important;
+        margin-left: 2px !important;
       }
 
       /* Status bar removed (was #diff-status) */
