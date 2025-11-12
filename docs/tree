@@ -1,0 +1,46 @@
+json_compair/
+├── index.html                      # Version selector (NEW)
+├── server.js                       # Local dev server
+├── README.md                       # User documentation
+│
+├── v6/                             # CodeMirror 6 (Modern)
+│   ├── index.html
+│   ├── css/
+│   │   ├── app.css
+│   │   ├── ccsiteV6.css
+│   │   └── merge-custom.css
+│   └── utils/
+│       ├── utils.js
+│       ├── json_utils.js
+│       ├── utils_csv.js
+│       └── utils_zip.js            # NEW - ZIP snapshots
+│
+├── v5/                             # CodeMirror 5 (Legacy)
+│   ├── index.html
+│   ├── css/
+│   │   ├── app.css
+│   │   ├── ccsiteV6.css
+│   │   ├── codemirror.css
+│   │   ├── merge.css
+│   │   └── merge-custom.css
+│   ├── js/
+│   │   ├── codemirror.js
+│   │   ├── diff_match_patch.js
+│   │   ├── javascript.js
+│   │   ├── large_json_helpers.js
+│   │   └── merge.js
+│   └── utils/
+│       ├── utils.js
+│       ├── json_utils.js
+│       └── utils_csv.js
+│
+├── img/                            # Shared images
+├── docs/                           # Documentation
+├── temp/                           # Temporary files (gitignored)
+├── tests/                          # Test files
+├── .github/                        # CI/CD workflows
+└── _archive/                       # Archived files (safe to delete)
+    ├── root-backups/
+    ├── css-backups/
+    ├── js-backups/
+    └── experimental-prototypes/
