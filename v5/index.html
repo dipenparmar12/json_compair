@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="theme-color" content="#08C988" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Online Text Compare" />
+    <title>Compare JSON files online</title>
+    <meta
+      name="Description"
+      content="FREE two-way JSON format, diff and merge tool. No Signup required. Nothing to install. All comparisons are 100% private, secure and happens locally right in your web browser"
+    />
+    <meta
+      name="keywords"
+      content="Online JSON Compare - Format and find differences between two JSON files"
+    />
+    <link
+      rel="canonical"
+      href="https://dipenparmar12.github.io/json_compair/"
+    />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, minimum-scale=1.0"
+    />
+    <link rel="shortcut icon" href="../img/onlinetextcompare.png" />
+    <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <!-- CodeMirror 5.65.20 (latest stable v5, Oct 2025) -->
+    <link rel="stylesheet" type="text/css" href="./css/codemirror.css" />
+    <link rel="stylesheet" type="text/css" href="./css/merge.css" />
+    <!-- Custom merge view styles - loaded after base merge.css -->
+    <link rel="stylesheet" type="text/css" href="./css/merge-custom.css" />
+    <link rel="stylesheet" type="text/css" href="./css/app.css" />
+    <!-- CodeMirror 5.65.20 core and addons -->
+    <script src="./js/codemirror.js"></script>
+    <!-- diff-match-patch (latest from jsDelivr) -->
+    <script src="./js/diff_match_patch.js"></script>
+    <!-- CodeMirror 5.65.20 merge addon -->
+    <script src="./js/merge.js"></script>
+    <!-- CodeMirror 5.65.20 JavaScript mode -->
+    <script src="./js/javascript.js"></script>
+    <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-giedl6V2CsRUwviHqAInbg+h/aNVr2gn3//FaTWUDPv6d3Pv2wvPWiMKV71RvdMGHE3OcQP9qFLOKD+ZntBdlw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="./utils/utils.js"></script>
+  <script src="./utils/json_utils.js"></script>
+  <script src="./utils/utils_csv.js"></script>
+  <script src="./js/large_json_helpers.js"></script>
+    <!-- Optional: PapaParse (CSV) and Oboe (streaming JSON).
+         We try to load from CDN for convenience; you should download and save
+         these files into ./js/ (papaparse.min.js and oboe-browser.min.js) for offline use.
+    -->
+    <script>
+      // Dynamically inject CDN scripts but allow local copies to be used if present
+      (function(){
+        function loadOnce(src, localPath, integrity) {
+          return new Promise((resolve) => {
+            // If already loaded, resolve
+            const name = src.split('/').pop();
+            if (window[name] || window.Papa || window.oboe) { resolve(); return; }
+            // Try to load local copy first
+            var s = document.createElement('script');
+            s.src = localPath;
+            s.async = false;
+            s.onload = function(){ resolve(); };
+            s.onerror = function(){
+              // fallback to CDN if local copy not found
+              var s2 = document.createElement('script');
+              s2.src = src;
+              s2.async = false;
+              if (integrity) {
+                s2.integrity = integrity;
+                s2.crossOrigin = 'anonymous';
+              }
+              s2.onload = function(){ resolve(); };
+              s2.onerror = function(){ resolve(); };
+              document.head.appendChild(s2);
+            };
+            document.head.appendChild(s);
+          });
+        }
+        // PapaParse 5.4.1 (latest stable) - CSV parsing
+        loadOnce(
+          'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js',
+          './js/papaparse.min.js',
+          'sha512-dfX5uYVXzyU8+KHqj8bjo7UkOdg18PaOtpa48djpNbZHwExddghZ+ZmzWT06R5v6NSk3ZUfsH6FNEDepLx9hPQ=='
+        );
+        // Oboe 2.1.5 (latest) - streaming JSON parser
+        loadOnce(
+          'https://cdnjs.cloudflare.com/ajax/libs/oboe.js/2.1.5/oboe-browser.min.js',
+          './js/oboe-browser.min.js',
+          'sha512-Vd/k3BhEhDPdRz3ERWi8eN5GDo0F3f9oJE/w0zIzYqv/ZdbiLhToLss7EzQCByGBA8MjX9TZqtGn1SWuwlNP/g=='
+        );
+      })();
+    </script>
+  </head>
+
+  <body>
+    <article id="ArticlePage" class="contentPage cover">
+      <div
+        class="intro"
+        style="
+          max-width: 100%;
+          margin: 0;
+          padding: 10px 0;
+          text-align: center;
+          background-color: #f8f9fa;
+        "
+      >
+        <div class="controls">
+          <!-- Version Switcher -->
+          <a href="../v6/index.html" 
+             class="toggle-button"
+             style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; display: inline-flex; align-items: center; gap: 6px;"
+             title="Switch to CodeMirror 6 (Recommended)">
+            ✨ v6 Modern
+          </a>
+          
+          <button id="btn-format" class="toggle-button">
+            Format &amp; Compare JSON
+          </button>
+          <!-- Additional controls will be added by JavaScript -->
+        </div>
+      </div>
+    </article>
+    <div id="container">
+      <div id="view"></div>
+      <div id="diff-status">
+        Found 0 differences
+      </div>
+    </div>
+
+    <script type="text/javascript">
+    // Utilities are loaded from ./utils.js
+
+  // parseFlexibleJSON is provided by `json_utils.js` and exposed on window.parseFlexibleJSON
+
+  // --- Large data handling helpers ---
+  (function(){
+    // Worker used for heavy operations when payloads are large
+    let largeDataWorker = null;
+    const WORKER_PATH = './js/large-data-worker.js';
+    const WORKER_SIZE_THRESHOLD = 150 * 1024; // 150 KB conservative threshold to offload to worker
+
+    // Create worker lazily
+    function ensureWorker() {
+      if (largeDataWorker) return largeDataWorker;
+      try {
+        largeDataWorker = new Worker(WORKER_PATH);
+        largeDataWorker._nextId = 1;
+        largeDataWorker._pending = new Map();
+        largeDataWorker.addEventListener('message', function(e){
+          const msg = e.data || {};
+          const id = msg.id;
+          if (!id) return;
+          const p = largeDataWorker._pending.get(id);
+          if (!p) return;
+          largeDataWorker._pending.delete(id);
+          if (msg.ok) p.resolve(msg.result); else p.reject(new Error(msg.error || 'worker error'));
+        });
+      } catch (err) {
+        largeDataWorker = null; // worker not available
+      }
+      return largeDataWorker;
+    }
+
+    // Helper to run action in worker or fallback to local synchronous function
+    function runHeavyTask(action, payload, fallback) {
+      return new Promise((resolve, reject) => {
+        const text = (payload && payload.text) || '';
+        const useWorker = text && text.length > WORKER_SIZE_THRESHOLD && typeof Worker !== 'undefined';
+        if (useWorker) {
+          const w = ensureWorker();
+          if (!w) {
+            // worker couldn't be created - fallback
+            try { resolve(fallback()); } catch (e) { reject(e); }
+            return;
+          }
+          const id = (w._nextId++).toString();
+          w._pending.set(id, { resolve, reject });
+          w.postMessage({ id, action, payload });
+          // Add a conservative timeout to recover from hung worker
+          setTimeout(() => {
+            if (w._pending.has(id)) {
+              w._pending.delete(id);
+              try { resolve(fallback()); } catch (e) { reject(e); }
+            }
+          }, 30000);
+        } else {
+          // run fallback synchronously but in a microtask so UI can update
+          try { Promise.resolve().then(() => resolve(fallback())); } catch (e) { reject(e); }
+        }
+      });
+    }
+
+    // Expose helpers
+    window.LargeDataHelpers = {
+      runHeavyTask,
+      WORKER_SIZE_THRESHOLD
+    };
+  })();
+
+      // Initialize enhanced merge view
+      function initializeMergeView(target) {
+        // Load content from URL parameters first, then from storage, then use defaults
+        const urlContent = URLManager.loadFromURL();
+        const savedContent = StorageManager.loadFromStorage();
+        const initialContent = urlContent || savedContent || DefaultTemplates.simple;
+
+        // Create merge view with enhanced options
+        // Using 'align' connection to show empty blocks for unmatched lines (like Git diff)
+        const mv = CodeMirror.MergeView(target, {
+          value: initialContent.left,
+          origLeft: null,
+          orig: initialContent.right,
+          lineNumbers: true,
+          mode: "application/json",
+          showDifferences: true,
+          connect: "align",              // Show aligned blocks with empty spaces for unmatched lines
+          collapseIdentical: false,      // Keep all unchanged lines visible
+          revertButtons: true,           // Show revert buttons between chunks
+          allowEditingOriginals: true,   // Allow editing both sides
+          highlightDifferences: true,    // Highlight character-level differences
+          lineWrapping: false,           // Disable line wrapping for better diff alignment
+          styleActiveLine: true,
+          chunkClassLocation: ["background", "wrap", "gutter"],
+        });
+
+        // Add scroll synchronization with toggle
+        let scrollLocked = true;
+        const leftEditor = mv.editor();
+        const rightEditor = mv.rightOriginal();
+
+        function syncScroll(sourceEditor, targetEditor) {
+          if (!scrollLocked) return;
+          const info = sourceEditor.getScrollInfo();
+          targetEditor.scrollTo(info.left, info.top);
+        }
+
+        leftEditor.on("scroll", () => syncScroll(leftEditor, rightEditor));
+        rightEditor.on("scroll", () => syncScroll(rightEditor, leftEditor));
+
+        // Add UI controls
+        const controls = document.querySelector(".controls");
+
+          // Error message area (bottom) to show CSV conversion errors
+          let errorArea = document.getElementById('conversion-error-area');
+          if (!errorArea) {
+            errorArea = document.createElement('div');
+            errorArea.id = 'conversion-error-area';
+            errorArea.style.cssText = 'color: #b00020; padding: 8px 10px; text-align: left; display: none;';
+            document.body.appendChild(errorArea);
+          }
+
+        // Add scroll lock toggle
+        const scrollLockBtn = document.createElement("button");
+        scrollLockBtn.className = "toggle-button active";
+        scrollLockBtn.textContent = "Scroll Lock";
+        scrollLockBtn.onclick = () => {
+          scrollLocked = !scrollLocked;
+          scrollLockBtn.classList.toggle("active");
+        };
+        // controls.appendChild(scrollLockBtn);
+
+        // Add Show Only Differences toggle
+        const showDiffsBtn = document.createElement("button");
+        showDiffsBtn.className = "toggle-button";
+        showDiffsBtn.textContent = "Show Only Differences";
+
+        showDiffsBtn.onclick = () => {
+          showDiffsBtn.classList.toggle("active");
+          const showOnlyDiffs = showDiffsBtn.classList.contains("active");
+
+          // Use a timeout to allow the UI to update before heavy work
+          setTimeout(() => {
+            const leftPane = leftEditor.getWrapperElement().parentNode;
+            const rightPane = rightEditor.getWrapperElement().parentNode;
+
+            leftPane.classList.toggle("show-diffs-only", showOnlyDiffs);
+            rightPane.classList.toggle("show-diffs-only", showOnlyDiffs);
+
+            // If showing diffs, ensure chunks are expanded
+            if (showOnlyDiffs) {
+              // Process markers in chunks to avoid freezing on large documents
+              const markers = leftEditor.getAllMarks();
+              let i = 0;
+              function processNextChunk() {
+                const end = Math.min(i + 200, markers.length);
+                for (; i < end; i++) {
+                  if (markers[i].collapsed) {
+                    markers[i].clear();
+                  }
+                }
+                if (i < markers.length) {
+                  setTimeout(processNextChunk, 0);
+                } else {
+                  // All markers processed, now refresh and scroll
+                  leftEditor.refresh();
+                  rightEditor.refresh();
+                  const chunks = mv.rightChunks();
+                  if (chunks && chunks.length > 0) {
+                    leftEditor.scrollIntoView({ line: chunks[0].from, ch: 0 }, 100);
+                  }
+                }
+              }
+              processNextChunk();
+              return; // Return to avoid synchronous refresh
+            }
+
+            // Refresh both editors when turning off "show only diffs"
+            leftEditor.refresh();
+            rightEditor.refresh();
+          }, 10); // Small delay to ensure button state has updated
+        };
+        controls.insertBefore(showDiffsBtn, scrollLockBtn.nextSibling);
+
+        // Add Sort JSON Keys button
+        const sortKeysBtn = document.createElement("button");
+        sortKeysBtn.className = "toggle-button";
+        sortKeysBtn.textContent = "Sort JSON Keys";
+        sortKeysBtn.onclick = () => {
+          try {
+            const leftText = leftEditor.getValue();
+            const rightText = rightEditor.getValue();
+
+            // Run sorting possibly in worker for large inputs
+            Promise.all([
+              window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: leftText }, () => {
+                // fallback synchronous
+                const obj = parseFlexibleJSON(leftText);
+                const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                return JSON.stringify(out, null, 3);
+              }).catch((e) => { console.warn('left sort failed', e); return leftText; }),
+              window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: rightText }, () => {
+                const obj = parseFlexibleJSON(rightText);
+                const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                return JSON.stringify(out, null, 3);
+              }).catch((e) => { console.warn('right sort failed', e); return rightText; })
+            ]).then(([newLeft, newRight]) => {
+              leftEditor.setValue(newLeft);
+              rightEditor.setValue(newRight);
+              // Realign chunks after sorting
+              if (mv.alignChunks) mv.alignChunks();
+              updateDiffStatus(mv);
+            }).catch((e) => { console.error('Sort failed', e); alert('Failed to sort JSON.'); });
+          } catch (e) {
+            console.error("Failed to sort JSON:", e);
+            alert(
+              "Failed to sort JSON. Please ensure both sides contain valid JSON."
+            );
+          }
+        };
+        // Insert the sort button after the format button
+        const formatBtn = document.getElementById("btn-format");
+        controls.insertBefore(sortKeysBtn, formatBtn.nextSibling);
+
+        // Add Share URL button
+        const shareBtn = document.createElement("button");
+        shareBtn.className = "toggle-button";
+        shareBtn.textContent = "📋 Copy Share URL";
+        shareBtn.onclick = async () => {
+          const leftContent = leftEditor.getValue();
+          const rightContent = rightEditor.getValue();
+
+          if (!leftContent.trim() && !rightContent.trim()) {
+            alert("Please add some content to share!");
+            return;
+          }
+
+          // Show loading state
+          const originalText = shareBtn.textContent;
+          shareBtn.textContent = '⏳ Processing...';
+          shareBtn.disabled = true;
+
+          try {
+            // Generate the shareable URL
+            const shareUrl = URLManager.generateShareableURL(leftContent, rightContent);
+
+            // Check if URL is within safe browser limits (most browsers support ~2000 chars)
+            const MAX_SAFE_URL_LEN = 1800;
+
+            if (shareUrl.length <= MAX_SAFE_URL_LEN) {
+              // URL is safe to use - copy to clipboard
+              try {
+                await navigator.clipboard.writeText(shareUrl);
+                shareBtn.textContent = '✅ URL Copied';
+                setTimeout(() => {
+                  shareBtn.textContent = originalText;
+                  shareBtn.disabled = false;
+                }, 2000);
+                return;
+              } catch (err) {
+                // Fallback to old clipboard API
+                const textArea = document.createElement("textarea");
+                textArea.value = shareUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                shareBtn.textContent = '✅ URL Copied';
+                setTimeout(() => {
+                  shareBtn.textContent = originalText;
+                  shareBtn.disabled = false;
+                }, 2000);
+                return;
+              }
+            }
+
+            // URL is too long - fall back to file download
+            if (window.pako) {
+              const snap = JSON.stringify({ left: leftContent, right: rightContent });
+              const gz = pako.gzip(snap);
+              const blob = new Blob([gz], { type: 'application/gzip' });
+              const filename = 'json_compair_snapshot.json.gz';
+
+              // Try Web Share API first (mobile-friendly)
+              try {
+                if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename)] })) {
+                  await navigator.share({
+                    files: [new File([blob], filename)],
+                    title: 'JSON Compare Snapshot'
+                  });
+                  shareBtn.textContent = '📤 Shared';
+                  setTimeout(() => {
+                    shareBtn.textContent = originalText;
+                    shareBtn.disabled = false;
+                  }, 2000);
+                  return;
+                }
+              } catch (e) {
+                // Fall back to download
+              }
+
+              // Trigger file download
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+
+              // Copy helper text to clipboard
+              const helperText = '📎 JSON Compare snapshot attached. Open https://dipenparmar12.github.io/json_compair/ and use "Import Snapshot" to load it.';
+              try {
+                await navigator.clipboard.writeText(helperText);
+              } catch (e) {
+                // Ignore clipboard errors
+              }
+
+              shareBtn.textContent = '📥 Downloaded';
+              setTimeout(() => {
+                shareBtn.textContent = originalText;
+                shareBtn.disabled = false;
+              }, 2000);
+              return;
+            } else {
+              // No compression available
+              alert('Content is too large for URL sharing and compression is not available. Please use the Export option to save a file manually.');
+              shareBtn.textContent = originalText;
+              shareBtn.disabled = false;
+              return;
+            }
+          } catch (err) {
+            console.error('Share error:', err);
+            alert('Unable to create share link. Please try again or use Export manually.');
+            shareBtn.textContent = originalText;
+            shareBtn.disabled = false;
+          }
+        };
+    controls.insertBefore(shareBtn, sortKeysBtn.nextSibling);
+
+        // Add Import Snapshot button + hidden file input
+        const importBtn = document.createElement('button');
+        importBtn.className = 'toggle-button';
+        importBtn.textContent = 'Import Snapshot';
+        const importInput = document.createElement('input');
+        importInput.type = 'file';
+        importInput.accept = '.gz,.gzip,application/gzip,application/octet-stream,.json';
+        importInput.style.display = 'none';
+
+        importBtn.onclick = () => importInput.click();
+
+        importInput.onchange = async (e) => {
+          const f = importInput.files && importInput.files[0];
+          if (!f) return;
+          try {
+            const buf = await f.arrayBuffer();
+            let text = null;
+            // Try to ungzip using pako if available - large files should be uncompressed in a worker
+            if (window.pako && buf.byteLength > window.LargeDataHelpers?.WORKER_SIZE_THRESHOLD) {
+              // Offload decompression to a timeout so UI isn't blocked
+              text = await new Promise((res, rej) => {
+                setTimeout(() => {
+                  try {
+                    const u8 = new Uint8Array(buf);
+                    const decompressed = pako.ungzip(u8, { to: 'string' });
+                    res(decompressed);
+                  } catch (err) { rej(err); }
+                }, 0);
+              });
+            } else if (window.pako) {
+              try { const u8 = new Uint8Array(buf); text = pako.ungzip(u8, { to: 'string' }); } catch(err) { text = null; }
+            }
+            if (text === null) {
+              try { text = new TextDecoder().decode(new Uint8Array(buf)); } catch (e) { text = null; }
+            }
+            if (!text) { alert('Failed to read snapshot file.'); return; }
+            const snap = JSON.parse(text);
+            if (snap && (snap.left !== undefined || snap.right !== undefined)) {
+              leftEditor.setValue(snap.left || '');
+              rightEditor.setValue(snap.right || '');
+              try {
+                StorageManager.saveToStorage(snap.left || '', snap.right || '');
+              } catch (e) {
+                // localStorage synchronous set may throw - attempt async IndexedDB backup
+                console.warn('saveToStorage threw, attempting IndexedDB fallback', e && e.message ? e.message : e);
+                if (StorageManager.saveToIndexedDB) {
+                  StorageManager.saveToIndexedDB(snap.left || '', snap.right || '').catch((err) => {
+                    console.error('IndexedDB fallback failed', err);
+                  });
+                }
+              }
+              
+              updateDiffStatus(mv);
+
+              // Clear URL parameters after successful import (keep URL clean)
+              URLManager.clearURL();
+              console.log('URL parameters cleared after importing snapshot');
+            } else {
+              alert('Snapshot file format not recognized.');
+            }
+          } catch (err) {
+            console.error('Import failed', err);
+            alert('Failed to import snapshot: ' + (err && err.message ? err.message : String(err)));
+          } finally {
+            importInput.value = '';
+          }
+        };
+
+        controls.appendChild(importBtn);
+        controls.appendChild(importInput);
+
+        // Add template selector
+        const templateSelect = document.createElement("select");
+        templateSelect.className = "toggle-button";
+        templateSelect.innerHTML = `
+                <option value="simple">Simple Template</option>
+                <option value="complex">Complex Template</option>
+            `;
+        templateSelect.onchange = () => {
+          const template = DefaultTemplates[templateSelect.value];
+
+          // Warn if either editor already has content
+          const leftHas = leftEditor.getValue().trim().length > 0;
+          const rightHas = rightEditor.getValue().trim().length > 0;
+
+          if (leftHas || rightHas) {
+            const proceed = confirm(
+              'Loading this template will replace current editor content. Do you want to continue?'
+            );
+            if (!proceed) return; // Do nothing if user cancels
+          }
+
+          leftEditor.setValue(template.left);
+          rightEditor.setValue(template.right);
+
+          // Save to storage and update URL when loading template
+          try {
+            StorageManager.saveToStorage(template.left, template.right);
+          } catch (e) {
+            if (StorageManager.saveToIndexedDB) {
+              StorageManager.saveToIndexedDB(template.left, template.right).catch((err) => console.error('IndexedDB save failed', err));
+            }
+          }
+        };
+        controls.appendChild(templateSelect);
+
+        // Add setting: auto CSV conversion (checkbox will be moved into dropdown)
+        const autoCsvLabel = document.createElement('label');
+        autoCsvLabel.style.marginLeft = '10px';
+        autoCsvLabel.style.fontSize = '13px';
+        autoCsvLabel.innerHTML = `<input type="checkbox" id="auto-csv-conversion" /> Auto CSV→JSON`;
+        controls.appendChild(autoCsvLabel);
+
+        // Build hover dropdown menu (auto opens on hover) and move relevant controls into it
+        const dropdown = document.createElement('div');
+        dropdown.className = 'controls-dropdown';
+        dropdown.style.display = 'inline-block';
+        dropdown.style.position = 'relative';
+        dropdown.style.marginLeft = '8px';
+
+        const dropBtn = document.createElement('button');
+        dropBtn.className = 'toggle-button';
+        dropBtn.textContent = 'Options ▾';
+        dropBtn.style.cursor = 'pointer';
+        dropBtn.style.userSelect = 'none';
+        dropdown.appendChild(dropBtn);
+
+        const menu = document.createElement('div');
+        menu.className = 'controls-menu';
+        menu.style.position = 'absolute';
+        menu.style.top = '100%';
+        menu.style.right = '0';
+        menu.style.minWidth = '220px';
+        menu.style.background = '#fff';
+        menu.style.border = '1px solid #ddd';
+        menu.style.boxShadow = '0 4px 8px rgba(0,0,0,0.08)';
+        menu.style.padding = '8px';
+        menu.style.zIndex = 9999;
+        menu.style.display = 'none';
+
+        // Show menu on hover for better UX
+        dropdown.addEventListener('mouseenter', () => { menu.style.display = 'block'; });
+        dropdown.addEventListener('mouseleave', () => { menu.style.display = 'none'; });
+
+        // Move existing controls into the dropdown menu in a sensible order
+        // We'll move: shareBtn, showDiffsBtn, sortKeysBtn, importBtn (+input), templateSelect, autoCsvLabel, plus a new auto-sort setting
+        const moveIntoMenu = (node) => { if (!node) return; menu.appendChild(node); };
+        moveIntoMenu(shareBtn);
+        moveIntoMenu(showDiffsBtn);
+  // Keep Sort JSON Keys visible outside the dropdown for quick access
+  // (do not move sortKeysBtn into the menu)
+        moveIntoMenu(importBtn);
+        moveIntoMenu(importInput);
+        // Put templates inside menu as a labeled row
+        const tplRow = document.createElement('div');
+        tplRow.style.marginTop = '6px';
+        tplRow.style.marginBottom = '6px';
+        tplRow.appendChild(document.createTextNode('Examples: '));
+        tplRow.appendChild(templateSelect);
+        menu.appendChild(tplRow);
+        moveIntoMenu(autoCsvLabel);
+
+        // Add Auto Sort JSON Keys setting
+        const autoSortRow = document.createElement('div');
+        autoSortRow.style.marginTop = '6px';
+        autoSortRow.style.fontSize = '13px';
+        autoSortRow.innerHTML = `<label style="font-size:13px;"><input type="checkbox" id="auto-sort-on-paste" /> Auto Sort JSON Keys on Paste</label>`;
+        menu.appendChild(autoSortRow);
+
+        // Append the menu element into the dropdown and insert dropdown into controls
+        dropdown.appendChild(menu);
+        controls.appendChild(dropdown);
+
+        // Initialize setting states from SettingsManager (persistent)
+        try {
+          const s_autoCsv = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoCsv') : false;
+          const s_autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+          const s_showOnly = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('showOnlyDiffs') : false;
+
+          const autoCsvCheckbox = document.getElementById('auto-csv-conversion');
+          if (autoCsvCheckbox) {
+            autoCsvCheckbox.checked = !!s_autoCsv;
+            autoCsvCheckbox.addEventListener('change', (e) => {
+              try { SettingsManager.set('autoCsv', e.target.checked); } catch (er) { /* noop */ }
+            });
+          }
+
+          const autoSortCheckbox = document.getElementById('auto-sort-on-paste');
+          if (autoSortCheckbox) {
+            autoSortCheckbox.checked = !!s_autoSort;
+            autoSortCheckbox.addEventListener('change', (e) => {
+              try { SettingsManager.set('autoSortOnPaste', e.target.checked); } catch (er) { /* noop */ }
+            });
+          }
+
+          // Initialize show-only-diffs button state
+          if (showDiffsBtn) {
+            if (s_showOnly) {
+              showDiffsBtn.classList.add('active');
+              showDiffsBtn.onclick && showDiffsBtn.onclick();
+            }
+            // Persist when toggled
+            const oldShowClick = showDiffsBtn.onclick;
+            showDiffsBtn.onclick = function () {
+              oldShowClick && oldShowClick.apply(this, arguments);
+              try { SettingsManager.set('showOnlyDiffs', showDiffsBtn.classList.contains('active')); } catch (er) { /* noop */ }
+            };
+          }
+        } catch (e) {
+          // SettingsManager may not be available in older browsers; ignore
+          console.warn('Settings init failed', e);
+        }
+
+        // Add Clear All button
+        const clearAllBtn = document.createElement("button");
+        clearAllBtn.className = "toggle-button";
+          clearAllBtn.textContent = "Clear All";
+        clearAllBtn.style.display = "none"; // Initially hidden
+        clearAllBtn.onclick = () => {
+          leftEditor.setValue("");
+          rightEditor.setValue("");
+          updateDiffStatus(mv);
+        };
+        controls.appendChild(clearAllBtn);        // Add individual clear buttons to each pane
+        function addClearButton(editor, side) {
+          const wrapper = editor.getWrapperElement();
+          const clearBtn = document.createElement("button");
+          clearBtn.className = `clear-btn clear-btn-${side}`;
+          clearBtn.textContent = "Clear";
+          clearBtn.style.display = "none"; // Initially hidden
+          clearBtn.onclick = (e) => {
+            e.stopPropagation();
+            editor.setValue("");
+            editor.focus(); // Focus the editor after clearing
+            updateDiffStatus(mv);
+          };
+
+          // Insert the button inside the editor's wrapper
+          wrapper.parentNode.style.position = "relative";
+          wrapper.parentNode.appendChild(clearBtn);
+
+          return clearBtn;
+        }
+
+        // Add paste buttons to each pane
+        function addPasteButton(editor, side) {
+          const wrapper = editor.getWrapperElement();
+          const pasteBtn = document.createElement("button");
+          pasteBtn.className = `paste-btn paste-btn-${side}`;
+          pasteBtn.textContent = "Paste from Clipboard";
+          pasteBtn.style.display = "none"; // Initially hidden
+          // Position paste button exactly where clear button is
+          pasteBtn.style.top = "5px";
+          pasteBtn.style.left = "unset";
+          pasteBtn.style.right = "10px";
+          pasteBtn.style.transform = "none";
+          pasteBtn.style.padding = "3px 8px";
+          pasteBtn.style.fontSize = "12px";
+          pasteBtn.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+              // Request clipboard permission and get text
+        const text = await navigator.clipboard.readText();
+              if (text) {
+                // Paste text but do NOT auto-convert; instead show conversion buttons when applicable
+                editor.setValue(text);
+                // Detect CSV or JSON and show conversion buttons in that pane
+                const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(text);
+                const isJSON = (() => { try { JSON.parse(text); return true; } catch { return false; }})();
+                const conv = side === 'left' ? leftConversion : rightConversion;
+                if (conv) {
+                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
+                }
+                editor.focus();
+                updateDiffStatus(mv);
+              }
+            } catch (err) {
+              console.error("Clipboard permission denied:", err);
+              alert("Please allow clipboard access to use the paste feature");
+            }
+          };
+
+          // Insert the button inside the editor's wrapper
+          wrapper.parentNode.appendChild(pasteBtn);
+
+          return pasteBtn;
+        }
+
+        // Add clear buttons to both editors
+        const leftClearBtn = addClearButton(leftEditor, "left");
+        const rightClearBtn = addClearButton(rightEditor, "right");
+
+        // Add paste buttons to both editors
+        const leftPasteBtn = addPasteButton(leftEditor, "left");
+        const rightPasteBtn = addPasteButton(rightEditor, "right");
+
+        // Add copy buttons to each pane (shown on hover via CSS)
+        function addCopyButton(editor, side) {
+          const wrapper = editor.getWrapperElement();
+          const copyBtn = document.createElement('button');
+          copyBtn.className = `copy-btn copy-btn-${side}`;
+          copyBtn.textContent = 'Copy';
+          copyBtn.type = 'button';
+          copyBtn.title = `Copy ${side} content`;
+          copyBtn.onclick = async (e) => {
+            e.stopPropagation();
+            const text = editor.getValue();
+            const original = copyBtn.textContent;
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+              } else {
+                // Fallback for older browsers
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.top = '-1000px';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+              }
+              copyBtn.classList.add('copied');
+              copyBtn.textContent = 'Copied';
+              setTimeout(() => {
+                copyBtn.classList.remove('copied');
+                copyBtn.textContent = original;
+              }, 1200);
+            } catch (err) {
+              console.warn('Copy failed', err);
+              copyBtn.textContent = 'Copy failed';
+              setTimeout(() => { copyBtn.textContent = original; }, 1200);
+            }
+          };
+
+          // Ensure the pane container is positioned for absolute children
+          wrapper.parentNode.style.position = wrapper.parentNode.style.position || 'relative';
+          wrapper.parentNode.appendChild(copyBtn);
+          return copyBtn;
+        }
+
+        const leftCopyBtn = addCopyButton(leftEditor, 'left');
+        const rightCopyBtn = addCopyButton(rightEditor, 'right');
+        // Initialize copy buttons visibility based on content state
+        (function(){
+          const leftHas = leftEditor.getValue().trim().length > 0;
+          const rightHas = rightEditor.getValue().trim().length > 0;
+          leftCopyBtn.style.display = leftHas ? 'block' : 'none';
+          rightCopyBtn.style.display = rightHas ? 'block' : 'none';
+        })();
+
+        // Add CSV <-> JSON conversion buttons to each pane
+        function addConversionButtons(editor, side) {
+          const wrapper = editor.getWrapperElement();
+
+          const csvToJsonBtn = document.createElement('button');
+          csvToJsonBtn.className = `convert-btn convert-csv-to-json convert-${side}`;
+          csvToJsonBtn.textContent = 'CSV → JSON';
+          csvToJsonBtn.style.display = 'none';
+          csvToJsonBtn.onclick = (e) => {
+            e.stopPropagation();
+            const text = editor.getValue();
+            // Use async CSV parsing (PapaParse if available) then fallback to worker string conversion
+            try {
+              window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then((arr) => {
+                // Got parsed array, set editor
+                editor.setValue(JSON.stringify(arr, null, 3));
+                updateDiffStatus(mv);
+              }).catch((err) => {
+                // Fallback to existing worker-based conversion (keeps compatibility)
+                window.LargeDataHelpers.runHeavyTask('csvToJsonString', { text }, () => {
+                  const arr = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                  return JSON.stringify(arr, null, 3);
+                }).then((res) => { editor.setValue(res); updateDiffStatus(mv); }).catch((err2) => {
+                  showConversionError('CSV conversion failed: ' + (err2 && err2.message ? err2.message : String(err2)));
+                });
+              });
+            } catch (err) {
+              showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+            }
+            updateDiffStatus(mv);
+          };
+
+          const jsonToCsvBtn = document.createElement('button');
+          jsonToCsvBtn.className = `convert-btn convert-json-to-csv convert-${side}`;
+          jsonToCsvBtn.textContent = 'JSON → CSV';
+          jsonToCsvBtn.style.display = 'none';
+          jsonToCsvBtn.onclick = (e) => {
+            e.stopPropagation();
+            const text = editor.getValue();
+            try {
+              const csv = window.CSVUtils.jsonToCSV(text);
+              editor.setValue(csv);
+            } catch (err) {
+              showConversionError('JSON → CSV failed: ' + (err && err.message ? err.message : String(err)));
+            }
+            updateDiffStatus(mv);
+          };
+
+          wrapper.parentNode.appendChild(csvToJsonBtn);
+          wrapper.parentNode.appendChild(jsonToCsvBtn);
+
+          return { csvToJsonBtn, jsonToCsvBtn };
+        }
+
+        const leftConversion = addConversionButtons(leftEditor, 'left');
+        const rightConversion = addConversionButtons(rightEditor, 'right');
+
+        // Function to update button visibility based on content
+        function updateClearButtonsVisibility() {
+          const leftContent = leftEditor.getValue().trim();
+          const rightContent = rightEditor.getValue().trim();
+
+          // Individual clear/paste buttons
+          if (leftContent) {
+            leftClearBtn.style.display = "block";
+            leftPasteBtn.style.display = "none";
+          } else {
+            leftClearBtn.style.display = "none";
+            leftPasteBtn.style.display = "block";
+          }
+          if (rightContent) {
+            rightClearBtn.style.display = "block";
+            rightPasteBtn.style.display = "none";
+          } else {
+            rightClearBtn.style.display = "none";
+            rightPasteBtn.style.display = "block";
+          }
+
+          // Copy buttons only visible when there's content (still hover-revealed via CSS)
+          if (typeof leftCopyBtn !== 'undefined' && leftCopyBtn) {
+            leftCopyBtn.style.display = leftContent ? 'block' : 'none';
+          }
+          if (typeof rightCopyBtn !== 'undefined' && rightCopyBtn) {
+            rightCopyBtn.style.display = rightContent ? 'block' : 'none';
+          }
+
+          // Clear All button - only visible if at least one editor has content
+          clearAllBtn.style.display =
+            leftContent || rightContent ? "inline-block" : "none";
+        }
+
+        // Set initial button visibility based on initial content
+        updateClearButtonsVisibility();
+
+        // Auto-save content changes to storage only (no URL tracking for performance)
+        const saveContent = () => {
+          const leftContent = leftEditor.getValue();
+          const rightContent = rightEditor.getValue();
+
+          try {
+            StorageManager.saveToStorage(leftContent, rightContent);
+          } catch (e) {
+            console.warn('saveToStorage failed during autosave, attempting IndexedDB fallback', e && e.message ? e.message : e);
+            if (StorageManager.saveToIndexedDB) {
+              StorageManager.saveToIndexedDB(leftContent, rightContent).catch((err) => console.error('IndexedDB autosave failed', err));
+            }
+          }
+
+          updateClearButtonsVisibility();
+        };
+
+  leftEditor.on("change", (instance, changeObj) => {
+          // If this change was caused by a drop insertion we set a skip flag to avoid re-processing
+          if (instance.__skipDropProcessing) {
+            try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
+            updateDiffStatus(mv);
+            return;
+          }
+
+          if (changeObj.origin === "paste") {
+            try {
+              // Get pasted fragment
+              const pastedText = (changeObj.text || []).join('\n');
+              // If auto conversion is enabled, keep old behavior
+              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
+              const looksLikeCSV = pastedText && window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(pastedText);
+              if (autoCsv && looksLikeCSV) {
+                try {
+                  // If pasted text is large, offload CSV->JSON to worker
+                  const fallback = () => JSON.stringify(window.CSVUtils.csvToJSON(pastedText, { coerceTypes: true }), null, 3);
+                  window.LargeDataHelpers.runHeavyTask('csvToJsonString', { text: pastedText }, fallback).then((jsonStr) => {
+                    instance.setValue(jsonStr);
+                    // Auto-sort if enabled (use worker if large)
+                    try {
+                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                      if (autoSort) {
+                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: jsonStr }, () => {
+                          const obj = parseFlexibleJSON(jsonStr);
+                          const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                          return JSON.stringify(out, null, 3);
+                        }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
+                      }
+                    } catch (esort) { /* ignore sort errors */ }
+                  }).catch((err) => { showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err))); });
+                } catch (err) {
+                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                }
+              } else {
+                // Show conversion buttons when appropriate
+                const isCSV = looksLikeCSV;
+                const isJSON = (() => { try { JSON.parse(instance.getValue()); return true; } catch { return false; }})();
+                const conv = instance === leftEditor ? leftConversion : rightConversion;
+                if (conv) {
+                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
+                }
+                // If pasted content is JSON and auto-sort-on-paste is enabled, sort it (worker for large)
+                try {
+                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                  if (isJSON && autoSort) {
+                    const txt = instance.getValue();
+                    window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: txt }, () => {
+                      const obj = parseFlexibleJSON(txt);
+                      const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                      return JSON.stringify(out, null, 3);
+                    }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
+                  }
+                } catch (err2) {
+                  // ignore sorting errors
+                }
+              }
+            } catch (e) {
+              // Ignore any unexpected errors during paste handling
+            }
+          }
+          try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
+          updateDiffStatus(mv);
+        });
+
+  rightEditor.on("change", (instance, changeObj) => {
+          // Avoid processing changes that were inserted by a drop handler
+          if (instance.__skipDropProcessing) {
+            try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
+            updateDiffStatus(mv);
+            return;
+          }
+
+          if (changeObj.origin === "paste") {
+            try {
+              const pastedText = (changeObj.text || []).join('\n');
+              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
+              const looksLikeCSV = pastedText && window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(pastedText);
+              if (autoCsv && looksLikeCSV) {
+                try {
+                  // Use async parser
+                  window.CSVUtils.csvToJSONAsync(pastedText, { coerceTypes: true }).then(jsonArray => {
+                    instance.setValue(JSON.stringify(jsonArray, null, 3));
+                    // Auto-sort after CSV conversion when enabled
+                    try {
+                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                      if (autoSort) {
+                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: instance.getValue() }, () => {
+                          const obj = parseFlexibleJSON(instance.getValue());
+                          const out = Array.isArray(obj) ? sortJSONArray(obj) : sortJSONKeys(obj);
+                          return JSON.stringify(out, null, 3);
+                        }).then(sorted => { instance.setValue(sorted); }).catch(() => {});
+                      }
+                    } catch (esort) { /* noop */ }
+                  }).catch(err => { showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err))); });
+                } catch (err) {
+                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                }
+              } else {
+                const isCSV = looksLikeCSV;
+                const isJSON = (() => { try { JSON.parse(instance.getValue()); return true; } catch { return false; }})();
+                const conv = instance === leftEditor ? leftConversion : rightConversion;
+                if (conv) {
+                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
+                }
+                try {
+                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                  if (isJSON && autoSort) {
+                    let obj = parseFlexibleJSON(instance.getValue());
+                    if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                    else obj = sortJSONKeys(obj);
+                    instance.setValue(JSON.stringify(obj, null, 3));
+                  }
+                } catch (err2) {
+                  // ignore
+                }
+              }
+            } catch (e) {
+              // Ignore unexpected errors
+            }
+          }
+          try { saveContent(); } catch (e) { console.warn('saveContent error', e); }
+          updateDiffStatus(mv);
+        });
+
+        // Helper: show conversion error message temporarily
+        function showConversionError(msg) {
+          errorArea.textContent = msg;
+          errorArea.style.display = 'block';
+          setTimeout(() => {
+            errorArea.style.display = 'none';
+          }, 6000);
+        }
+
+        // Handle file drop on an editor: convert CSV -> JSON if applicable
+        function handleEditorFileDrop(editor, files) {
+          if (!files || files.length === 0) return;
+          const file = files[0];
+          const reader = new FileReader();
+          reader.onerror = function (e) {
+            showConversionError('Failed to read dropped file.');
+          };
+          reader.onload = function (e) {
+            const text = e.target.result;
+
+            // Determine file type: JSON vs CSV vs other text
+            const name = file.name || '';
+            const isJSONByName = name.toLowerCase().endsWith('.json');
+            const isCSVByName = name.toLowerCase().endsWith('.csv');
+            const looksLikeCSV = text && /[,;\t][^\n]*\n/.test(text);
+            // Try to detect JSON content but don't treat JSON as CSV even if it contains commas
+            let looksLikeJSON = false;
+            try {
+              if (text && typeof text === 'string') {
+                // A quick try-parse to detect JSON content
+                JSON.parse(text);
+                looksLikeJSON = true;
+              }
+            } catch (e) {
+              looksLikeJSON = false;
+            }
+
+            // If the file is explicitly JSON or the content parses as JSON, insert raw JSON text and skip CSV conversion
+            // Important: do NOT parse/format the JSON here — dropping JSON should insert the user's original text unmodified
+            if (isJSONByName || looksLikeJSON) {
+              try {
+                // Mark editor to skip automatic change-based conversions while we insert the dropped content
+                try { editor.__skipDropProcessing = true; } catch (err) { /* noop */ }
+                editor.setValue(text);
+                // Clear the flag on next tick to allow normal change handling afterwards
+                setTimeout(() => { try { editor.__skipDropProcessing = false; } catch (err) { /* noop */ } }, 0);
+                // Save and update URL (do not auto-sort or re-parse the JSON)
+                try {
+                  StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                } catch (e) {
+                  if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
+                }
+                
+                updateDiffStatus(mv);
+              } catch (err) {
+                console.error('Dropped JSON handling failed', err);
+                editor.setValue(text);
+              }
+            } else if (isCSVByName || looksLikeCSV) {
+              try {
+                // Use async CSV parser when available to avoid blocking
+                window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then((jsonArray) => {
+                  editor.setValue(JSON.stringify(jsonArray, null, 3));
+                  // Auto-sort after CSV file conversion when enabled
+                  try {
+                    const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                    if (autoSort) {
+                      window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: editor.getValue() }, () => {
+                        let obj = parseFlexibleJSON(editor.getValue());
+                        if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                        else obj = sortJSONKeys(obj);
+                        return JSON.stringify(obj, null, 3);
+                      }).then(sorted => { editor.setValue(sorted); }).catch(() => {});
+                    }
+                  } catch (esort) { /* ignore */ }
+
+                  // Save and update URL
+                  try {
+                    StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                  } catch (e) {
+                    if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
+                  }
+                  URLManager.saveToURL(leftEditor.getValue(), rightEditor.getValue());
+                  updateDiffStatus(mv);
+                }).catch((err) => {
+                  // Fallback to synchronous parser if async fails
+                  const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                  editor.setValue(JSON.stringify(jsonArray, null, 3));
+                });
+                // Auto-sort after CSV file conversion when enabled
+                try {
+                  const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                  if (autoSort) {
+                    let obj = parseFlexibleJSON(editor.getValue());
+                    if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                    else obj = sortJSONKeys(obj);
+                    editor.setValue(JSON.stringify(obj, null, 3));
+                  }
+                } catch (esort) { /* ignore */ }
+
+                // Save and update URL
+                try {
+                  StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                } catch (e) {
+                  if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
+                }
+                
+                updateDiffStatus(mv);
+              } catch (err) {
+                console.error('CSV -> JSON conversion failed', err);
+                showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                // Do not modify editor content on failure
+              }
+            } else {
+              // Not JSON or CSV - just insert the raw text
+              editor.setValue(text);
+            }
+          };
+          reader.readAsText(file);
+        }
+
+        // Register native drop handlers on editor wrappers
+        function registerDropOnEditor(editor, side) {
+          const wrapper = editor.getWrapperElement();
+          const parent = wrapper.parentNode;
+          // Use capture phase and stop propagation so CodeMirror's internal drag/drop handlers don't also insert content
+          parent.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
+          }, true);
+
+          parent.addEventListener('drop', function (e) {
+            // Intercept in capture phase and prevent CodeMirror from handling the same event
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+            const files = e.dataTransfer.files;
+            if (files && files.length) {
+              handleEditorFileDrop(editor, files);
+            } else {
+              // If plain text was dropped, read from dataTransfer and show conversion suggestion
+              const text = e.dataTransfer.getData('text/plain');
+              if (text) {
+                const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(text);
+                const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
+                if (autoCsv && isCSV) {
+                  try {
+                    window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true }).then(jsonArray => {
+                      editor.setValue(JSON.stringify(jsonArray, null, 3));
+                    }).catch(err => {
+                      try {
+                        const jsonArray = window.CSVUtils.csvToJSON(text, { coerceTypes: true });
+                        editor.setValue(JSON.stringify(jsonArray, null, 3));
+                      } catch (err2) {
+                        showConversionError('CSV conversion failed: ' + (err2 && err2.message ? err2.message : String(err2)));
+                        editor.setValue(text);
+                      }
+                    });
+                  } catch (err) {
+                    showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                    editor.setValue(text);
+                  }
+                } else {
+                  editor.setValue(text);
+                  const conv = editor === leftEditor ? leftConversion : rightConversion;
+                  if (conv) {
+                    conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                    // Removed JSON parsing check for dropped content to avoid re-processing JSON data
+                  }
+                }
+              }
+            }
+          }, true);
+
+          // Intercept paste in capture phase to prevent CodeMirror from inserting raw CSV text first
+          wrapper.addEventListener('paste', function (e) {
+            try {
+              const clipboardText = (e.clipboardData || window.clipboardData).getData('text/plain');
+              if (!clipboardText) return;
+              const isCSV = window.CSVUtils && window.CSVUtils.isCSV && window.CSVUtils.isCSV(clipboardText);
+              const autoCsv = document.getElementById('auto-csv-conversion') && document.getElementById('auto-csv-conversion').checked;
+              if (isCSV && autoCsv) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                try {
+                  window.CSVUtils.csvToJSONAsync(clipboardText, { coerceTypes: true }).then((jsonArray) => {
+                    editor.setValue(JSON.stringify(jsonArray, null, 3));
+                    // Update storage and URL
+                    try {
+                      StorageManager.saveToStorage(leftEditor.getValue(), rightEditor.getValue());
+                    } catch (e) {
+                      if (StorageManager.saveToIndexedDB) StorageManager.saveToIndexedDB(leftEditor.getValue(), rightEditor.getValue()).catch((err) => console.error('IndexedDB save failed', err));
+                    }
+                    
+                    updateDiffStatus(mv);
+                    // Auto-sort after clipboard CSV conversion when enabled
+                    try {
+                      const autoSort = (typeof SettingsManager !== 'undefined') ? SettingsManager.get('autoSortOnPaste') : true;
+                      if (autoSort) {
+                        window.LargeDataHelpers.runHeavyTask('sortAndStringify', { text: editor.getValue() }, () => {
+                          let obj = parseFlexibleJSON(editor.getValue());
+                          if (Array.isArray(obj)) obj = sortJSONArray(obj);
+                          else obj = sortJSONKeys(obj);
+                          return JSON.stringify(obj, null, 3);
+                        }).then(sorted => { editor.setValue(sorted); }).catch(() => {});
+                      }
+                    } catch (esort) { /* noop */ }
+                  }).catch((err) => {
+                    showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                  });
+                } catch (err) {
+                  showConversionError('CSV conversion failed: ' + (err && err.message ? err.message : String(err)));
+                }
+              } else {
+                // Not auto-converting: show conversion buttons when appropriate
+                const conv = editor === leftEditor ? leftConversion : rightConversion;
+                if (conv) {
+                  conv.csvToJsonBtn.style.display = isCSV ? 'block' : 'none';
+                  const isJSON = (() => { try { JSON.parse(clipboardText); return true; } catch { return false; }})();
+                  conv.jsonToCsvBtn.style.display = isJSON ? 'block' : 'none';
+                }
+              }
+            } catch (err) {
+              // ignore
+            }
+          }, true);
+        }
+
+        registerDropOnEditor(leftEditor, 'left');
+        registerDropOnEditor(rightEditor, 'right');
+
+        // Enhance format button
+        document.getElementById("btn-format").onclick = function () {
+          const leftContent = leftEditor.getValue().trim();
+          const rightContent = rightEditor.getValue().trim();
+
+          // Only proceed if both sides have content
+          if (!leftContent || !rightContent) {
+            document.getElementById("diff-status").textContent =
+              "Please provide content in both panels";
+            return;
+          }
+
+          try {
+            leftEditor.setValue(JSON.stringify(parseFlexibleJSON(leftEditor.getValue()), null, 3));
+            rightEditor.setValue(JSON.stringify(parseFlexibleJSON(rightEditor.getValue()), null, 3));
+            mv.right.operation(() => {
+              mv.alignChunks();
+            });
+          } catch (e) {
+            // alert("Invalid JSON detected. Please check your input.");
+          }
+          updateDiffStatus(mv);
+        };
+
+        updateDiffStatus(mv);
+
+        // Clear URL parameters if content was loaded from URL (keep URL clean)
+        if (urlContent) {
+          URLManager.clearURL();
+          console.log('URL parameters cleared after loading content from URL');
+        }
+
+        return mv;
+      }
+
+      function updateDiffStatus(mv) {
+        const leftContent = mv.editor().getValue().trim();
+        const rightContent = mv.rightOriginal().getValue().trim();
+
+        // Only count differences if both sides have content
+        if (!leftContent || !rightContent) {
+          document.getElementById("diff-status").textContent =
+            "Add JSON content to both sides to compare";
+          return;
+        }
+
+        const diffs = mv.rightChunks().length;
+        document.getElementById(
+          "diff-status"
+        ).textContent = `Found ${diffs} differences`;
+      }
+
+      // Initialize when DOM is ready
+      document.addEventListener("DOMContentLoaded", () => {
+        const target = document.getElementById("view");
+        const mv = initializeMergeView(target);
+        
+  // No notification UI — intentionally removed to keep page free of toasts
+      });
+    </script>
+    
+    <!-- Footer with version info -->
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px; border-top: 1px solid #eee; margin-top: 20px;">
+      <span>CodeMirror 5 (Legacy) | </span>
+      <a href="../index.html" style="color: #08c988; text-decoration: none;">← Version Selector</a>
+      <span> | </span>
+      <a href="../v6/index.html" style="color: #10b981; text-decoration: none;">Switch to v6 (Modern) ✨</a>
+    </div>
+  </body>
+</html>

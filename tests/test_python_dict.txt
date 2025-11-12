@@ -1,0 +1,1 @@
+{'AC_installed_kbtuh': 12.12, 'ceiling_and_roof_r_assembly_ip': 12.66, 'central_ac_seer': 8.0, 'cooling_setpoint_f': 74.5, 'dhw_eff': 0.525, 'dhw_gal_per_day': 69.0, 'dhw_location': 'unfinishedattic', }

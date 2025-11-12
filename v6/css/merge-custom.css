@@ -1,0 +1,158 @@
+/**
+ * Custom Merge View Styles
+ * 
+ * This file contains custom overrides for CodeMirror merge view.
+ * Keep this file separate from merge.css so updates to the base library
+ * don't overwrite our customizations.
+ * 
+ * IMPORTANT: This file should be loaded AFTER merge.css in index.html
+ */
+
+/* ====================================================================
+   EDITOR HEIGHT - Full viewport height
+   Override the default 350px fixed height
+   ==================================================================== */
+
+.CodeMirror-merge,
+.CodeMirror-merge .CodeMirror {
+  /* Use viewport height minus header/footer space */
+  height: calc(100vh - 120px) !important;
+  min-height: 400px !important; /* Minimum height for usability */
+}
+
+/* ====================================================================
+   DIFF ALIGNMENT - Enhanced visualization for unmatched lines
+   Make empty blocks more visible like Git/GitHub diff view
+   ==================================================================== */
+
+/* Make the connection SVG more visible */
+.CodeMirror-merge-gap svg {
+  opacity: 0.8 !important;
+}
+
+/* Style for the connecting lines between diff chunks */
+.CodeMirror-merge-r-connect,
+.CodeMirror-merge-l-connect {
+  opacity: 0.6 !important;
+}
+
+/* Ensure gap is visible and properly styled */
+.CodeMirror-merge-gap {
+  background: #f8f8f8 !important;
+  border-left: 1px solid #ddd !important;
+  border-right: 1px solid #ddd !important;
+}
+
+/* Make chunk borders more visible for better alignment perception */
+.CodeMirror-merge-r-chunk-start {
+  border-top: 0.5px solid #ff9999 !important;
+}
+
+.CodeMirror-merge-r-chunk-end {
+  border-bottom: 0.5px solid #ff9999 !important;
+}
+
+.CodeMirror-merge-l-chunk-start {
+  border-top: 0.5px solid #88e !important;
+}
+
+.CodeMirror-merge-l-chunk-end {
+  border-bottom: 0.5px solid #88e !important;
+}
+
+/* ====================================================================
+   CUSTOM DIFF HIGHLIGHTING COLORS
+   Red/Green color scheme instead of default yellow
+   ==================================================================== */
+
+/* Character-level insertions (red background) */
+.CodeMirror-merge-l-inserted,
+.CodeMirror-merge-r-inserted {
+  background-color: #FF8983 !important;
+  /* Override the default background-image pattern */
+  background-image: none !important;
+}
+
+/* Character-level deletions (green background) */
+.CodeMirror-merge-l-deleted,
+.CodeMirror-merge-r-deleted {
+  background-color: #6BDFB8 !important;
+  /* Override the default background-image pattern */
+  background-image: none !important;
+}
+
+/* Line-level chunks - right side (light red) */
+.CodeMirror-merge-r-chunk {
+  background: #FFC4C1 !important;
+}
+
+/* Line-level chunks - right pane rightmost (light green) */
+.CodeMirror-merge-pane-rightmost .CodeMirror-merge-r-chunk {
+  background: #B5EFDB !important;
+}
+
+/* ====================================================================
+   COPY BUTTON COLORS
+   Match the red/green theme
+   ==================================================================== */
+
+/* Copy button (green theme) */
+.CodeMirror-merge-copy {
+  color: #579480 !important;
+}
+
+/* Reverse copy button (red theme) */
+.CodeMirror-merge-copy-reverse {
+  color: #FF8983 !important;
+}
+
+/* ====================================================================
+   GUTTER AND UI CUSTOMIZATIONS
+   ==================================================================== */
+
+/* Remove default gutter borders for cleaner look */
+.CodeMirror-gutters {
+  border: none !important;
+}
+
+/* Gutter styling */
+.CodeMirror-gutter {
+  color: rgb(153, 153, 153) !important;
+  background: #fff !important;
+}
+
+/* Gap between editors - clean white background */
+.CodeMirror-merge-gap {
+  background: #fff !important;
+  border-right: none !important;
+}
+
+/* Center-align line numbers */
+.CodeMirror-linenumber {
+  text-align: center !important;
+}
+
+/* ====================================================================
+   NOTES
+   ==================================================================== */
+
+/*
+ * Color Scheme Reference:
+ * 
+ * Insertions/Changes (Red tones):
+ * - Character level: #FF8983 (coral red)
+ * - Line level: #FFC4C1 (light coral)
+ * 
+ * Deletions/Matches (Green tones):
+ * - Character level: #6BDFB8 (mint green)
+ * - Line level: #B5EFDB (light mint)
+ * 
+ * UI Elements:
+ * - Copy button: #579480 (teal green)
+ * - Reverse copy: #FF8983 (coral red)
+ * 
+ * Height Settings:
+ * - Uses calc(100vh - 120px) for full viewport minus header/footer
+ * - Minimum 400px ensures usability on small screens
+ * - Adjust the 120px value if header/footer height changes
+ */
