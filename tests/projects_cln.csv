@@ -1,0 +1,15 @@
+id,name,client_id,created_on,updated_on,description,html_snippet,favor_hp,project_config,launchcode,city_name,state_code
+11,ameren_richmond-heights_2022,11,2022-08-21 21:09:48.114712,2022-08-21 21:10:02.460612,The City of Richmond Heights and Ameren are excited to offer you a chance to try this new web-based tool that provides a simple plan to reduce your homes energy bill and carbon footprint.,,,,,,
+10,pge_slo_2022,10,2022-08-21 21:09:46.814009,2023-03-15 06:55:28.595532,The City of San Luis Obispo and PG&E are excited to offer you a chance to try this new web-based tool that provides a simple plan to reduce your homes energy bill and carbon footprint.,,1,,,San Luis Obispo,CA
+1,sce_santamonica_pilot,1,2020-09-21 21:58:40.834986,2023-03-15 06:55:28.595532,The City of Santa Monica and Southern California Edison (SCE) are excited to offer you a chance to try this new web-based tool that provides a simple plan to reduce your home's energy bill and carbon footprint.,,,,,Santa Monica,CA
+12,ve2102-petaluma,10,2022-11-01 18:43:42.92294,2023-03-15 06:55:28.595532,The City of Petaluma and PG&E are excited to offer you a chance to try this new web-based tool that provides a simple plan to reduce your homes energy bill and carbon footprint.,,1,,,Petaluma,CA
+13,ve2104-sacramento,13,2022-11-29 00:59:06.009943,2023-03-15 06:55:28.595532,The City of Sacramento and SMUD are excited to offer you a chance to try this new web-based tool that provides a simple plan to reduce your homes energy bill and carbon footprint.,,1,,,Sacramento,CA
+14,ve2107-syracuse,14,2023-04-02 15:24:25.844795,2023-04-02 15:24:31.825896,Syracuse,,,,,,
+15,ve2301-irvine,15,2023-10-01 04:23:56.258334,2023-10-01 04:23:56.275615,Irvine,,1,,,,
+16,ve2105-atlanta,16,2023-10-02 04:57:54.185742,2023-10-02 04:57:54.207382,Atlanta,,,,,,
+17,ve2303-pico-rivera,15,2024-05-23 05:57:36.269763,2024-05-23 05:57:36.297415,Pico Rivera,,,,,,
+18,ve2403-pce,18,2024-08-29 04:48:33.106839,2024-11-17 09:23:30.278782,Peninsula Clean Energy Electricity,,,,,,
+26,ve2105-birmingham,16,2024-11-26 18:57:58.977515,2024-12-03 08:19:10.327415,Birmingham,,,,,,
+32,ve2304-smud,13,2025-02-22 18:18:37.805935,2025-02-22 18:18:37.805935,The City of Sacramento and SMUD are excited to offer you a chance to try this new web-based tool that provides a simple plan to reduce your homes energy bill and carbon footprint.,,,,,,
+22,ve2404-svce,22,2024-11-13 08:58:13.46672,2025-06-06 17:28:17.595204,Silicon Valley Clean Energy,,,,,,
+33,ve2405-thousandoaks,33,2025-06-06 17:28:17.595204,2025-06-09 22:13:30.999123,Clean Power Alliance,,,,,,
