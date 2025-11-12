@@ -290,8 +290,20 @@
 
       /* Remove underlines from del/ins elements */
       del.cm-deletedLine,
-      ins.cm-insertedLine {
+      ins.cm-insertedLine,
+      del,
+      ins {
         text-decoration: none !important;
+        background-image: none !important;
+        border-bottom: none !important;
+        box-shadow: none !important;
+      }
+
+      /* Ensure changed text doesn't have underlines either */
+      .cm-changedText {
+        text-decoration: none !important;
+        background-image: none !important;
+        border-bottom: none !important;
       }
 
       /* Gutter markers for changed lines */
