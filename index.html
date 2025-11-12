@@ -540,6 +540,7 @@
         crosshairCursor,
         highlightActiveLine,
         keymap,
+        placeholder,
       } from "@codemirror/view";
       import {
         foldGutter,
@@ -689,6 +690,10 @@
           ...lintKeymap,
         ]),
       ];
+      
+      // Placeholder text for empty editors
+      const leftPlaceholderText = "Left Panel\n\n✏️  Paste JSON/CSV content\n📁 Drag & drop files here\n⌨️  Start typing directly\n\nUse ⚙️ Diff Settings for auto-format options";
+      const rightPlaceholderText = "Right Panel\n\n✏️  Paste JSON/CSV content\n📁 Drag & drop files here\n⌨️  Start typing directly\n\nUse ⚙️ Diff Settings for auto-format options";
 
       // Global reference to merge view
       let mergeView = null;
@@ -727,11 +732,25 @@
         mergeView = new MergeView({
           a: {
             doc: initialContent.left,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+            extensions: [
+              basicSetup, 
+              json(), 
+              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), 
+              themeCompartment.of(getThemeExtension(currentTheme)), 
+              autoSaveExtension,
+              placeholder(leftPlaceholderText)
+            ],
           },
           b: {
             doc: initialContent.right,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+            extensions: [
+              basicSetup, 
+              json(), 
+              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), 
+              themeCompartment.of(getThemeExtension(currentTheme)), 
+              autoSaveExtension,
+              placeholder(rightPlaceholderText)
+            ],
           },
           parent: container,
           // Apply saved merge settings
@@ -1033,11 +1052,25 @@
         mergeView = new MergeView({
           a: {
             doc: leftContent,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+            extensions: [
+              basicSetup, 
+              json(), 
+              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), 
+              themeCompartment.of(getThemeExtension(currentTheme)), 
+              autoSaveExtension,
+              placeholder(leftPlaceholderText)
+            ],
           },
           b: {
             doc: rightContent,
-            extensions: [basicSetup, json(), wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), themeCompartment.of(getThemeExtension(currentTheme)), autoSaveExtension],
+            extensions: [
+              basicSetup, 
+              json(), 
+              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), 
+              themeCompartment.of(getThemeExtension(currentTheme)), 
+              autoSaveExtension,
+              placeholder(rightPlaceholderText)
+            ],
           },
           parent: container,
           orientation: newSettings.orientation,
@@ -1057,9 +1090,6 @@
         // Re-setup synchronized scrolling
         setupSynchronizedScrolling();
         
-        // Re-add placeholders
-        addPlaceholders();
-        
         // Re-setup drag and drop handlers
         setupDragDrop();
         
@@ -1069,72 +1099,13 @@
         updateDiffStatus();
       }
 
-      // Add placeholder overlays to empty editors
+      // Placeholder functions (now handled by CodeMirror's built-in placeholder extension)
       function addPlaceholders() {
-        const editors = document.querySelectorAll('.cm-mergeViewEditor');
-        
-        if (editors.length >= 2) {
-          addPlaceholderToPane(editors[0], 'left');
-          addPlaceholderToPane(editors[1], 'right');
-        }
-        
-        // Update placeholder visibility based on content
-        updatePlaceholders();
+        // No longer needed - using CodeMirror placeholder extension
       }
 
-      function addPlaceholderToPane(paneElement, side) {
-        const placeholder = document.createElement('div');
-        placeholder.className = `placeholder-overlay placeholder-${side}`;
-        placeholder.style.cssText = `
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          display: none;
-          align-items: center;
-          justify-content: center;
-          pointer-events: none;
-          background: #f8f9fa;
-          z-index: 1;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        `;
-        
-        placeholder.innerHTML = `
-          <div style="text-align: center; color: #6c757d; padding: 40px;">
-            <div style="font-size: 48px; margin-bottom: 20px; opacity: 0.3;">📝</div>
-            <div style="font-size: 16px; font-weight: 500; margin-bottom: 12px; color: #495057;">
-              ${side === 'left' ? 'Left Panel' : 'Right Panel'}
-            </div>
-            <div style="font-size: 13px; line-height: 1.6; max-width: 280px;">
-              <div style="margin-bottom: 8px;">✏️ <strong>Paste</strong> JSON/CSV content</div>
-              <div style="margin-bottom: 8px;">📁 <strong>Drag & drop</strong> files here</div>
-              <div style="margin-bottom: 8px;">⌨️ Start <strong>typing</strong> directly</div>
-              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #dee2e6; font-size: 12px; opacity: 0.8;">
-                Use <strong>⚙️ Diff Settings</strong> for auto-format options
-              </div>
-            </div>
-          </div>
-        `;
-        
-        paneElement.appendChild(placeholder);
-      }
-
-      // Update placeholder visibility
       function updatePlaceholders() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-        
-        const leftPlaceholder = document.querySelector('.placeholder-left');
-        const rightPlaceholder = document.querySelector('.placeholder-right');
-        
-        if (leftPlaceholder) {
-          leftPlaceholder.style.display = leftContent ? 'none' : 'flex';
-        }
-        
-        if (rightPlaceholder) {
-          rightPlaceholder.style.display = rightContent ? 'none' : 'flex';
-        }
+        // No longer needed - CodeMirror handles this automatically
       }
 
       // Add per-pane control buttons
