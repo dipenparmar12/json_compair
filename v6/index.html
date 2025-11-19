@@ -1368,10 +1368,11 @@
         convertBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
           const text = editor.state.doc.toString();
+          const autoSort = document.getElementById('auto-sort-keys')?.checked;
           
           try {
             const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-            const content = JSON.stringify(jsonData, null, 3);
+            const content = buildJSONString(jsonData, { autoSort });
             
             editor.dispatch({
               changes: { from: 0, to: editor.state.doc.length, insert: content }
@@ -1614,6 +1615,18 @@
         }
       }
 
+      function buildJSONString(data, options = {}) {
+        let content = data;
+        if (options.autoSort && typeof window.sortJSONKeys === 'function') {
+          try {
+            content = window.sortJSONKeys(content);
+          } catch (err) {
+            console.warn('Auto sort failed:', err);
+          }
+        }
+        return JSON.stringify(content, null, 3);
+      }
+
       // Share URL functionality
       async function shareURL() {
         const leftContent = mergeView.a.state.doc.toString();
@@ -1767,11 +1780,8 @@
           // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
           if (autoCSV || autoFormat || autoSort) {
             try {
-              let parsed = window.parseFlexibleJSON(content);
-              if (autoSort) {
-                parsed = window.sortJSONKeys(parsed);
-              }
-              content = JSON.stringify(parsed, null, 3);
+              const parsed = window.parseFlexibleJSON(content);
+              content = buildJSONString(parsed, { autoSort });
               isJSON = true;
             } catch (err) {
               // Not valid JSON/Python, continue to CSV check
@@ -1785,7 +1795,7 @@
             if (isCSV) {
               try {
                 const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-                content = JSON.stringify(jsonData, null, 3);
+                content = buildJSONString(jsonData, { autoSort });
                 showConversionMessage("CSV converted to JSON");
               } catch (err) {
                 showErrorMessage("CSV conversion failed: " + err.message);
@@ -1832,11 +1842,8 @@
         // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
         if (autoCSV || autoFormat || autoSort) {
           try {
-            let parsed = window.parseFlexibleJSON(content);
-            if (autoSort) {
-              parsed = window.sortJSONKeys(parsed);
-            }
-            content = JSON.stringify(parsed, null, 3);
+            const parsed = window.parseFlexibleJSON(content);
+            content = buildJSONString(parsed, { autoSort });
             isJSON = true;
           } catch (err) {
             // Not valid JSON/Python, continue to CSV check
@@ -1855,7 +1862,7 @@
 
             try {
               const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-              content = JSON.stringify(jsonData, null, 3);
+              content = buildJSONString(jsonData, { autoSort });
 
               editor.dispatch({
                 changes: { from: 0, to: editor.state.doc.length, insert: content }
