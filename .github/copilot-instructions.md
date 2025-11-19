@@ -1,256 +1,105 @@
-# JSON Compare Tool - Comprehensive AI Agent Guide
+# JSON Compare Tool - AI Agent Instructions
 
 ## 🎯 Project Overview
-A **client-side-only** web application for comparing, formatting, and merging JSON data with advanced diff visualization. Built with CodeMirror 6, this tool runs entirely in the browser with no backend or build process required.
+A **client-side-only** web application for comparing, formatting, and merging JSON data. Two parallel implementations:
+- **v6/** - CodeMirror 6 (modern, ES modules, ~2074 lines)
+- **v5/** - CodeMirror 5 (legacy, proven stability, ~63KB)
 
-**Live URL:** https://your-domain.github.io/json_compair/  
-**Version:** CodeMirror 6 (migrated from v5 in Nov 2025)  
-**Deployment:** Automatic via GitHub Pages on push to `main`
+**Entry Point:** `index.html` (version selector) → redirects to `v6/` or `v5/`  
+**Deployment:** GitHub Pages (auto-publish on push to `main`)
 
 ---
 
-## 📁 Project Structure
+## 📁 Actual Project Structure
 
-### Root Files (Active Application)
 ```
 json_compair/
-├── index.html              # Main app (CM6) - 1950+ lines with embedded JS
-├── index-v5.html           # Legacy version (CM5) - kept for fallback
-├── utils.js                # URL/storage management, templates
-├── json_utils.js           # Flexible JSON parser (Python syntax support)
-├── utils_csv.js            # CSV detection & conversion
-├── utils_zip.js            # ZIP snapshot creation/import (NEW Nov 2025)
-├── server.js               # Optional local dev server (Node.js)
-└── README.md               # User-facing documentation
-```
-
-### Directories
-```
-css/
-├── app.css                 # Application-specific styles
-├── codemirror.css          # CodeMirror base (DO NOT modify - from CDN)
-├── merge.css               # Merge view base (DO NOT modify - from CDN)
-├── merge-custom.css        # Custom diff colors (red/green) - SAFE to edit
-└── ccsiteV6.css            # Site-wide branding/layout
-
-js/
-├── button-events.js        # File upload handlers (legacy, not used in CM6)
-├── codemirror.js           # CodeMirror v5 library (for index-v5.html)
-├── merge.js                # CodeMirror v5 merge addon
-├── diff_match_patch.js     # Text diffing algorithm
-├── large_json_helpers.js   # Performance optimizations for large files
-├── large-data-worker.js    # Web Worker for async processing
-├── oboe-browser.min.js     # Streaming JSON parser
-└── papaparse.min.js        # CSV parsing library
-
-docs/
-├── PRD/                    # Product Requirements Documents
-│   ├── 01-system-architecture.md
-│   ├── 02-feature-specifications.md
-│   ├── ...
-│   └── 14-csv-python-parsing.md
-├── LIBRARY_UPDATES_OCT_2025.md
-├── ZIP_SNAPSHOT_FORMAT.md  # NEW - ZIP export documentation
-├── QUICK_REFERENCE_ZIP.md  # NEW - Quick reference
-└── ...
-
-src/
-├── choose-version.html     # Version selector page
-├── demo-block-align.html   # Feature prototypes
-├── test-*.html             # Various experiments
-└── index*.html             # Development iterations
-
-temp/                       # Temporary files (gitignored)
+├── index.html              # VERSION SELECTOR - Auto-redirects to v5/v6
+├── server.js               # Optional Node.js dev server
+├── README.md               # User docs (references CodeMirror 5, outdated)
+│
+├── v6/                     # 🔥 ACTIVE APPLICATION (CodeMirror 6)
+│   ├── index.html          # 2074-line monolithic app with embedded JS
+│   ├── css/
+│   │   ├── app.css         # Application styles (SAFE to edit)
+│   │   └── ccsiteV6.css    # Branding/layout
+│   └── utils/              # Shared utility modules
+│       ├── utils.js        # URL params, localStorage, templates
+│       ├── json_utils.js   # Python syntax → JSON parsing
+│       ├── utils_csv.js    # CSV auto-detection & conversion
+│       └── utils_zip.js    # ZIP snapshot import/export
+│
+├── v5/                     # Legacy CodeMirror 5 version
+│   ├── index.html
+│   ├── css/
+│   ├── js/
+│   └── utils/              # Same utilities as v6
+│
+├── docs/                   # Documentation & PRDs
+├── tests/                  # Test files
+└── _archive/               # Old iterations
 ```
 
 ---
 
-## 🏗️ Architecture Deep Dive
+## ⚡ Critical Patterns & Workflows
 
-### Technology Stack
+### 1. **NO BUILD PROCESS**
+- Direct file editing, F5 refresh, immediate preview
+- All JS dependencies loaded from CDN via `<script>` or ES Module Import Maps
+- **Utilities shared across v5/v6:** Located in `v{5,6}/utils/` directories
+- **Code changes:** Edit `v6/index.html` directly or extract embedded code to separate files
 
-**Core Framework:**
-- **CodeMirror 6** (Nov 2025) - Modern text editor with ES modules
-  - `@codemirror/merge@6.7.2` - Side-by-side diff view
-  - `@codemirror/lang-json@6.0.1` - JSON syntax highlighting
-  - `@codemirror/view@6.34.1` - Editor rendering
-  - Loaded via ES Module Import Maps from unpkg.com
-
-**Libraries (CDN-loaded):**
-- **JSZip 3.10.1** - ZIP file creation/extraction (NEW)
-- **Pako 2.1.0** - Gzip compression for URL sharing
-- **diff_match_patch 1.0.5** - Semantic diff algorithm
-- **PapaParse 5.4.1** - CSV parsing
-- **Oboe.js 2.1.5** - Streaming JSON (for large files)
-
-**No Build Tools:**
-- Direct HTML/CSS/JS editing
-- Changes effective immediately (F5 refresh)
-- Dependencies loaded from CDN
-- Pure ES6 modules in browser
-
-### Application Flow
-
-```
-User Opens Page
-    ↓
-index.html loads
-    ↓
-Load utilities (utils.js, json_utils.js, utils_csv.js, utils_zip.js)
-    ↓
-Load CodeMirror 6 via Import Maps
-    ↓
-Initialize MergeView
-    ↓
-Check URL params → Load content OR
-Check localStorage → Load saved OR
-Show default template
-    ↓
-Setup event listeners (drag-drop, paste, buttons)
-    ↓
-Ready for user interaction
+### 2. **Utility Loading Pattern**
+Both versions load utilities in this order (in `<head>`):
+```html
+<script src="./utils/utils.js"></script>
+<script src="./utils/json_utils.js"></script>
+<script src="./utils/utils_csv.js"></script>
+<script src="./utils/utils_zip.js"></script>
 ```
 
----
+**Each utility exports to `window.` global namespace:**
+- `utils.js` → `window.URLManager`, `window.StorageManager`, `window.DefaultTemplates`, `window.SettingsManager`
+- `json_utils.js` → `window.parseFlexibleJSON()`, `window.sortJSONKeys()`
+- `utils_csv.js` → `window.CSVUtils` with `.isCSV()`, `.csvToJSON()`, `.csvToJSONAsync()`
+- `utils_zip.js` → `window.SnapshotHandler`, `window.ZipSnapshotManager`, `window.LegacySnapshotManager`
 
-## 🔧 Core Utilities Explained
-
-### 1. **utils.js** - Foundation Manager
-Located at project root. Handles URL/storage/templates.
-
-**Key Components:**
+### 3. **V6-Specific: CodeMirror 6 via ES Modules**
+v6/index.html uses `<script type="importmap">` to load from unpkg.com:
 ```javascript
-window.URLManager = {
-  generateShareableURL(left, right)  // Compress & encode for URL
-  loadFromURL()                       // Decompress from URL params
-  clearURL()                          // Clean URL after loading
-}
-
-window.StorageManager = {
-  saveToStorage(left, right)          // Save to localStorage
-  loadFromStorage()                   // Load from localStorage
-  saveToIndexedDB(left, right)        // Fallback for large data
-}
-
-window.DefaultTemplates = {
-  simple: { left: '...', right: '...' }
-  nested: { left: '...', right: '...' }
-  array: { left: '...', right: '...' }
-  // ... more templates
-}
-
-window.SettingsManager = {
-  get(key)                            // Get setting from localStorage
-  set(key, value)                     // Save setting
-  loadAll()                           // Get all settings as object
-}
+"@codemirror/merge": "https://unpkg.com/@codemirror/merge@6.7.2/dist/index.js"
 ```
-
-**Usage in index.html:**
+Then in the embedded script:
 ```javascript
-// Save content
-StorageManager.saveToStorage(leftText, rightText);
-
-// Generate share URL
-const url = URLManager.generateShareableURL(leftText, rightText);
-
-// Load template
-const template = DefaultTemplates.simple;
+import { MergeView } from "@codemirror/merge";
+import { EditorState, Compartment } from "@codemirror/state";
+// ... usage
 ```
 
-### 2. **json_utils.js** - Smart JSON Parser
-Handles non-standard JSON formats (Python, datetime, etc.)
+**Key point:** CM6 uses `Compartment` for dynamic reconfig (e.g., theme toggle) without recreating editors.
 
-**Key Functions:**
+### 4. **Data Persistence Flow**
+1. **On content change** → 300ms debounce → `StorageManager.saveToStorage(left, right)`
+2. **Page load** → Check URL params (`c=...`) → Decompress & load
+3. **Fallback** → Load from `localStorage['json-compare-left/right']`
+4. **All empty** → Show default template
+
+**Large data:** Falls back to IndexedDB if localStorage quota exceeded (handled in utils.js)
+
+### 5. **URL Sharing Pattern**
+```
+Content → JSON.stringify → gzip (pako) → base64 encode → URL: ?c=H4sIAAA...
+```
+Size limit ~2000 chars → Falls back to ZIP download
+
+### 6. **CSV Auto-Detection**
+Entry points: drag-drop, paste, file upload
 ```javascript
-window.parseFlexibleJSON(text)      // Parse JSON with Python syntax
-window.sortJSONKeys(obj)            // Recursively sort object keys
-```
-
-**Supported Formats:**
-```python
-# Python dict/list syntax
-{'name': 'John', 'active': True}
-→ {"name": "John", "active": true}
-
-# Python None
-{'value': None}
-→ {"value": null}
-
-# Complex numbers
-{'number': (3+4j)}
-→ {"number": {"real": 3, "imag": "4"}}
-
-# Datetime
-datetime.datetime(2023, 11, 15, 10, 30, 0)
-→ "2023-11-15T10:30:00.000Z"
-```
-
-### 3. **utils_csv.js** - CSV Auto-Converter
-Detects and converts CSV to JSON automatically.
-
-**Key Functions:**
-```javascript
-window.CSVUtils = {
-  isCSV(text)                        // Heuristic CSV detection
-  csvToJSON(text, options)           // Sync conversion
-  csvToJSONAsync(text, options)      // Async for large files
+if (CSVUtils.isCSV(text) && settings.autoCsv) {
+  const json = await CSVUtils.csvToJSONAsync(text);
+  // Parse first row as headers, return [{key: val, ...}, ...]
 }
-```
-
-**Auto-Detection Logic:**
-- Check for common separators (`,`, `\t`, `;`)
-- Validate consistent column count
-- Look for quoted fields
-- Min 2 rows required
-
-**Options:**
-```javascript
-{
-  coerceTypes: true,     // Convert "123" → 123, "true" → true
-  header: true,          // First row as keys
-  skipEmptyLines: true
-}
-```
-
-### 4. **utils_zip.js** - Snapshot Manager (NEW)
-Handles export/import of multi-file snapshots.
-
-**Architecture:**
-```javascript
-window.ZipSnapshotManager = {
-  createSnapshot(left, right, settings)  // Create ZIP with 4 files
-  importSnapshot(file)                   // Extract ZIP
-  downloadSnapshot(blob, filename)       // Trigger download
-}
-
-window.LegacySnapshotManager = {
-  importSnapshot(file)                   // Handle old .json.gz
-}
-
-window.SnapshotHandler = {               // Unified interface
-  importSnapshot(file)                   // Auto-detect format
-  createAndDownload(left, right, settings)
-}
-```
-
-**ZIP Contents:**
-```
-json-compare-snapshot.zip
-├── left-content.json      # Formatted JSON (not stringified)
-├── right-content.json     # Formatted JSON
-├── settings.json          # All user preferences
-└── README.txt             # User guide
-```
-
-**Usage:**
-```javascript
-// Export
-await SnapshotHandler.createAndDownload(leftContent, rightContent, settings);
-
-// Import (auto-detects ZIP vs legacy)
-const data = await SnapshotHandler.importSnapshot(file);
-// Returns: { left: '...', right: '...', settings: {...} }
 ```
 
 ---
