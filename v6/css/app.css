@@ -291,6 +291,15 @@ ins {
     z-index: 100;
     display: flex;
     gap: 5px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+/* Show pane controls only on panel hover */
+.cm-mergeViewEditor:hover .pane-controls {
+    opacity: 0.85;
+    pointer-events: auto;
 }
 
 .pane-controls button {
@@ -300,8 +309,7 @@ ins {
     border: 1px solid #ccc;
     border-radius: 3px;
     cursor: pointer;
-    opacity: 0.7;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, background 0.2s;
 }
 
 .pane-controls button:hover {
@@ -326,19 +334,15 @@ ins {
     pointer-events: none;
 }
 
-.csv-convert-btn.visible {
-    opacity: 0.7;
+/* Show CSV button only on panel hover when content is CSV */
+.cm-mergeViewEditor:hover .csv-convert-btn.visible {
+    opacity: 0.85;
     pointer-events: auto;
 }
 
-.csv-convert-btn.visible:hover {
+.cm-mergeViewEditor:hover .csv-convert-btn.visible:hover {
     opacity: 1;
     background: #e7f3ff;
-}
-
-/* Show CSV button on pane hover if content is CSV */
-.cm-mergeViewEditor:hover .csv-convert-btn.visible {
-    opacity: 0.9;
 }
 
 /* JSON→CSV conversion button */
@@ -358,18 +362,15 @@ ins {
     pointer-events: none;
 }
 
-.json-convert-btn.visible {
-    opacity: 0.7;
+/* Show JSON→CSV button only on panel hover when convertible */
+.cm-mergeViewEditor:hover .json-convert-btn.visible {
+    opacity: 0.85;
     pointer-events: auto;
 }
 
-.json-convert-btn.visible:hover {
+.cm-mergeViewEditor:hover .json-convert-btn.visible:hover {
     opacity: 1;
     background: #e6f4ea;
-}
-
-.cm-mergeViewEditor:hover .json-convert-btn.visible {
-    opacity: 0.9;
 }
 
 /* Export dropdown container */
@@ -383,17 +384,14 @@ ins {
     pointer-events: none;
 }
 
-.export-dropdown-container.visible {
-    opacity: 0.7;
+/* Show export dropdown only on panel hover when content exists */
+.cm-mergeViewEditor:hover .export-dropdown-container.visible {
+    opacity: 0.85;
     pointer-events: auto;
 }
 
-.export-dropdown-container.visible:hover {
+.cm-mergeViewEditor:hover .export-dropdown-container.visible:hover {
     opacity: 1;
-}
-
-.cm-mergeViewEditor:hover .export-dropdown-container.visible {
-    opacity: 0.9;
 }
 
 .export-dropdown-btn {
@@ -452,8 +450,8 @@ ins {
     color: #ccc;
 }
 
-.cm-theme-dark .csv-convert-btn:hover,
-.cm-theme-dark .json-convert-btn:hover {
+.cm-theme-dark .cm-mergeViewEditor:hover .csv-convert-btn.visible:hover,
+.cm-theme-dark .cm-mergeViewEditor:hover .json-convert-btn.visible:hover {
     background: #3d3d3d;
 }
 
@@ -944,6 +942,15 @@ select.toggle-button {
     display: flex;
     align-items: center;
     gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+/* Show branch selector only on panel hover */
+.cm-mergeViewEditor:hover .branch-selector-container {
+    opacity: 0.85;
+    pointer-events: auto;
 }
 
 .branch-modified-indicator {
