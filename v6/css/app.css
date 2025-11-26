@@ -931,6 +931,55 @@ select.toggle-button {
     background: #fff5f5;
 }
 
+/* Branch item row with inline icons */
+.branch-item-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 8px;
+}
+
+.branch-item-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.branch-item-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.branch-dropdown-item:hover .branch-item-actions {
+    opacity: 1;
+}
+
+.branch-action-icon {
+    padding: 2px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    opacity: 0.7;
+    transition: all 0.15s;
+}
+
+.branch-action-icon:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.branch-action-icon.rename-icon:hover {
+    background: #e3f2fd;
+}
+
+.branch-action-icon.delete-icon:hover {
+    background: #ffebee;
+    color: #dc3545;
+}
+
 /* Dark theme support for branch selector */
 .cm-editor[style*="background-color: rgb(30"] .branch-selector-btn,
 .cm-theme-dark .branch-selector-btn {
@@ -962,6 +1011,18 @@ select.toggle-button {
 .cm-theme-dark .branch-dropdown-item.active {
     background: #1e3a2f;
     color: #08c988;
+}
+
+.cm-theme-dark .branch-action-icon:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.cm-theme-dark .branch-action-icon.rename-icon:hover {
+    background: #1e3a5f;
+}
+
+.cm-theme-dark .branch-action-icon.delete-icon:hover {
+    background: #3a1e1e;
 }
 
 .cm-theme-dark .branch-dropdown-divider {

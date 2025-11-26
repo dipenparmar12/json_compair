@@ -24,10 +24,11 @@ json_compair/
 │   │   ├── app.css         # Application styles (SAFE to edit)
 │   │   └── ccsiteV6.css    # Branding/layout
 │   └── utils/              # Shared utility modules
-│       ├── utils.js        # URL params, localStorage, templates
+│       ├── utils.js        # URL params, localStorage, templates, SettingsManager
 │       ├── json_utils.js   # Python syntax → JSON parsing
 │       ├── utils_csv.js    # CSV auto-detection & conversion
-│       └── utils_zip.js    # ZIP snapshot import/export
+│       ├── utils_zip.js    # ZIP snapshot import/export
+│       └── utils_branch.js # Git-like branching for panels
 │
 ├── v5/                     # Legacy CodeMirror 5 version
 │   ├── index.html
@@ -64,6 +65,7 @@ Both versions load utilities in this order (in `<head>`):
 - `json_utils.js` → `window.parseFlexibleJSON()`, `window.sortJSONKeys()`
 - `utils_csv.js` → `window.CSVUtils` with `.isCSV()`, `.csvToJSON()`, `.csvToJSONAsync()`
 - `utils_zip.js` → `window.SnapshotHandler`, `window.ZipSnapshotManager`, `window.LegacySnapshotManager`
+- `utils_branch.js` → `window.BranchManager` with `.listBranches()`, `.getBranch()`, `.saveBranch()`, `.createBranch()`, `.deleteBranch()`
 
 ### 3. **V6-Specific: CodeMirror 6 via ES Modules**
 v6/index.html uses `<script type="importmap">` to load from unpkg.com:
@@ -332,6 +334,46 @@ editor.addEventListener('paste', async (e) => {
   }
 });
 ```
+
+### 9. Git-like Branching
+**Purpose:** Save and switch between multiple content versions per panel (e.g., API v1 vs v2 vs v3)
+
+**Branch Selector UI:**
+- Located at bottom-right of each editor panel
+- Dropdown shows: all branches, "New Branch", "Rename", "Delete", "Save"
+- Modified indicator (●) pulses when content differs from saved branch
+
+**Key Operations:**
+```javascript
+// Initialize on app start
+await BranchManager.init();
+
+// List branches (metadata only, no content)
+const branches = BranchManager.listBranches();
+
+// Get branch with full content
+const branch = await BranchManager.getBranch("api-v2");
+
+// Save current content to branch
+await BranchManager.saveBranch("api-v2", content, { source: "manual" });
+
+// Create new branch from current content
+const newBranch = await BranchManager.createBranch("API v3", content);
+
+// Switch branch (auto-saves current, loads new)
+await switchBranch("left", "api-v2");
+```
+
+**Storage:**
+- IndexedDB (`json_compair_branches_db`) for branch content
+- localStorage (`json_compair_branch_index`) for metadata index
+- Settings: `leftBranch`, `rightBranch` track active branch per panel
+
+**Snapshot Integration:**
+- ZIP exports include `branches.json` with all branches
+- Import merges branches (skips duplicates)
+
+**See:** `docs/BRANCHING_FEATURE.md` for full documentation
 
 ---
 

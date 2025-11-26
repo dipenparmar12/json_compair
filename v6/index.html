@@ -1075,19 +1075,57 @@
           dropdown.innerHTML = '';
           const branches = window.BranchManager.listBranches();
           
-          // Branch list
+          // Branch list with inline action icons
           branches.forEach(branch => {
             const item = document.createElement('div');
-            item.className = 'branch-dropdown-item';
+            item.className = 'branch-dropdown-item branch-item-row';
             if (branch.id === activeBranches[side]) {
               item.classList.add('active');
             }
-            item.innerHTML = `<span class="branch-item-icon">🌿</span> ${branch.name}`;
-            item.onclick = async (e) => {
+            
+            // Branch name (clickable for switch)
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'branch-item-name';
+            nameSpan.innerHTML = `<span class="branch-item-icon">🌿</span> ${branch.name}`;
+            nameSpan.onclick = async (e) => {
               e.stopPropagation();
               await switchBranch(side, branch.id);
               dropdown.style.display = 'none';
             };
+            item.appendChild(nameSpan);
+            
+            // Action icons container (only for non-main branches)
+            if (branch.id !== 'main') {
+              const actionsSpan = document.createElement('span');
+              actionsSpan.className = 'branch-item-actions';
+              
+              // Rename icon
+              const renameIcon = document.createElement('span');
+              renameIcon.className = 'branch-action-icon';
+              renameIcon.innerHTML = '✏️';
+              renameIcon.title = 'Rename branch';
+              renameIcon.onclick = async (e) => {
+                e.stopPropagation();
+                dropdown.style.display = 'none';
+                await renameBranchById(branch.id);
+              };
+              actionsSpan.appendChild(renameIcon);
+              
+              // Delete icon
+              const deleteIcon = document.createElement('span');
+              deleteIcon.className = 'branch-action-icon branch-action-delete';
+              deleteIcon.innerHTML = '🗑️';
+              deleteIcon.title = 'Delete branch';
+              deleteIcon.onclick = async (e) => {
+                e.stopPropagation();
+                dropdown.style.display = 'none';
+                await deleteBranchById(branch.id, side);
+              };
+              actionsSpan.appendChild(deleteIcon);
+              
+              item.appendChild(actionsSpan);
+            }
+            
             dropdown.appendChild(item);
           });
           
@@ -1107,32 +1145,6 @@
           };
           dropdown.appendChild(newBranchItem);
           
-          // Rename option (only if not main)
-          if (activeBranches[side] !== 'main') {
-            const renameItem = document.createElement('div');
-            renameItem.className = 'branch-dropdown-item branch-action';
-            renameItem.innerHTML = '<span class="branch-item-icon">✏️</span> Rename Branch';
-            renameItem.onclick = async (e) => {
-              e.stopPropagation();
-              dropdown.style.display = 'none';
-              await renameBranch(side);
-            };
-            dropdown.appendChild(renameItem);
-          }
-          
-          // Delete option (only if not main)
-          if (activeBranches[side] !== 'main') {
-            const deleteItem = document.createElement('div');
-            deleteItem.className = 'branch-dropdown-item branch-action branch-delete';
-            deleteItem.innerHTML = '<span class="branch-item-icon">🗑️</span> Delete Branch';
-            deleteItem.onclick = async (e) => {
-              e.stopPropagation();
-              dropdown.style.display = 'none';
-              await deleteBranch(side);
-            };
-            dropdown.appendChild(deleteItem);
-          }
-          
           // Save current option
           const saveItem = document.createElement('div');
           saveItem.className = 'branch-dropdown-item branch-action';
@@ -1143,6 +1155,23 @@
             await saveCurrentToBranch(side);
           };
           dropdown.appendChild(saveItem);
+          
+          // Reset all branches option (only show if there are branches other than main)
+          if (branches.length > 1) {
+            const divider2 = document.createElement('div');
+            divider2.className = 'branch-dropdown-divider';
+            dropdown.appendChild(divider2);
+            
+            const resetItem = document.createElement('div');
+            resetItem.className = 'branch-dropdown-item branch-action branch-delete';
+            resetItem.innerHTML = '<span class="branch-item-icon">🔄</span> Reset All Branches';
+            resetItem.onclick = async (e) => {
+              e.stopPropagation();
+              dropdown.style.display = 'none';
+              await resetAllBranches(side);
+            };
+            dropdown.appendChild(resetItem);
+          }
         };
         
         // Toggle dropdown
@@ -1304,6 +1333,95 @@
           updateStatus('Branch saved');
         } catch (err) {
           showErrorMessage('Failed to save branch: ' + err.message);
+        }
+      }
+      
+      // Rename a branch by ID (for inline icon)
+      async function renameBranchById(branchId) {
+        const branches = window.BranchManager.listBranches();
+        const branch = branches.find(b => b.id === branchId);
+        
+        const newName = prompt('Enter new name:', branch ? branch.name : branchId);
+        if (!newName || !newName.trim()) return;
+        
+        try {
+          await window.BranchManager.renameBranch(branchId, newName.trim());
+          
+          // Update panel name if this is the active branch on either side
+          if (activeBranches.left === branchId) {
+            SettingsManager.set('leftPanelName', newName.trim());
+          }
+          if (activeBranches.right === branchId) {
+            SettingsManager.set('rightPanelName', newName.trim());
+          }
+          
+          updateBranchSelectors();
+          updateStatus(`Renamed branch to: ${newName.trim()}`);
+        } catch (err) {
+          showErrorMessage('Failed to rename branch: ' + err.message);
+        }
+      }
+      
+      // Delete a branch by ID (for inline icon)
+      async function deleteBranchById(branchId, side) {
+        const branches = window.BranchManager.listBranches();
+        const branch = branches.find(b => b.id === branchId);
+        
+        if (!confirm(`Delete branch "${branch ? branch.name : branchId}"? This cannot be undone.`)) {
+          return;
+        }
+        
+        try {
+          await window.BranchManager.deleteBranch(branchId);
+          
+          // If deleted branch was active on left side, switch to main
+          if (activeBranches.left === branchId) {
+            await switchBranch('left', 'main');
+          }
+          // If deleted branch was active on right side, switch to main
+          if (activeBranches.right === branchId) {
+            await switchBranch('right', 'main');
+          }
+          
+          updateBranchSelectors();
+          updateStatus(`Deleted branch: ${branch ? branch.name : branchId}`);
+        } catch (err) {
+          showErrorMessage('Failed to delete branch: ' + err.message);
+        }
+      }
+      
+      // Reset all branches - delete all except main
+      async function resetAllBranches(side) {
+        const branches = window.BranchManager.listBranches();
+        const nonMainBranches = branches.filter(b => b.id !== 'main');
+        
+        if (nonMainBranches.length === 0) {
+          updateStatus('No branches to reset');
+          return;
+        }
+        
+        if (!confirm(`Delete ${nonMainBranches.length} branch(es) and reset to default? This cannot be undone.`)) {
+          return;
+        }
+        
+        try {
+          // Delete all non-main branches
+          for (const branch of nonMainBranches) {
+            await window.BranchManager.deleteBranch(branch.id);
+          }
+          
+          // Switch both sides to main if needed
+          if (activeBranches.left !== 'main') {
+            await switchBranch('left', 'main');
+          }
+          if (activeBranches.right !== 'main') {
+            await switchBranch('right', 'main');
+          }
+          
+          updateBranchSelectors();
+          updateStatus(`Reset complete: Deleted ${nonMainBranches.length} branch(es)`);
+        } catch (err) {
+          showErrorMessage('Failed to reset branches: ' + err.message);
         }
       }
       
