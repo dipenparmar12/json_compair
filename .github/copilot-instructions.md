@@ -346,7 +346,7 @@ editor.addEventListener('paste', async (e) => {
    - The command must contain both a short status message and one of the explicit completion tokens: `done`, `well`, or `success`.
    - Example:
      ```bash
-     echo "Copilot: All steps completed successfully"; echo done
+     echo "Copilot: All steps completed successfully, success"
      ```
 
 3. **User Response**
@@ -362,7 +362,7 @@ editor.addEventListener('paste', async (e) => {
 
 - Copilot (completion, fires terminal command):  
   ```bash
-  echo "Copilot: Deployment finished"; echo "success"
+  echo "Copilot: Deployment finished, success"
    ```
 - User confirms:  
   ```bash
