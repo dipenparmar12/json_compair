@@ -1,4 +1,184 @@
-# Plan: Semantic Structure-Aware JSON Diff Engine
+# Plan: Structure-Aware JSON Diff — Implementation Plan with Test Cases
+
+Transform the text-based diff into a semantic, object-aware diff engine that detects Added/Removed/Modified objects in arrays and highlights only changed fields within objects—replicating Proxyman's UX.
+
+---
+
+### Phase 1: Core Semantic Diff Engine
+
+**File:** `v6/utils/semantic_diff.js` (new)
+
+#### Step 1.1: Create `SemanticDiffer` class
+- Parse left/right JSON into structured AST
+- Detect content type: `array-of-objects`, `plain-object`, `array-of-primitives`, `primitive`
+- Export to `window.SemanticDiffer` for global access
+
+#### Step 1.2: Implement object similarity scoring
+- Calculate field overlap percentage: `matchingFields / totalFields`
+- Handle nested objects recursively (configurable depth limit)
+- Return similarity score 0.0–1.0 per object pair
+
+#### Step 1.3: Build array element matcher
+- For each left object, find best-match in right array (greedy O(n²))
+- Threshold: ≥60% similarity = "same object, modified"
+- Below threshold or no match = "removed" (left) / "added" (right)
+
+#### Step 1.4: Generate structured diff output
+```javascript
+{
+  type: 'array-of-objects',
+  changes: [
+    { changeType: 'added', index: 1, object: {...}, lineRange: [10, 25] },
+    { changeType: 'removed', index: 2, object: {...}, lineRange: [30, 45] },
+    { changeType: 'modified', leftIndex: 0, rightIndex: 0, 
+      fieldChanges: [
+        { field: 'city_name', oldValue: 'Petaluma', newValue: 'Sacramento' }
+      ], 
+      lineRange: [1, 15] 
+    }
+  ]
+}
+```
+
+---
+
+### Phase 2: JSON Canonicalization
+
+**File:** json_utils.js (extend)
+
+#### Step 2.1: Add `canonicalizeJSON(obj)` function
+- Sort object keys alphabetically (recursive)
+- Normalize numbers: `1.0` → `1`, `1.00` → `1`
+- Normalize whitespace in string values
+- Return canonical object (not string)
+
+#### Step 2.2: Add `getCanonicalString(obj)` for comparison
+- Call `canonicalizeJSON()` then `JSON.stringify()` with consistent indent
+- Used for object fingerprinting and quick equality checks
+
+---
+
+### Phase 3: CodeMirror 6 Integration
+
+**File:** `v6/utils/semantic_diff_view.js` (new)
+
+#### Step 3.1: Create `SemanticDiffPlugin` ViewPlugin
+- Subscribe to document changes via `EditorView.updateListener`
+- On change: debounce 300ms → compute semantic diff → apply decorations
+
+#### Step 3.2: Define decoration styles
+```javascript
+const addedLine = Decoration.line({ class: 'semantic-added' });
+const removedLine = Decoration.line({ class: 'semantic-removed' });
+const modifiedField = Decoration.mark({ class: 'semantic-field-changed' });
+```
+
+#### Step 3.3: Create gutter markers
+- `+` marker for added objects (green)
+- `-` marker for removed objects (red)
+- `→` marker for modified objects (blue)
+
+---
+
+### Phase 4: UI Integration
+
+**File:** index.html
+
+#### Step 4.1: Add settings toggle (line ~140)
+- Checkbox: "Semantic Diff Mode" (auto-enabled when array-of-objects detected)
+- Dropdown: Array comparison mode (Ordered / Set / Semantic matching)
+
+#### Step 4.2: Update `recreateMergeView()` (line ~1071)
+- If semantic mode enabled: pre-canonicalize JSON before passing to MergeView
+- After MergeView creation: apply semantic decorations via ViewPlugin
+
+#### Step 4.3: Update diff status display (line ~2397)
+- Show semantic stats: "2 added, 1 removed, 3 modified objects"
+- Show field-level count: "(5 fields changed)"
+
+---
+
+### Phase 5: CSS Styling
+
+**File:** app.css
+
+#### Step 5.1: Object-level styles
+```css
+.semantic-added { background: rgba(40, 167, 69, 0.15); border-left: 3px solid #28a745; }
+.semantic-removed { background: rgba(220, 53, 69, 0.15); border-left: 3px solid #dc3545; }
+.semantic-modified { border-left: 3px solid #007bff; }
+```
+
+#### Step 5.2: Field-level styles
+```css
+.semantic-field-changed { background: rgba(255, 193, 7, 0.3); border-radius: 2px; }
+```
+
+---
+
+### Test Cases
+
+#### TC1: Array Addition
+**Input:** semantic_diff_test_data.json → `arrayAddition`
+**Expected:** Sacramento object marked as `added` (green background, `+` gutter)
+
+#### TC2: Array Removal
+**Input:** semantic_diff_test_data.json → `arrayRemoval`
+**Expected:** Beta object marked as `removed` (red background, `-` gutter)
+
+#### TC3: Object Modification (Field-Level)
+**Input:** test_case_objects
+**Expected:** Only 5 fields highlighted: `delta_elec_utilitybill`, `delta_solar_gj_displaced`, `delta_solar_utilitybill_displaced`, `delta_total_utilitybill`, `elec_gj`, `elec_utilitybill`, `from.furnace_eff`
+
+#### TC4: Mixed Changes
+**Input:** semantic_diff_test_data.json → `mixedChanges`
+**Expected:**
+- Alpha → Alpha Prime: `modified` (name field highlighted)
+- Beta: `removed`
+- Gamma: `modified` (status field highlighted)
+- Delta: `added`
+
+#### TC5: Nested Arrays
+**Input:** test_case_array_objects
+**Expected:**
+- `id` field: `0002` → `0001` (highlighted)
+- `type` field: `Ice Cream` → `donut` (highlighted)
+- `batters.batter`: 4 items → 1 item (array change detected)
+- `topping`: 2 removed, 1 added, 2 unchanged
+
+#### TC6: Key Reordering (No Change)
+**Input:** `{"a":1,"b":2}` vs `{"b":2,"a":1}`
+**Expected:** No differences shown (canonicalization eliminates false positive)
+
+#### TC7: Numeric Normalization
+**Input:** `{"val": 1.0}` vs `{"val": 1}`
+**Expected:** No differences (normalized to same value)
+
+#### TC8: Empty Arrays
+**Input:** `[]` vs `[{"id":1}]`
+**Expected:** One object marked as `added`
+
+#### TC9: Non-Array Fallback
+**Input:** `"hello"` vs `"world"`
+**Expected:** Falls back to text diff (not semantic mode)
+
+#### TC10: Large Array Performance
+**Input:** 500-object arrays with 10% differences
+**Expected:** Completes in <2 seconds, uses Web Worker if >100KB
+
+---
+
+### Further Considerations
+
+1. **Similarity threshold configurable?** Default 60% seems reasonable; add advanced setting for power users who want stricter/looser matching.
+
+2. **Web Worker integration?** For files >100KB, move semantic diff to existing viewport_diff.js worker pattern to prevent UI blocking.
+
+3. **Ignore paths feature?** Add textarea in settings for paths like `*.timestamp`, `metadata._internal` to exclude from comparison (per PRD spec).
+
+---
+
+## Plan: Semantic Structure-Aware JSON Diff Engine
 
 Transform the current text-based diff into an object-aware semantic diff that detects Added/Removed/Modified objects in arrays and highlights only the specific fields that differ within modified objects—replicating Proxyman's superior UX.
 
