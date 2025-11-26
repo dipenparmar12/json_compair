@@ -1,4 +1,41 @@
-# Plan: Structure-Aware JSON Diff — Implementation Plan with Test Cases
+# Plan: Structure-Aware JSON Diff for Arrays of Objects
+
+We will implement a semantic diff engine that understands JSON structure, specifically arrays of objects, to provide "Proxyman-like" diffs with granular field highlighting and object-level status (Added/Removed/Modified).
+
+### Steps
+
+1.  **Implement Semantic Diff Engine** (`v6/utils/semantic_diff.js`)
+    -   Create `SemanticDiffer` class with `computeSemanticDiff(left, right)`.
+    -   Implement **Key-Agnostic Matching**: Use a greedy best-match algorithm (O(n²)) based on content similarity (Jaccard index of keys/values) to pair objects between arrays without relying on `id` fields.
+    -   Detect `Added` (in right only), `Removed` (in left only), and `Modified` (matched but different) objects.
+    -   For `Modified` objects, recursively identify specific changed fields.
+
+2.  **Add JSON Canonicalization** (`v6/utils/json_utils.js`)
+    -   Add `canonicalizeJSON(obj)` to recursively sort object keys.
+    -   This ensures that `{ "a": 1, "b": 2 }` and `{ "b": 2, "a": 1 }` are treated as identical during comparison.
+
+3.  **Create CodeMirror 6 ViewPlugin** (`v6/utils/semantic_diff_view.js`)
+    -   Create `SemanticDiffPlugin` that attaches to the `MergeView` editors.
+    -   **Visualizations:**
+        -   **Added Objects:** Green background + `+` gutter marker (Right editor).
+        -   **Removed Objects:** Red background + `-` gutter marker (Left editor).
+        -   **Modified Objects:** Subtle background + granular highlighting of changed fields (Both editors).
+    -   Use CodeMirror `Decoration` API (line and mark decorations) to apply these styles.
+
+4.  **Integrate into UI** (`v6/index.html`)
+    -   Add a "Semantic Diff" toggle in the Settings panel.
+    -   Update `recreateMergeView` to enable/disable the `SemanticDiffPlugin`.
+    -   Auto-detect "Array of Objects" structure to suggest or auto-enable this mode.
+
+5.  **Apply Styling** (`v6/css/app.css`)
+    -   Define CSS classes: `.semantic-added`, `.semantic-removed`, `.semantic-modified`, `.semantic-field-changed`.
+    -   Ensure colors match the requested "Proxyman" style (Green/Red backgrounds, subtle field highlights).
+
+### Further Considerations
+1.  **Alignment:** We will rely on `MergeView`'s native alignment initially. If misalignment occurs for complex arrays, we may need to inject invisible spacers, but that is a more advanced step.
+2.  **Performance:** For very large arrays (>1000 items), the O(n²) matching might be slow. We can add a threshold to fall back to standard diff or run it in a worker if needed.
+3.  **Nested Arrays:** The initial implementation will focus on top-level arrays of objects. Nested arrays will be treated as fields (modified/same).
+## Plan: Structure-Aware JSON Diff — Implementation Plan with Test Cases
 
 Transform the text-based diff into a semantic, object-aware diff engine that detects Added/Removed/Modified objects in arrays and highlights only changed fields within objects—replicating Proxyman's UX.
 
