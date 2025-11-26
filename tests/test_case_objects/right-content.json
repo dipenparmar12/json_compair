@@ -1,0 +1,25 @@
+{
+  "cost_net": 10659.82,
+  "cost_original": 12659.82,
+  "cost_rebate": 2000,
+  "cost_rule_changes": [],
+  "delta_elec_carbon": 0,
+  "delta_elec_gj": 0.708,
+  "delta_elec_utilitybill": 121.508,
+  "delta_gas_carbon": 1.368,
+  "delta_gas_gj": 27.163,
+  "delta_solar_gj_displaced": 0,
+  "delta_solar_utilitybill_displaced": 63.142,
+  "delta_total_carbon": 1.368,
+  "delta_total_gj": 27.871,
+  "delta_total_utilitybill": 672.772,
+  "elec_carbon": 0,
+  "elec_gj": -1.202,
+  "elec_utilitybill": 138.286,
+  "from": {
+    "central_ac_seer": 8,
+    "furnace_eff": 0.6629999999999999,
+    "furnace_fuel": "gas",
+    "furnace_type": "gas"
+  }
+}

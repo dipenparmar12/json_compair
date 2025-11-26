@@ -14,6 +14,7 @@
     />
     <link rel="shortcut icon" href="../img/onlinetextcompare.png" />
     <link rel="stylesheet" href="./css/ccsiteV6.css" />
+    <link rel="stylesheet" href="./css/ccsiteV6.css" />
   <link rel="stylesheet" type="text/css" href="./css/app.css" />
 
     <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
@@ -39,6 +40,8 @@
     <script src="./utils/json_utils.js"></script>
     <script src="./utils/utils_csv.js"></script>
     <script src="./utils/utils_zip.js"></script>
+    <script src="./utils/utils_branch.js"></script>
+    <script src="./utils/viewport_diff.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -65,394 +68,8 @@
         }
       }
     </script>
-
     <style>
-      * {
-        box-sizing: border-box;
-      }
-      
-      #container {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-      }
-
-      .intro {
-        padding: 8px 10px;
-        background: #f8f9fa;
-        border-bottom: 1px solid #ddd;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .intro-left,
-      .intro-center,
-      .intro-right {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .intro-left { flex: 1; }
-      .intro-center { justify-content: center; flex: 1; }
-      .intro-right { justify-content: flex-end; flex: 1; }
-
-      #view-container {
-        flex: 1;
-        overflow: hidden;
-        position: relative;
-        min-height: 0; /* Important for flex child scrolling */
-        display: flex;
-        flex-direction: row;
-      }
-
-      /* Button styles */
-      button {
-        padding: 6px 14px;
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        transition: all 0.2s;
-      }
-
-      button:hover {
-        background: #f5f5f5;
-        border-color: #999;
-      }
-
-      button.active {
-        background: #08c988;
-        color: white;
-        border-color: #08c988;
-      }
-
-      button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-
-      /* Pane-specific buttons */
-      .pane-btn {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 10;
-        font-size: 12px;
-        padding: 4px 10px;
-      }
-
-      .copy-btn {
-        display: none;
-      }
-
-      /* CodeMirror 6 custom styling */
-      .cm-editor {
-        height: 100%;
-        font-size: 14px;
-        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-      }
-
-      .cm-scroller {
-        overflow: auto;
-      }
-
-      /* Merge view styling - Fixed to match actual DOM structure */
-      .cm-mergeView {
-        height: 100% !important;
-        width: 100% !important;
-        display: flex !important;
-        flex-direction: row !important;
-        flex: 1;
-      }
-
-      /* The wrapper that contains both editors */
-      .cm-mergeViewEditors {
-        display: flex !important;
-        flex-direction: row !important;
-        width: 100% !important;
-        height: 100% !important;
-        gap: 2px;
-        flex: 1;
-      }
-
-      /* Force each editor to be exactly 50% */
-      .cm-mergeViewEditor {
-        flex: 1 1 50% !important;
-        width: 50% !important;
-        max-width: 50% !important;
-        min-width: 0 !important; /* Critical: allows shrinking below content size */
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        overflow: hidden !important; /* Prevent overflow from breaking layout */
-        position: relative;
-      }
-
-      /* Editor container within each panel */
-      .cm-mergeView .cm-editor {
-        height: 100% !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        overflow: hidden !important;
-      }
-
-      /* Scroller must respect parent constraints */
-      .cm-mergeView .cm-scroller {
-        overflow: auto !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 0 !important;
-        height: 100% !important;
-      }
-
-      /* Prevent content from forcing panel expansion */
-      .cm-mergeView .cm-content {
-        min-width: 0 !important;
-        max-width: 100% !important;
-        width: 100% !important;
-      }
-
-      /* Ensure lines don't stretch the container */
-      .cm-mergeView .cm-line {
-        max-width: 100% !important;
-      }
-
-      /* Word wrap specific styles */
-      .cm-mergeView .cm-line[style*="white-space: pre-wrap"] {
-        max-width: 100% !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
-      }
-
-      /* No wrap mode - ensure horizontal scrolling */
-      .cm-mergeView .cm-line[style*="white-space: pre"] {
-        max-width: none; /* Allow line to extend for scrolling */
-        white-space: pre !important;
-      }
-
-      /* ====================================================================
-         DIFF HIGHLIGHTING - Enhanced Red/Green Scheme
-         Matches modern Git/GitHub diff visualization
-         ==================================================================== */
-
-      /* Changed line container - light background */
-      .cm-changedLine {
-        background-color: transparent !important;
-      }
-
-      /* Deleted lines (left side) - Red background */
-      .cm-deletedLine {
-        background-color: #ffebe9 !important;
-        display: inline-block !important;
-        width: 100% !important;
-        padding: 0 !important;
-        margin: 0 !important;
-      }
-
-      /* Inserted lines (right side) - Green background */
-      .cm-insertedLine {
-        background-color: #e6ffec !important;
-        display: inline-block !important;
-        width: 100% !important;
-        padding: 0 !important;
-        margin: 0 !important;
-      }
-
-      /* Changed text within deleted lines - Darker red highlight */
-      .cm-deletedLine .cm-changedText {
-        background-color: #ffc1ba !important;
-        font-weight: 500 !important;
-      }
-
-      /* Changed text within inserted lines - Darker green highlight */
-      .cm-insertedLine .cm-changedText {
-        background-color: #acf2bd !important;
-        font-weight: 500 !important;
-      }
-
-      /* Legacy chunk backgrounds (fallback for older code) */
-      .cm-deletedChunk {
-        background-color: #ffebe9 !important;
-      }
-
-      .cm-insertedChunk {
-        background-color: #e6ffec !important;
-      }
-
-      /* Legacy text backgrounds (fallback) */
-      .cm-deletedText {
-        background-color: #ffc1ba !important;
-        text-decoration: none !important;
-        font-weight: 500 !important;
-      }
-
-      .cm-insertedText {
-        background-color: #acf2bd !important;
-        text-decoration: none !important;
-        font-weight: 500 !important;
-      }
-
-      /* Remove underlines from del/ins elements */
-      del.cm-deletedLine,
-      ins.cm-insertedLine,
-      del,
-      ins {
-        text-decoration: none !important;
-        background-image: none !important;
-        border-bottom: none !important;
-        box-shadow: none !important;
-      }
-
-      /* Ensure changed text doesn't have underlines either */
-      .cm-changedText {
-        text-decoration: none !important;
-        background-image: none !important;
-        border-bottom: none !important;
-      }
-
-      /* Gutter markers for changed lines */
-      .cm-changedLineGutter {
-        background-color: #ffd33d !important;
-        width: 3px !important;
-        margin-left: 2px !important;
-      }
-
-      /* Status bar removed (was #diff-status) */
-
-      /* Error message area */
-      #conversion-error-area {
-        position: fixed;
-        bottom: 40px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #ff4444;
-        color: white;
-        padding: 12px 24px;
-        border-radius: 4px;
-        display: none;
-        z-index: 2000;
-        max-width: 80%;
-        text-align: center;
-      }
-
-      /* Per-pane action buttons */
-      .pane-controls {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 100;
-        display: flex;
-        gap: 5px;
-      }
-
-      .pane-controls button {
-        font-size: 11px;
-        padding: 4px 8px;
-        background: white;
-        border: 1px solid #ccc;
-        border-radius: 3px;
-        cursor: pointer;
-        opacity: 0.7;
-        transition: opacity 0.2s;
-      }
-
-      .pane-controls button:hover {
-        opacity: 1;
-        background: #f5f5f5;
-      }
-      
-      /* CSV conversion button */
-      .csv-convert-btn {
-        position: absolute;
-        bottom: 10px;
-        left: 10px;
-        z-index: 100;
-        font-size: 11px;
-        padding: 4px 8px;
-        background: white;
-        border: 1px solid #007bff;
-        border-radius: 3px;
-        cursor: pointer;
-        opacity: 0;
-        transition: opacity 0.2s;
-        pointer-events: none;
-      }
-      
-      .csv-convert-btn.visible {
-        opacity: 0.7;
-        pointer-events: auto;
-      }
-      
-      .csv-convert-btn.visible:hover {
-        opacity: 1;
-        background: #e7f3ff;
-      }
-      
-      /* Show CSV button on pane hover if content is CSV */
-      .cm-mergeViewEditor:hover .csv-convert-btn.visible {
-        opacity: 0.9;
-      }
-
-      .pane-wrapper {
-        position: relative;
-        flex: 1;
-      }
-
-      /* Dropdown panels */
-      .dropdown-panel {
-        display: none;
-        position: absolute;
-        top: 100%;
-        right: 0;
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        padding: 12px;
-        min-width: 260px;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-        z-index: 1000;
-        margin-top: 4px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        max-height: calc(100vh - 100px);
-        overflow-y: auto;
-      }
-
-      .dropdown-item {
-        display: block;
-        width: 100%;
-        text-align: left;
-        padding: 6px 8px;
-        border: 1px solid #eee;
-        border-radius: 4px;
-        background: #fff;
-        cursor: pointer;
-        font-size: 12px;
-      }
-
-      .dropdown-item + .dropdown-item { margin-top: 6px; }
-
-      /* Responsive design */
-      @media (max-width: 768px) {
-        .intro {
-          flex-wrap: wrap;
-        }
-
-        button {
-          font-size: 12px;
-          padding: 5px 10px;
-        }
-
-        .pane-controls button {
-          font-size: 10px;
-          padding: 3px 6px;
-        }
-
-        .intro-left, .intro-center, .intro-right { flex: 100%; justify-content: flex-start; }
-      }
-      button { white-space: nowrap; }
+      /* Moved: v6/css/app.css */
     </style>
   </head>
 
@@ -569,6 +186,28 @@
                 </div>
                 <input type="number" id="setting-scan-limit" value="6000" min="100" max="10000" step="100" style="width: 90px; font-size: 11px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: 'Segoe UI', system-ui, sans-serif;" />
               </label>
+              
+              <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">PERFORMANCE</div>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s; background: #fff3cd;" onmouseover="this.style.background='#ffeeba'" onmouseout="this.style.background='#fff3cd'">
+                <input type="checkbox" id="setting-performance-mode" style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 500; color: #856404;">⚡ Performance Mode</div>
+                  <div style="color: #856404; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Auto-collapse unchanged sections for faster rendering</div>
+                </div>
+              </label>
+              
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                <input type="checkbox" id="setting-viewport-diff" style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #222;">🔍 Viewport Diff Mode</div>
+                  <div style="color: #6c757d; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Only compute diffs for visible area (best for very large files)</div>
+                </div>
+              </label>
+              
+              <div id="performance-status" style="display: none; padding: 8px; background: #d4edda; border-radius: 4px; font-size: 11px; color: #155724; margin-bottom: 10px;">
+                <strong>📊 Performance active:</strong> <span id="performance-status-text"></span>
+              </div>
             </div>
           </div>
         </div>
@@ -825,7 +464,10 @@
       let mergeView = null;
 
       // Initialize the application
-      function initializeApp() {
+      async function initializeApp() {
+        // Initialize BranchManager first
+        await window.BranchManager.init();
+        
         // Load content from URL parameters first, then from storage, then use defaults
         const urlContent = URLManager.loadFromURL();
         const savedContent = StorageManager.loadFromStorage();
@@ -921,6 +563,50 @@
         initializeQuickToggles();
         initializeExtraSettingsPanel();
         initializeInfoDropdown();
+        
+        // Initialize branch system - load active branches if they exist
+        await initializeBranches();
+      }
+      
+      // Initialize branch system and load saved branches
+      async function initializeBranches() {
+        // Load active branch IDs from settings
+        const leftBranchId = SettingsManager.get('leftBranch') || 'main';
+        const rightBranchId = SettingsManager.get('rightBranch') || 'main';
+        
+        // Update active branches tracker
+        activeBranches.left = leftBranchId;
+        activeBranches.right = rightBranchId;
+        
+        // Try to load content from saved branches (if not already loaded from URL/storage)
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+        
+        // If editors are empty or have default template, try loading from branches
+        const isDefaultTemplate = leftContent === DefaultTemplates.simple.left.trim() && 
+                                  rightContent === DefaultTemplates.simple.right.trim();
+        
+        if (!leftContent || isDefaultTemplate) {
+          const leftBranch = await window.BranchManager.getBranch(leftBranchId);
+          if (leftBranch && leftBranch.content) {
+            mergeView.a.dispatch({
+              changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftBranch.content }
+            });
+          }
+        }
+        
+        if (!rightContent || isDefaultTemplate) {
+          const rightBranch = await window.BranchManager.getBranch(rightBranchId);
+          if (rightBranch && rightBranch.content) {
+            mergeView.b.dispatch({
+              changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightBranch.content }
+            });
+          }
+        }
+        
+        // Update branch selectors
+        updateBranchSelectors();
+        updateDiffStatus();
       }
 
       // Load merge settings from localStorage
@@ -978,6 +664,223 @@
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
+        
+        // Performance mode settings
+        initializePerformanceSettings();
+      }
+      
+      // Global performance managers
+      let viewportDiffManager = null;
+      let performanceMode = null;
+      let largeFileDetector = null;
+      let diffWorker = null;
+      
+      // Initialize Web Worker for diff calculations
+      function initializeDiffWorker() {
+        if (diffWorker) return diffWorker;
+        
+        try {
+          diffWorker = new Worker('./utils/diff-worker.js');
+          diffWorker.onmessage = function(e) {
+            if (e.data.type === 'ready') {
+              console.log('[DiffWorker] Ready');
+            }
+          };
+          diffWorker.onerror = function(err) {
+            console.warn('[DiffWorker] Error:', err);
+            diffWorker = null;
+          };
+        } catch (err) {
+          console.warn('[DiffWorker] Failed to initialize:', err);
+          diffWorker = null;
+        }
+        
+        return diffWorker;
+      }
+      
+      // Initialize performance-related settings
+      function initializePerformanceSettings() {
+        // Initialize managers
+        performanceMode = new PerformanceMode();
+        largeFileDetector = new LargeFileDetector();
+        
+        // Load saved settings
+        const perfModeEnabled = SettingsManager.get('performanceMode');
+        const viewportDiffEnabled = SettingsManager.get('viewportDiff');
+        
+        // Set UI state
+        const perfModeCheckbox = document.getElementById('setting-performance-mode');
+        const viewportDiffCheckbox = document.getElementById('setting-viewport-diff');
+        
+        if (perfModeCheckbox) {
+          perfModeCheckbox.checked = perfModeEnabled;
+          perfModeCheckbox.addEventListener('change', applyPerformanceMode);
+        }
+        
+        if (viewportDiffCheckbox) {
+          viewportDiffCheckbox.checked = viewportDiffEnabled;
+          viewportDiffCheckbox.addEventListener('change', applyViewportDiffMode);
+        }
+        
+        // Initialize viewport diff manager
+        if (mergeView && window.ViewportDiffManager) {
+          viewportDiffManager = new ViewportDiffManager(mergeView, {
+            onDiffCalculated: (result) => {
+              if (result && viewportDiffManager?.enabled) {
+                const statusText = viewportDiffManager.getDiffStatusMessage();
+                if (statusText) {
+                  updateStatus(statusText);
+                }
+                updatePerformanceStatus();
+              }
+            },
+            onCalculationStart: () => {
+              // Could show calculating indicator
+            },
+            onCalculationEnd: () => {
+              // Calculation complete
+            }
+          });
+          
+          // Enable if setting is on
+          if (viewportDiffEnabled) {
+            viewportDiffManager.enable();
+          }
+        }
+        
+        // Apply performance mode if it was enabled
+        if (perfModeEnabled) {
+          performanceMode.enable();
+        }
+        
+        // Initialize diff worker
+        initializeDiffWorker();
+        
+        // Update status display
+        updatePerformanceStatus();
+      }
+      
+      // Apply performance mode toggle
+      function applyPerformanceMode() {
+        const checkbox = document.getElementById('setting-performance-mode');
+        const enabled = checkbox?.checked || false;
+        
+        SettingsManager.set('performanceMode', enabled);
+        
+        if (enabled) {
+          performanceMode.enable();
+          
+          // Update UI checkboxes to reflect changes
+          const collapseCheckbox = document.getElementById('setting-collapse-unchanged');
+          const quickCollapse = document.getElementById('quick-collapse-unchanged');
+          
+          // Performance mode: enable collapse unchanged for faster rendering
+          // Note: We preserve highlightChanges and scanLimit - user controls these
+          if (collapseCheckbox) collapseCheckbox.checked = true;
+          if (quickCollapse) quickCollapse.checked = true;
+          
+          // Apply settings
+          applyMergeSettings();
+          PerformanceToast.show('Performance Mode enabled - unchanged sections collapsed', 'success');
+        } else {
+          performanceMode.disable();
+          
+          // Reload saved settings to UI (just collapseUnchanged)
+          const settings = loadMergeSettings();
+          const collapseCheckbox = document.getElementById('setting-collapse-unchanged');
+          const quickCollapse = document.getElementById('quick-collapse-unchanged');
+          
+          if (collapseCheckbox) collapseCheckbox.checked = settings.collapseUnchanged;
+          if (quickCollapse) quickCollapse.checked = settings.collapseUnchanged;
+          
+          // Apply settings
+          applyMergeSettings();
+          PerformanceToast.show('Performance Mode disabled', 'info');
+        }
+        
+        updatePerformanceStatus();
+      }
+      
+      // Apply viewport diff mode toggle
+      function applyViewportDiffMode() {
+        const checkbox = document.getElementById('setting-viewport-diff');
+        const enabled = checkbox?.checked || false;
+        
+        SettingsManager.set('viewportDiff', enabled);
+        
+        if (viewportDiffManager) {
+          if (enabled) {
+            viewportDiffManager.enable();
+            PerformanceToast.show('Viewport Diff Mode enabled - only visible area is compared', 'success');
+          } else {
+            viewportDiffManager.disable();
+            PerformanceToast.show('Viewport Diff Mode disabled', 'info');
+            // Recalculate full diff
+            updateDiffStatus();
+          }
+        }
+        
+        updatePerformanceStatus();
+      }
+      
+      // Update performance status display
+      function updatePerformanceStatus() {
+        const statusDiv = document.getElementById('performance-status');
+        const statusText = document.getElementById('performance-status-text');
+        
+        if (!statusDiv || !statusText) return;
+        
+        const perfEnabled = SettingsManager.get('performanceMode');
+        const viewportEnabled = SettingsManager.get('viewportDiff');
+        
+        if (perfEnabled || viewportEnabled) {
+          const modes = [];
+          if (perfEnabled) modes.push('Performance Mode');
+          if (viewportEnabled) modes.push('Viewport Diff');
+          
+          statusText.textContent = modes.join(' + ');
+          statusDiv.style.display = 'block';
+        } else {
+          statusDiv.style.display = 'none';
+        }
+      }
+      
+      // Check content size and suggest optimizations
+      function checkContentSizeAndSuggest() {
+        if (!largeFileDetector || !mergeView) return;
+        
+        const leftContent = mergeView.a.state.doc.toString();
+        const rightContent = mergeView.b.state.doc.toString();
+        
+        const analysis = largeFileDetector.analyze(leftContent, rightContent);
+        
+        if (analysis.isCritical) {
+          PerformanceToast.show(
+            `Large content detected (${analysis.formattedSize}). Performance Mode strongly recommended.`,
+            'critical',
+            6000
+          );
+          
+          // Auto-enable performance mode for critical sizes
+          const perfCheckbox = document.getElementById('setting-performance-mode');
+          if (perfCheckbox && !perfCheckbox.checked) {
+            perfCheckbox.checked = true;
+            applyPerformanceMode();
+          }
+        } else if (analysis.isWarning) {
+          PerformanceToast.show(
+            `Content size: ${analysis.formattedSize}. Consider enabling Performance Mode.`,
+            'warning',
+            5000
+          );
+        } else if (analysis.isLarge) {
+          // Auto-enable viewport diff for large files
+          const viewportCheckbox = document.getElementById('setting-viewport-diff');
+          if (viewportCheckbox && !viewportCheckbox.checked && !SettingsManager.get('performanceMode')) {
+            viewportCheckbox.checked = true;
+            applyViewportDiffMode();
+          }
+        }
       }
 
       // Initialize quick header toggles
@@ -1334,11 +1237,24 @@
         clearBtn.textContent = '🗑 Clear';
         clearBtn.title = 'Clear content';
         clearBtn.className = 'copy-clear-btn'; // Add class for easy selection
-        clearBtn.onclick = () => {
+        clearBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: "" }
           });
+          
+          // Save cleared content to current branch
+          const branchId = activeBranches[side];
+          if (branchId && window.BranchManager) {
+            try {
+              await window.BranchManager.saveBranch(branchId, '', { source: 'clear' });
+              branchModified[side] = false;
+              updateBranchModifiedIndicator(side);
+            } catch (err) {
+              console.warn('Failed to save cleared branch:', err);
+            }
+          }
+          
           updateDiffStatus();
           updatePaneButtonVisibility();
         };
@@ -1353,9 +1269,441 @@
         // Add CSV conversion button (initially hidden)
         addCSVConversionButton(paneElement, side);
         
+        // Add branch selector at bottom-right (replaces panel name input)
+        addBranchSelector(paneElement, side);
+        
         // Initial visibility update
         updatePaneButtonVisibility();
         updateCSVConversionButtons();
+      }
+      
+      // Track active branches per side
+      let activeBranches = {
+        left: SettingsManager.get('leftBranch') || 'main',
+        right: SettingsManager.get('rightBranch') || 'main'
+      };
+      
+      // Track if content is modified from saved branch
+      let branchModified = {
+        left: false,
+        right: false
+      };
+      
+      // Add branch selector dropdown at bottom-right of each pane
+      function addBranchSelector(paneElement, side) {
+        const container = document.createElement('div');
+        container.className = `branch-selector-container branch-selector-${side}`;
+        container.id = `branch-container-${side}`;
+        
+        // Modified indicator
+        const modifiedIndicator = document.createElement('span');
+        modifiedIndicator.className = 'branch-modified-indicator';
+        modifiedIndicator.id = `branch-modified-${side}`;
+        modifiedIndicator.textContent = '●';
+        modifiedIndicator.title = 'Unsaved changes';
+        modifiedIndicator.style.display = 'none';
+        
+        // Branch name display / button
+        const branchBtn = document.createElement('button');
+        branchBtn.className = 'branch-selector-btn';
+        branchBtn.id = `branch-btn-${side}`;
+        branchBtn.title = 'Switch branch';
+        
+        // Dropdown menu
+        const dropdown = document.createElement('div');
+        dropdown.className = 'branch-dropdown';
+        dropdown.id = `branch-dropdown-${side}`;
+        dropdown.style.display = 'none';
+        
+        // Update button text
+        const updateBranchButton = () => {
+          const branchId = activeBranches[side];
+          const branches = window.BranchManager.listBranches();
+          const branch = branches.find(b => b.id === branchId);
+          branchBtn.innerHTML = `<span class="branch-icon">🌿</span> ${branch ? branch.name : branchId} <span class="branch-arrow">▼</span>`;
+        };
+        
+        // Populate dropdown
+        const populateDropdown = async () => {
+          dropdown.innerHTML = '';
+          const branches = window.BranchManager.listBranches();
+          
+          // Branch list with inline action icons
+          branches.forEach(branch => {
+            const item = document.createElement('div');
+            item.className = 'branch-dropdown-item branch-item-row';
+            if (branch.id === activeBranches[side]) {
+              item.classList.add('active');
+            }
+            
+            // Branch name (clickable for switch)
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'branch-item-name';
+            nameSpan.innerHTML = `<span class="branch-item-icon">🌿</span> ${branch.name}`;
+            nameSpan.onclick = async (e) => {
+              e.stopPropagation();
+              await switchBranch(side, branch.id);
+              dropdown.style.display = 'none';
+            };
+            item.appendChild(nameSpan);
+            
+            // Action icons container (only for non-main branches)
+            if (branch.id !== 'main') {
+              const actionsSpan = document.createElement('span');
+              actionsSpan.className = 'branch-item-actions';
+              
+              // Rename icon
+              const renameIcon = document.createElement('span');
+              renameIcon.className = 'branch-action-icon';
+              renameIcon.innerHTML = '✏️';
+              renameIcon.title = 'Rename branch';
+              renameIcon.onclick = async (e) => {
+                e.stopPropagation();
+                dropdown.style.display = 'none';
+                await renameBranchById(branch.id);
+              };
+              actionsSpan.appendChild(renameIcon);
+              
+              // Delete icon
+              const deleteIcon = document.createElement('span');
+              deleteIcon.className = 'branch-action-icon branch-action-delete';
+              deleteIcon.innerHTML = '🗑️';
+              deleteIcon.title = 'Delete branch';
+              deleteIcon.onclick = async (e) => {
+                e.stopPropagation();
+                dropdown.style.display = 'none';
+                await deleteBranchById(branch.id, side);
+              };
+              actionsSpan.appendChild(deleteIcon);
+              
+              item.appendChild(actionsSpan);
+            }
+            
+            dropdown.appendChild(item);
+          });
+          
+          // Divider
+          const divider = document.createElement('div');
+          divider.className = 'branch-dropdown-divider';
+          dropdown.appendChild(divider);
+          
+          // New Branch option
+          const newBranchItem = document.createElement('div');
+          newBranchItem.className = 'branch-dropdown-item branch-action';
+          newBranchItem.innerHTML = '<span class="branch-item-icon">➕</span> New Branch';
+          newBranchItem.onclick = async (e) => {
+            e.stopPropagation();
+            dropdown.style.display = 'none';
+            await createNewBranch(side);
+          };
+          dropdown.appendChild(newBranchItem);
+          
+          // Save current option
+          const saveItem = document.createElement('div');
+          saveItem.className = 'branch-dropdown-item branch-action';
+          saveItem.innerHTML = '<span class="branch-item-icon">💾</span> Save to Branch';
+          saveItem.onclick = async (e) => {
+            e.stopPropagation();
+            dropdown.style.display = 'none';
+            await saveCurrentToBranch(side);
+          };
+          dropdown.appendChild(saveItem);
+          
+          // Reset all branches option (only show if there are branches other than main)
+          if (branches.length > 1) {
+            const divider2 = document.createElement('div');
+            divider2.className = 'branch-dropdown-divider';
+            dropdown.appendChild(divider2);
+            
+            const resetItem = document.createElement('div');
+            resetItem.className = 'branch-dropdown-item branch-action branch-delete';
+            resetItem.innerHTML = '<span class="branch-item-icon">🔄</span> Reset All Branches';
+            resetItem.onclick = async (e) => {
+              e.stopPropagation();
+              dropdown.style.display = 'none';
+              await resetAllBranches(side);
+            };
+            dropdown.appendChild(resetItem);
+          }
+        };
+        
+        // Toggle dropdown
+        branchBtn.onclick = async (e) => {
+          e.stopPropagation();
+          const isVisible = dropdown.style.display !== 'none';
+          
+          // Close all other dropdowns
+          document.querySelectorAll('.branch-dropdown').forEach(d => d.style.display = 'none');
+          
+          if (!isVisible) {
+            await populateDropdown();
+            dropdown.style.display = 'block';
+          }
+        };
+        
+        // Close dropdown on outside click
+        document.addEventListener('click', () => {
+          dropdown.style.display = 'none';
+        });
+        
+        container.appendChild(modifiedIndicator);
+        container.appendChild(branchBtn);
+        container.appendChild(dropdown);
+        paneElement.appendChild(container);
+        
+        // Initial button text
+        updateBranchButton();
+        
+        // Store reference for updates
+        container._updateButton = updateBranchButton;
+        container._populateDropdown = populateDropdown;
+      }
+      
+      // Switch to a different branch
+      async function switchBranch(side, newBranchId) {
+        const currentBranchId = activeBranches[side];
+        
+        if (currentBranchId === newBranchId) return;
+        
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const currentContent = editor.state.doc.toString();
+        
+        // Auto-save current content to current branch before switching
+        if (currentContent.trim()) {
+          await window.BranchManager.saveBranch(currentBranchId, currentContent, {
+            source: 'auto-save'
+          });
+        }
+        
+        // Load new branch
+        const newBranch = await window.BranchManager.getBranch(newBranchId);
+        const newContent = newBranch ? newBranch.content : '';
+        
+        // Update editor content
+        editor.dispatch({
+          changes: { from: 0, to: editor.state.doc.length, insert: newContent }
+        });
+        
+        // Update active branch
+        activeBranches[side] = newBranchId;
+        SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', newBranchId);
+        
+        // Update panel name from branch name
+        if (newBranch) {
+          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', newBranch.name);
+        }
+        
+        // Reset modified state
+        branchModified[side] = false;
+        updateBranchModifiedIndicator(side);
+        
+        // Update UI
+        updateBranchSelectors();
+        updateDiffStatus();
+        updateStatus(`Switched to branch: ${newBranch ? newBranch.name : newBranchId}`);
+      }
+      
+      // Create a new branch
+      async function createNewBranch(side) {
+        const name = prompt('Enter new branch name:', '');
+        if (!name || !name.trim()) return;
+        
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const content = editor.state.doc.toString();
+        
+        try {
+          const branch = await window.BranchManager.createBranch(name.trim(), content, {
+            source: 'manual'
+          });
+          
+          // Switch to new branch
+          activeBranches[side] = branch.id;
+          SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', branch.id);
+          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', branch.name);
+          
+          branchModified[side] = false;
+          updateBranchModifiedIndicator(side);
+          updateBranchSelectors();
+          updateStatus(`Created branch: ${branch.name}`);
+        } catch (err) {
+          showErrorMessage('Failed to create branch: ' + err.message);
+        }
+      }
+      
+      // Rename current branch
+      async function renameBranch(side) {
+        const currentId = activeBranches[side];
+        const branches = window.BranchManager.listBranches();
+        const current = branches.find(b => b.id === currentId);
+        
+        const newName = prompt('Enter new name:', current ? current.name : currentId);
+        if (!newName || !newName.trim()) return;
+        
+        try {
+          await window.BranchManager.renameBranch(currentId, newName.trim());
+          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', newName.trim());
+          updateBranchSelectors();
+          updateStatus(`Renamed branch to: ${newName.trim()}`);
+        } catch (err) {
+          showErrorMessage('Failed to rename branch: ' + err.message);
+        }
+      }
+      
+      // Delete current branch
+      async function deleteBranch(side) {
+        const currentId = activeBranches[side];
+        const branches = window.BranchManager.listBranches();
+        const current = branches.find(b => b.id === currentId);
+        
+        if (!confirm(`Delete branch "${current ? current.name : currentId}"? This cannot be undone.`)) {
+          return;
+        }
+        
+        try {
+          await window.BranchManager.deleteBranch(currentId);
+          
+          // Switch to main branch
+          await switchBranch(side, 'main');
+          updateStatus(`Deleted branch: ${current ? current.name : currentId}`);
+        } catch (err) {
+          showErrorMessage('Failed to delete branch: ' + err.message);
+        }
+      }
+      
+      // Save current content to branch
+      async function saveCurrentToBranch(side) {
+        const currentId = activeBranches[side];
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const content = editor.state.doc.toString();
+        
+        try {
+          await window.BranchManager.saveBranch(currentId, content, {
+            source: 'manual-save'
+          });
+          
+          branchModified[side] = false;
+          updateBranchModifiedIndicator(side);
+          updateStatus('Branch saved');
+        } catch (err) {
+          showErrorMessage('Failed to save branch: ' + err.message);
+        }
+      }
+      
+      // Rename a branch by ID (for inline icon)
+      async function renameBranchById(branchId) {
+        const branches = window.BranchManager.listBranches();
+        const branch = branches.find(b => b.id === branchId);
+        
+        const newName = prompt('Enter new name:', branch ? branch.name : branchId);
+        if (!newName || !newName.trim()) return;
+        
+        try {
+          await window.BranchManager.renameBranch(branchId, newName.trim());
+          
+          // Update panel name if this is the active branch on either side
+          if (activeBranches.left === branchId) {
+            SettingsManager.set('leftPanelName', newName.trim());
+          }
+          if (activeBranches.right === branchId) {
+            SettingsManager.set('rightPanelName', newName.trim());
+          }
+          
+          updateBranchSelectors();
+          updateStatus(`Renamed branch to: ${newName.trim()}`);
+        } catch (err) {
+          showErrorMessage('Failed to rename branch: ' + err.message);
+        }
+      }
+      
+      // Delete a branch by ID (for inline icon)
+      async function deleteBranchById(branchId, side) {
+        const branches = window.BranchManager.listBranches();
+        const branch = branches.find(b => b.id === branchId);
+        
+        if (!confirm(`Delete branch "${branch ? branch.name : branchId}"? This cannot be undone.`)) {
+          return;
+        }
+        
+        try {
+          await window.BranchManager.deleteBranch(branchId);
+          
+          // If deleted branch was active on left side, switch to main
+          if (activeBranches.left === branchId) {
+            await switchBranch('left', 'main');
+          }
+          // If deleted branch was active on right side, switch to main
+          if (activeBranches.right === branchId) {
+            await switchBranch('right', 'main');
+          }
+          
+          updateBranchSelectors();
+          updateStatus(`Deleted branch: ${branch ? branch.name : branchId}`);
+        } catch (err) {
+          showErrorMessage('Failed to delete branch: ' + err.message);
+        }
+      }
+      
+      // Reset all branches - delete all except main
+      async function resetAllBranches(side) {
+        const branches = window.BranchManager.listBranches();
+        const nonMainBranches = branches.filter(b => b.id !== 'main');
+        
+        if (nonMainBranches.length === 0) {
+          updateStatus('No branches to reset');
+          return;
+        }
+        
+        if (!confirm(`Delete ${nonMainBranches.length} branch(es) and reset to default? This cannot be undone.`)) {
+          return;
+        }
+        
+        try {
+          // Delete all non-main branches
+          for (const branch of nonMainBranches) {
+            await window.BranchManager.deleteBranch(branch.id);
+          }
+          
+          // Switch both sides to main if needed
+          if (activeBranches.left !== 'main') {
+            await switchBranch('left', 'main');
+          }
+          if (activeBranches.right !== 'main') {
+            await switchBranch('right', 'main');
+          }
+          
+          updateBranchSelectors();
+          updateStatus(`Reset complete: Deleted ${nonMainBranches.length} branch(es)`);
+        } catch (err) {
+          showErrorMessage('Failed to reset branches: ' + err.message);
+        }
+      }
+      
+      // Update modified indicator for a side
+      function updateBranchModifiedIndicator(side) {
+        const indicator = document.getElementById(`branch-modified-${side}`);
+        if (indicator) {
+          indicator.style.display = branchModified[side] ? 'inline' : 'none';
+        }
+      }
+      
+      // Update all branch selectors
+      function updateBranchSelectors() {
+        ['left', 'right'].forEach(side => {
+          const container = document.getElementById(`branch-container-${side}`);
+          if (container && container._updateButton) {
+            container._updateButton();
+          }
+        });
+      }
+      
+      // Check if content is modified from saved branch (called on content change)
+      async function checkBranchModified(side) {
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const content = editor.state.doc.toString();
+        const branchId = activeBranches[side];
+        
+        branchModified[side] = await window.BranchManager.isModified(branchId, content);
+        updateBranchModifiedIndicator(side);
       }
       
       // Add CSV to JSON conversion button at bottom of pane
@@ -1368,10 +1716,11 @@
         convertBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
           const text = editor.state.doc.toString();
+          const autoSort = document.getElementById('auto-sort-keys')?.checked;
           
           try {
             const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-            const content = JSON.stringify(jsonData, null, 3);
+            const content = buildJSONString(jsonData, { autoSort });
             
             editor.dispatch({
               changes: { from: 0, to: editor.state.doc.length, insert: content }
@@ -1422,6 +1771,13 @@
             rightBtn.classList.remove('visible');
           }
         }
+      }
+      
+      // Update panel name inputs from settings (used after import/URL load)
+      // Now also updates branch selectors
+      function updatePanelNameInputs() {
+        // Update branch selectors with current branch names
+        updateBranchSelectors();
       }
 
       // Update visibility of copy/clear buttons based on content
@@ -1614,6 +1970,18 @@
         }
       }
 
+      function buildJSONString(data, options = {}) {
+        let content = data;
+        if (options.autoSort && typeof window.sortJSONKeys === 'function') {
+          try {
+            content = window.sortJSONKeys(content);
+          } catch (err) {
+            console.warn('Auto sort failed:', err);
+          }
+        }
+        return JSON.stringify(content, null, 3);
+      }
+
       // Share URL functionality
       async function shareURL() {
         const leftContent = mergeView.a.state.doc.toString();
@@ -1699,6 +2067,22 @@
 
           URLManager.clearURL();
           
+          // Import branches if present in snapshot
+          if (data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0) {
+            try {
+              const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
+              console.log('Branches imported:', importResult);
+              
+              // Update active branches from settings if present
+              if (data.settings) {
+                activeBranches.left = data.settings.leftBranch || 'main';
+                activeBranches.right = data.settings.rightBranch || 'main';
+              }
+            } catch (err) {
+              console.warn('Failed to import branches:', err);
+            }
+          }
+          
           // Recreate merge view with new settings if they were present
           if (data.settings && typeof data.settings === 'object') {
             setTimeout(() => {
@@ -1713,6 +2097,9 @@
               recreateMergeView(currentSettings, wordWrapEnabled);
               initializeSettingsPanel();
               initializeThemeSelector();
+              
+              // Update branch selectors with imported values
+              updateBranchSelectors();
             }, 100);
           }
           
@@ -1767,11 +2154,8 @@
           // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
           if (autoCSV || autoFormat || autoSort) {
             try {
-              let parsed = window.parseFlexibleJSON(content);
-              if (autoSort) {
-                parsed = window.sortJSONKeys(parsed);
-              }
-              content = JSON.stringify(parsed, null, 3);
+              const parsed = window.parseFlexibleJSON(content);
+              content = buildJSONString(parsed, { autoSort });
               isJSON = true;
             } catch (err) {
               // Not valid JSON/Python, continue to CSV check
@@ -1785,7 +2169,7 @@
             if (isCSV) {
               try {
                 const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-                content = JSON.stringify(jsonData, null, 3);
+                content = buildJSONString(jsonData, { autoSort });
                 showConversionMessage("CSV converted to JSON");
               } catch (err) {
                 showErrorMessage("CSV conversion failed: " + err.message);
@@ -1803,6 +2187,8 @@
             updateDiffStatus();
             updatePlaceholders();
             updatePaneButtonVisibility();
+            // Check for large content and suggest optimizations
+            checkContentSizeAndSuggest();
           }, 100);
         } catch (err) {
           showErrorMessage("Failed to read file: " + err.message);
@@ -1832,11 +2218,8 @@
         // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
         if (autoCSV || autoFormat || autoSort) {
           try {
-            let parsed = window.parseFlexibleJSON(content);
-            if (autoSort) {
-              parsed = window.sortJSONKeys(parsed);
-            }
-            content = JSON.stringify(parsed, null, 3);
+            const parsed = window.parseFlexibleJSON(content);
+            content = buildJSONString(parsed, { autoSort });
             isJSON = true;
           } catch (err) {
             // Not valid JSON/Python, continue to CSV check
@@ -1855,7 +2238,7 @@
 
             try {
               const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-              content = JSON.stringify(jsonData, null, 3);
+              content = buildJSONString(jsonData, { autoSort });
 
               editor.dispatch({
                 changes: { from: 0, to: editor.state.doc.length, insert: content }
@@ -1869,6 +2252,8 @@
                 updateDiffStatus();
                 updatePlaceholders();
                 updatePaneButtonVisibility();
+                // Check for large content and suggest optimizations
+                checkContentSizeAndSuggest();
               }, 100);
             } catch (err) {
               showErrorMessage("CSV conversion failed: " + err.message);
@@ -1894,6 +2279,8 @@
             updateDiffStatus();
             updatePlaceholders();
             updatePaneButtonVisibility();
+            // Check for large content and suggest optimizations
+            checkContentSizeAndSuggest();
           }, 100);
         }
       }
@@ -1944,7 +2331,7 @@
       }
 
       // Clear all content
-      function clearAll() {
+      async function clearAll() {
         if (!confirm("Clear all content?")) return;
 
         mergeView.a.dispatch({
@@ -1954,6 +2341,27 @@
         mergeView.b.dispatch({
           changes: { from: 0, to: mergeView.b.state.doc.length, insert: "" }
         });
+
+        // Save cleared content to both branches
+        if (window.BranchManager) {
+          try {
+            const leftBranchId = activeBranches.left;
+            const rightBranchId = activeBranches.right;
+            
+            if (leftBranchId) {
+              await window.BranchManager.saveBranch(leftBranchId, '', { source: 'clear-all' });
+              branchModified.left = false;
+              updateBranchModifiedIndicator('left');
+            }
+            if (rightBranchId) {
+              await window.BranchManager.saveBranch(rightBranchId, '', { source: 'clear-all' });
+              branchModified.right = false;
+              updateBranchModifiedIndicator('right');
+            }
+          } catch (err) {
+            console.warn('Failed to save cleared branches:', err);
+          }
+        }
 
         updateStatus("Content cleared");
         updateDiffStatus();
@@ -1974,6 +2382,10 @@
             });
           }
         }
+        
+        // Mark branches as modified (check in background)
+        checkBranchModified('left');
+        checkBranchModified('right');
 
         updateClearButtonVisibility();
         updateDiffStatus();
@@ -1994,6 +2406,51 @@
 
         if (leftContent === rightContent) {
           if (summaryDiv) summaryDiv.textContent = "No differences found";
+          return;
+        }
+        
+        // If viewport diff mode is enabled, use that instead
+        if (viewportDiffManager?.enabled) {
+          const result = viewportDiffManager.calculateViewportDiff();
+          if (result) {
+            const statusMsg = viewportDiffManager.getDiffStatusMessage();
+            if (summaryDiv) summaryDiv.textContent = statusMsg || "Calculating...";
+            return;
+          }
+        }
+        
+        // Check if we should use web worker for large content
+        const totalSize = leftContent.length + rightContent.length;
+        const useLargeFileThreshold = 100000; // 100KB
+        
+        if (totalSize > useLargeFileThreshold && diffWorker) {
+          // Use web worker for large content
+          if (summaryDiv) summaryDiv.textContent = "Calculating diff...";
+          
+          const requestId = Date.now().toString();
+          
+          const handler = function(e) {
+            if (e.data.id === requestId) {
+              diffWorker.removeEventListener('message', handler);
+              
+              if (e.data.ok && e.data.result) {
+                const diffCount = e.data.result.diffCount;
+                const duration = Math.round(e.data.result.duration);
+                if (summaryDiv) {
+                  summaryDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''} (${duration}ms)`;
+                }
+              } else {
+                if (summaryDiv) summaryDiv.textContent = "Differences detected";
+              }
+            }
+          };
+          
+          diffWorker.addEventListener('message', handler);
+          diffWorker.postMessage({
+            id: requestId,
+            action: 'countDiffs',
+            payload: { leftText: leftContent, rightText: rightContent }
+          });
           return;
         }
 

@@ -1,0 +1,32 @@
+{
+  "main": {
+    "id": "main",
+    "name": "Main",
+    "content": "",
+    "timestamp": 1764133232739,
+    "metadata": {
+      "source": "clear",
+      "notes": "Default branch"
+    }
+  },
+  "test-1": {
+    "id": "test-1",
+    "name": "test-1",
+    "content": "{\n   \"cost_net\": 10659.82,\n   \"cost_original\": 12659.82,\n   \"cost_rebate\": 2000,\n   \"cost_rule_changes\": [],\n   \"delta_elec_carbon\": 0,\n   \"delta_elec_gj\": 0.708,\n   \"delta_elec_utilitybill\": 123.218,\n   \"delta_gas_carbon\": 1.368,\n   \"delta_gas_gj\": 27.163,\n   \"delta_gas_utilitybill\": 551.264,\n   \"delta_solar_gj_displaced\": 0.001,\n   \"delta_solar_utilitybill_displaced\": 61.432,\n   \"delta_total_carbon\": 1.368,\n   \"delta_total_gj\": 27.871,\n   \"delta_total_utilitybill\": 674.482,\n   \"elec_carbon\": 0,\n   \"elec_gj\": -0.212,\n   \"elec_utilitybill\": 222.934,\n   \"from\": {\n      \"central_ac_seer\": 8,\n      \"furnace_eff\": 0.663,\n      \"furnace_fuel\": \"gas\",\n      \"furnace_type\": \"gas\"\n   }\n}",
+    "timestamp": 1764137144918,
+    "metadata": {
+      "source": "auto-save",
+      "notes": ""
+    }
+  },
+  "test-2": {
+    "id": "test-2",
+    "name": "test-2",
+    "content": "{\n   \"cost_net\": 10659.82,\n   \"cost_original\": 12659.82,\n   \"cost_rebate\": 2000,\n   \"cost_rule_changes\": [],\n   \"delta_elec_carbon\": 0,\n   \"delta_elec_gj\": 0.708,\n   \"delta_elec_utilitybill\": 121.508,\n   \"delta_gas_carbon\": 1.368,\n   \"delta_gas_gj\": 27.163,\n   \"delta_solar_gj_displaced\": 0,\n   \"delta_solar_utilitybill_displaced\": 63.142,\n   \"delta_total_carbon\": 1.368,\n   \"delta_total_gj\": 27.871,\n   \"delta_total_utilitybill\": 672.772,\n   \"elec_carbon\": 0,\n   \"elec_gj\": -1.202,\n   \"elec_utilitybill\": 138.286,\n   \"from\": {\n      \"central_ac_seer\": 8,\n      \"furnace_eff\": 0.6629999999999999,\n      \"furnace_fuel\": \"gas\",\n      \"furnace_type\": \"gas\"\n   }\n}",
+    "timestamp": 1764137147033,
+    "metadata": {
+      "source": "auto-save",
+      "notes": ""
+    }
+  }
+}

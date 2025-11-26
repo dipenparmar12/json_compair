@@ -1,7 +1,7 @@
 /**
  * ZIP Snapshot Manager for JSON Compare Tool
  * 
- * Creates ZIP files containing separate JSON files for left/right content and settings
+ * Creates ZIP files containing separate JSON files for left/right content, settings, and branches
  * This makes exports human-readable and usable outside the tool
  * 
  * Requires: JSZip library (loaded via CDN in index.html)
@@ -13,9 +13,10 @@ window.ZipSnapshotManager = {
    * @param {string} leftContent - Left panel JSON content
    * @param {string} rightContent - Right panel JSON content  
    * @param {object} settings - Application settings
+   * @param {object} branches - Optional branches data (from BranchManager.exportAll())
    * @returns {Promise<Blob>} ZIP file blob
    */
-  async createSnapshot(leftContent, rightContent, settings) {
+  async createSnapshot(leftContent, rightContent, settings, branches = null) {
     const zip = new JSZip();
     
     // Add README file for user guidance
@@ -28,7 +29,7 @@ Files Included:
 - left-content.json: Content from the left panel
 - right-content.json: Content from the right panel
 - settings.json: Tool settings (diff options, theme, etc.)
-
+${branches ? '- branches.json: All saved branches for switching between versions\n' : ''}
 How to Use:
 1. Open the JSON files in any text editor or JSON viewer
 2. Import this ZIP back into the tool using "Import Snapshot"
@@ -69,6 +70,11 @@ Tool: https://github.com/dipenparmar12/json_compair
     // Add settings as formatted JSON
     zip.file('settings.json', JSON.stringify(settings, null, 2));
     
+    // Add branches if provided
+    if (branches && Object.keys(branches).length > 0) {
+      zip.file('branches.json', JSON.stringify(branches, null, 2));
+    }
+    
     // Generate ZIP blob
     const blob = await zip.generateAsync({ 
       type: 'blob',
@@ -82,7 +88,7 @@ Tool: https://github.com/dipenparmar12/json_compair
   /**
    * Import a ZIP snapshot
    * @param {File} file - ZIP file from file input
-   * @returns {Promise<{left: string, right: string, settings: object}>}
+   * @returns {Promise<{left: string, right: string, settings: object, branches: object|null}>}
    */
   async importSnapshot(file) {
     const zip = await JSZip.loadAsync(file);
@@ -91,6 +97,7 @@ Tool: https://github.com/dipenparmar12/json_compair
     const leftFile = zip.file('left-content.json');
     const rightFile = zip.file('right-content.json');
     const settingsFile = zip.file('settings.json');
+    const branchesFile = zip.file('branches.json');
     
     if (!leftFile || !rightFile) {
       throw new Error('Invalid snapshot: missing left-content.json or right-content.json');
@@ -109,7 +116,17 @@ Tool: https://github.com/dipenparmar12/json_compair
       }
     }
     
-    return { left: leftContent, right: rightContent, settings };
+    let branches = null;
+    if (branchesFile) {
+      try {
+        const branchesText = await branchesFile.async('string');
+        branches = JSON.parse(branchesText);
+      } catch (e) {
+        console.warn('Failed to parse branches from snapshot:', e);
+      }
+    }
+    
+    return { left: leftContent, right: rightContent, settings, branches };
   },
   
   /**
@@ -168,7 +185,7 @@ window.SnapshotHandler = {
   /**
    * Import snapshot (auto-detects format)
    * @param {File} file - Snapshot file (.zip or .json.gz)
-   * @returns {Promise<{left: string, right: string, settings: object}>}
+   * @returns {Promise<{left: string, right: string, settings: object, branches: object|null}>}
    */
   async importSnapshot(file) {
     const filename = file.name.toLowerCase();
@@ -176,7 +193,9 @@ window.SnapshotHandler = {
     if (filename.endsWith('.zip')) {
       return await ZipSnapshotManager.importSnapshot(file);
     } else if (filename.endsWith('.json.gz') || filename.endsWith('.gz')) {
-      return await LegacySnapshotManager.importSnapshot(file);
+      const result = await LegacySnapshotManager.importSnapshot(file);
+      result.branches = null; // Legacy format doesn't support branches
+      return result;
     } else {
       throw new Error('Unsupported file format. Please use .zip or .json.gz files.');
     }
@@ -187,9 +206,21 @@ window.SnapshotHandler = {
    * @param {string} leftContent - Left panel content
    * @param {string} rightContent - Right panel content
    * @param {object} settings - Application settings
+   * @param {boolean} includeBranches - Whether to include all branches in export
    */
-  async createAndDownload(leftContent, rightContent, settings) {
-    const blob = await ZipSnapshotManager.createSnapshot(leftContent, rightContent, settings);
+  async createAndDownload(leftContent, rightContent, settings, includeBranches = true) {
+    let branches = null;
+    
+    // Export branches if requested and BranchManager is available
+    if (includeBranches && window.BranchManager) {
+      try {
+        branches = await window.BranchManager.exportAll();
+      } catch (err) {
+        console.warn('Failed to export branches:', err);
+      }
+    }
+    
+    const blob = await ZipSnapshotManager.createSnapshot(leftContent, rightContent, settings, branches);
     const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
     const filename = `json-compare-snapshot-${timestamp}.zip`;
     ZipSnapshotManager.downloadSnapshot(blob, filename);

@@ -1,3 +1,418 @@
+* {
+    box-sizing: border-box;
+}
+
+#container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.intro {
+    padding: 8px 10px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #ddd;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.intro-left,
+.intro-center,
+.intro-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.intro-left {
+    flex: 1;
+}
+
+.intro-center {
+    justify-content: center;
+    flex: 1;
+}
+
+.intro-right {
+    justify-content: flex-end;
+    flex: 1;
+}
+
+#view-container {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+    /* Important for flex child scrolling */
+    display: flex;
+    flex-direction: row;
+}
+
+/* Button styles */
+button {
+    padding: 6px 14px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+button:hover {
+    background: #f5f5f5;
+    border-color: #999;
+}
+
+button.active {
+    background: #08c988;
+    color: white;
+    border-color: #08c988;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Pane-specific buttons */
+.pane-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    font-size: 12px;
+    padding: 4px 10px;
+}
+
+.copy-btn {
+    display: none;
+}
+
+/* CodeMirror 6 custom styling */
+.cm-editor {
+    height: 100%;
+    font-size: 14px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.cm-scroller {
+    overflow: auto;
+}
+
+/* Merge view styling - Fixed to match actual DOM structure */
+.cm-mergeView {
+    height: 100% !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex: 1;
+}
+
+/* The wrapper that contains both editors */
+.cm-mergeViewEditors {
+    display: flex !important;
+    flex-direction: row !important;
+    width: 100% !important;
+    height: 100% !important;
+    gap: 2px;
+    flex: 1;
+}
+
+/* Force each editor to be exactly 50% */
+.cm-mergeViewEditor {
+    flex: 1 1 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+    min-width: 0 !important;
+    /* Critical: allows shrinking below content size */
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden !important;
+    /* Prevent overflow from breaking layout */
+    position: relative;
+}
+
+/* Editor container within each panel */
+.cm-mergeView .cm-editor {
+    height: 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+}
+
+/* Scroller must respect parent constraints */
+.cm-mergeView .cm-scroller {
+    overflow: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+}
+
+/* Prevent content from forcing panel expansion */
+.cm-mergeView .cm-content {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* Ensure lines don't stretch the container */
+.cm-mergeView .cm-line {
+    max-width: 100% !important;
+}
+
+/* Word wrap specific styles */
+.cm-mergeView .cm-line[style*="white-space: pre-wrap"] {
+    max-width: 100% !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+}
+
+/* No wrap mode - ensure horizontal scrolling */
+.cm-mergeView .cm-line[style*="white-space: pre"] {
+    max-width: none;
+    /* Allow line to extend for scrolling */
+    white-space: pre !important;
+}
+
+/* ====================================================================
+         DIFF HIGHLIGHTING - Enhanced Red/Green Scheme
+         Matches modern Git/GitHub diff visualization
+         ==================================================================== */
+
+/* Changed line container - light background */
+.cm-changedLine {
+    background-color: transparent !important;
+}
+
+/* Deleted lines (left side) - Red background */
+.cm-deletedLine {
+    background-color: #ffebe9 !important;
+    display: inline-block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Inserted lines (right side) - Green background */
+.cm-insertedLine {
+    background-color: #e6ffec !important;
+    display: inline-block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Changed text within deleted lines - Darker red highlight */
+.cm-deletedLine .cm-changedText {
+    background-color: #ffc1ba !important;
+    font-weight: 500 !important;
+}
+
+/* Changed text within inserted lines - Darker green highlight */
+.cm-insertedLine .cm-changedText {
+    background-color: #acf2bd !important;
+    font-weight: 500 !important;
+}
+
+/* Legacy chunk backgrounds (fallback for older code) */
+.cm-deletedChunk {
+    background-color: #ffebe9 !important;
+}
+
+.cm-insertedChunk {
+    background-color: #e6ffec !important;
+}
+
+/* Legacy text backgrounds (fallback) */
+.cm-deletedText {
+    background-color: #ffc1ba !important;
+    text-decoration: none !important;
+    font-weight: 500 !important;
+}
+
+.cm-insertedText {
+    background-color: #acf2bd !important;
+    text-decoration: none !important;
+    font-weight: 500 !important;
+}
+
+/* Remove underlines from del/ins elements */
+del.cm-deletedLine,
+ins.cm-insertedLine,
+del,
+ins {
+    text-decoration: none !important;
+    background-image: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+
+/* Ensure changed text doesn't have underlines either */
+.cm-changedText {
+    text-decoration: none !important;
+    background-image: none !important;
+    border-bottom: none !important;
+}
+
+/* Gutter markers for changed lines */
+.cm-changedLineGutter {
+    background-color: #ffd33d !important;
+    width: 3px !important;
+    margin-left: 2px !important;
+}
+
+/* Status bar removed (was #diff-status) */
+
+/* Error message area */
+#conversion-error-area {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ff4444;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    display: none;
+    z-index: 2000;
+    max-width: 80%;
+    text-align: center;
+}
+
+/* Per-pane action buttons */
+.pane-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 100;
+    display: flex;
+    gap: 5px;
+}
+
+.pane-controls button {
+    font-size: 11px;
+    padding: 4px 8px;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.pane-controls button:hover {
+    opacity: 1;
+    background: #f5f5f5;
+}
+
+/* CSV conversion button */
+.csv-convert-btn {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    z-index: 100;
+    font-size: 11px;
+    padding: 4px 8px;
+    background: white;
+    border: 1px solid #007bff;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.csv-convert-btn.visible {
+    opacity: 0.7;
+    pointer-events: auto;
+}
+
+.csv-convert-btn.visible:hover {
+    opacity: 1;
+    background: #e7f3ff;
+}
+
+/* Show CSV button on pane hover if content is CSV */
+.cm-mergeViewEditor:hover .csv-convert-btn.visible {
+    opacity: 0.9;
+}
+
+.pane-wrapper {
+    position: relative;
+    flex: 1;
+}
+
+/* Dropdown panels */
+.dropdown-panel {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 12px;
+    min-width: 260px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    z-index: 1000;
+    margin-top: 4px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+.dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.dropdown-item+.dropdown-item {
+    margin-top: 6px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .intro {
+        flex-wrap: wrap;
+    }
+
+    button {
+        font-size: 12px;
+        padding: 5px 10px;
+    }
+
+    .pane-controls button {
+        font-size: 10px;
+        padding: 3px 6px;
+    }
+
+    .intro-left,
+    .intro-center,
+    .intro-right {
+        flex: 100%;
+        justify-content: flex-start;
+    }
+}
+
+button {
+    white-space: nowrap;
+}
+
+
+/* ------------------------------------------------------------ */
+/* v6/css/app.css */
+/* ------------------------------------------------------------ */
 body {
     margin: 0;
     padding: 0;
@@ -282,4 +697,351 @@ select.toggle-button {
     white-space: pre-wrap !important;
     padding: 20px !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* Panel name input styling */
+.panel-name-container {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    z-index: 100;
+}
+
+.panel-name-input {
+    width: 140px;
+    padding: 4px 8px;
+    font-size: 11px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: rgba(248, 249, 250, 0.95);
+    color: #666;
+    outline: none;
+    transition: all 0.2s ease;
+    opacity: 0.5;
+}
+
+.panel-name-input:hover {
+    opacity: 0.75;
+    border-color: #aaa;
+    background: rgba(255, 255, 255, 0.98);
+}
+
+.panel-name-input:focus {
+    opacity: 1;
+    border-color: #888;
+    box-shadow: 0 0 0 2px rgba(128, 128, 128, 0.15);
+    width: 180px;
+    color: #444;
+    background: #fff;
+}
+
+.panel-name-input::placeholder {
+    color: #aaa;
+    font-style: italic;
+}
+
+/* When input has value, show it more prominently */
+.panel-name-input:not(:placeholder-shown) {
+    opacity: 0.7;
+    background: rgba(255, 255, 255, 0.98);
+    font-weight: 500;
+    color: #555;
+    border-color: #999;
+}
+
+/* Adjust position when CSV button is visible */
+.cm-mergeViewEditor .panel-name-container {
+    bottom: 8px;
+}
+
+/* Dark theme support */
+.cm-editor[style*="background-color: rgb(30"] .panel-name-input,
+.cm-theme-dark .panel-name-input {
+    background: rgba(50, 50, 50, 0.95);
+    color: #999;
+    border-color: #555;
+}
+
+.cm-theme-dark .panel-name-input:hover {
+    border-color: #666;
+    color: #aaa;
+}
+
+.cm-theme-dark .panel-name-input:focus {
+    border-color: #888;
+    color: #ccc;
+}
+
+.cm-theme-dark .panel-name-input:not(:placeholder-shown) {
+    color: #bbb;
+    background: rgba(60, 60, 60, 0.98);
+}
+
+/* Responsive - smaller on mobile */
+@media (max-width: 768px) {
+    .panel-name-input {
+        width: 100px;
+        font-size: 10px;
+        padding: 3px 6px;
+    }
+    
+    .panel-name-input:focus {
+        width: 130px;
+    }
+}
+
+/* ============================================================
+   BRANCH SELECTOR STYLES
+   Git-like branch switching for JSON Compare panels
+   ============================================================ */
+
+.branch-selector-container {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.branch-modified-indicator {
+    color: #f0ad4e;
+    font-size: 10px;
+    margin-right: 2px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+.branch-selector-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #555;
+    background: rgba(248, 249, 250, 0.95);
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+.branch-selector-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.98);
+    border-color: #08c988;
+    color: #333;
+}
+
+.branch-selector-btn:active {
+    transform: scale(0.98);
+}
+
+.branch-icon {
+    font-size: 12px;
+}
+
+.branch-arrow {
+    font-size: 8px;
+    opacity: 0.6;
+    margin-left: 2px;
+}
+
+.branch-dropdown {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 4px;
+    min-width: 180px;
+    max-width: 250px;
+    max-height: 300px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    z-index: 1001;
+}
+
+.branch-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.branch-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.branch-dropdown-item:hover {
+    background: #f8f9fa;
+}
+
+.branch-dropdown-item.active {
+    background: #e8f5e9;
+    color: #08c988;
+    font-weight: 600;
+}
+
+.branch-dropdown-item.active::before {
+    content: '✓';
+    margin-right: 4px;
+    font-size: 10px;
+}
+
+.branch-item-icon {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.branch-dropdown-divider {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 4px 0;
+}
+
+.branch-dropdown-item.branch-action {
+    color: #666;
+    font-size: 11px;
+}
+
+.branch-dropdown-item.branch-action:hover {
+    background: #f0f8ff;
+}
+
+.branch-dropdown-item.branch-delete {
+    color: #dc3545;
+}
+
+.branch-dropdown-item.branch-delete:hover {
+    background: #fff5f5;
+}
+
+/* Branch item row with inline icons */
+.branch-item-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 8px;
+}
+
+.branch-item-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.branch-item-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.branch-dropdown-item:hover .branch-item-actions {
+    opacity: 1;
+}
+
+.branch-action-icon {
+    padding: 2px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    opacity: 0.7;
+    transition: all 0.15s;
+}
+
+.branch-action-icon:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.branch-action-icon.rename-icon:hover {
+    background: #e3f2fd;
+}
+
+.branch-action-icon.delete-icon:hover {
+    background: #ffebee;
+    color: #dc3545;
+}
+
+/* Dark theme support for branch selector */
+.cm-editor[style*="background-color: rgb(30"] .branch-selector-btn,
+.cm-theme-dark .branch-selector-btn {
+    background: rgba(50, 50, 50, 0.95);
+    color: #aaa;
+    border-color: #555;
+}
+
+.cm-theme-dark .branch-selector-btn:hover {
+    background: rgba(60, 60, 60, 0.98);
+    border-color: #08c988;
+    color: #ccc;
+}
+
+.cm-theme-dark .branch-dropdown {
+    background: #2d2d2d;
+    border-color: #444;
+}
+
+.cm-theme-dark .branch-dropdown-item {
+    color: #ccc;
+    border-bottom-color: #3a3a3a;
+}
+
+.cm-theme-dark .branch-dropdown-item:hover {
+    background: #3a3a3a;
+}
+
+.cm-theme-dark .branch-dropdown-item.active {
+    background: #1e3a2f;
+    color: #08c988;
+}
+
+.cm-theme-dark .branch-action-icon:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.cm-theme-dark .branch-action-icon.rename-icon:hover {
+    background: #1e3a5f;
+}
+
+.cm-theme-dark .branch-action-icon.delete-icon:hover {
+    background: #3a1e1e;
+}
+
+.cm-theme-dark .branch-dropdown-divider {
+    background: #444;
+}
+
+/* Responsive - smaller on mobile */
+@media (max-width: 768px) {
+    .branch-selector-btn {
+        padding: 3px 8px;
+        font-size: 10px;
+    }
+    
+    .branch-dropdown {
+        min-width: 150px;
+    }
+    
+    .branch-dropdown-item {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
 }

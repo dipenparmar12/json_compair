@@ -227,6 +227,15 @@
       revertControls: "none",
       scanLimit: 6000,     // Increased from 500 to better detect identical lines in different positions
       timeout: 5000,        // Max 5 seconds for detailed diff computation
+      // Performance settings
+      performanceMode: false,   // Enable optimized settings for large files
+      viewportDiff: false,      // Only compute diffs for visible area
+      // Panel names for UX (deprecated, replaced by branches)
+      leftPanelName: "",    // Name/ID for left panel
+      rightPanelName: "",   // Name/ID for right panel
+      // Branch settings - track active branch per panel
+      leftBranch: "main",   // Active branch ID for left panel
+      rightBranch: "main",  // Active branch ID for right panel
     },
 
     loadAll: function () {
@@ -265,6 +274,27 @@
   };
 
   // Default templates
+  // Generate longer example templates dynamically
+  function makeUser(id, name, active, city) {
+    return { id, name, active, city };
+  }
+
+  function makeUsers(count, startId, cityList) {
+    const names = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Helen", "Ivy", "Jack"];
+    const users = [];
+    for (let i = 0; i < count; i++) {
+      users.push(
+        makeUser(
+          startId + i,
+          names[i % names.length],
+          i % 2 === 0,
+          cityList[i % cityList.length]
+        )
+      );
+    }
+    return users;
+  }
+
   const DefaultTemplates = {
     simple: {
       left: JSON.stringify(
@@ -290,20 +320,22 @@
       left: JSON.stringify(
         {
           users: [
-            {
-              id: 1,
-              name: "Alice",
-              active: true,
-            },
-            {
-              id: 2,
-              name: "Bob",
-              active: false,
-            },
+            makeUser(1, "Alice", true, "Paris2"),
+            makeUser(2, "Bob", false, "Boston"),
+            makeUser(3, "Charlie", true, "Chicago"),
+            makeUser(4, "David", false, "Paris2"), // identical
+            makeUser(5, "Eve", true, "Boston"),    // identical
+            makeUser(6, "Frank", false, "Chicago"),
+            makeUser(7, "Grace", true, "Paris2"),
+            makeUser(8, "Helen", false, "Boston"),
+            makeUser(9, "Ivy", true, "Chicago"),
+            makeUser(10, "Jack", false, "Paris2"),
           ],
           settings: {
             theme: "dark",
             notifications: true,
+            version: "1.0.0",
+            features: ["compare", "merge", "export", "import"],
           },
         },
         null,
@@ -312,22 +344,78 @@
       right: JSON.stringify(
         {
           users: [
-            {
-              id: 1,
-              name: "Alice",
-              active: false,
-            },
-            {
-              id: 3,
-              name: "Charlie",
-              active: true,
-            },
+            makeUser(1, "Alice", true, "Paris2"),      // identical
+            makeUser(2, "Bob", false, "Boston"),       // identical
+            makeUser(3, "Charlie", false, "Chicago"),  // diff: active
+            makeUser(4, "David", false, "Paris2"),     // identical
+            makeUser(5, "Eve", true, "Boston"),        // identical
+            makeUser(6, "Frank", true, "Chicago"),     // diff: active
+            makeUser(7, "Grace", true, "Rome"),        // diff: city
+            makeUser(8, "Helen", false, "Boston"),     // identical
+            makeUser(9, "Ivy", true, "Chicago"),       // identical
+            makeUser(10, "Jack", false, "Paris2"),     // identical
           ],
           settings: {
             theme: "light",
-            notifications: true,
+            notifications: false,
+            version: "1.1.0",
+            features: ["compare", "merge", "export", "import", "zip"],
           },
         },
+        null,
+        3
+      ),
+    },
+    array: {
+      left: JSON.stringify(
+        [
+          makeUser(100, "Alice", true, "London"),
+          makeUser(101, "Bob", false, "Paris2"),
+          makeUser(102, "Charlie", true, "Berlin"),
+          makeUser(103, "David", false, "Dpn"),
+          makeUser(104, "Eve", true, "London"),    // identical
+          makeUser(105, "Frank", false, "Paris2"), // identical
+          makeUser(106, "Grace", true, "Berlin"),  // identical
+          makeUser(107, "Helen", false, "Dpn"),    // identical
+          makeUser(108, "Ivy", true, "London"),
+          makeUser(109, "Jack", false, "Paris2"),
+          makeUser(110, "Alice", true, "Berlin"),
+          makeUser(111, "Bob", false, "Dpn"),
+          makeUser(112, "Charlie", true, "London"),
+          makeUser(113, "David", false, "Paris2"),
+          makeUser(114, "Eve", true, "Berlin"),
+          makeUser(115, "Frank", false, "Dpn"),
+          makeUser(116, "Grace", true, "London"),
+          makeUser(117, "Helen", false, "Paris2"),
+          makeUser(118, "Ivy", true, "Berlin"),
+          makeUser(119, "Jack", false, "Dpn"),
+        ],
+        null,
+        3
+      ),
+      right: JSON.stringify(
+        [
+          makeUser(100, "Alice", true, "London"),      // identical
+          makeUser(101, "Bob", false, "Paris"),        // diff: city
+          makeUser(102, "Charlie", true, "Berlin"),    // identical
+          makeUser(103, "David", false, "Rome"),       // diff: city
+          makeUser(104, "Eve", true, "London"),        // identical
+          makeUser(105, "Frank", false, "Paris2"),     // identical
+          makeUser(106, "Grace", true, "Berlin"),      // identical
+          makeUser(107, "Helen", false, "Dpn"),        // identical
+          makeUser(108, "Ivy", true, "London"),        // identical
+          makeUser(109, "Jack", false, "Paris2"),      // identical
+          makeUser(110, "Alice", true, "Berlin"),      // identical
+          makeUser(111, "Bob", false, "Rome"),         // diff: city
+          makeUser(112, "Charlie", true, "London"),    // identical
+          makeUser(113, "David", false, "Paris2"),     // identical
+          makeUser(114, "Eve", true, "Berlin"),        // identical
+          makeUser(115, "Frank", false, "Dpn"),        // identical
+          makeUser(116, "Grace", true, "London"),      // identical
+          makeUser(117, "Helen", false, "Paris"),      // diff: city
+          makeUser(118, "Ivy", true, "Berlin"),        // identical
+          makeUser(119, "Jack", false, "Rome"),        // diff: city
+        ],
         null,
         3
       ),
