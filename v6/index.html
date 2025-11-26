@@ -42,6 +42,7 @@
     <script src="./utils/utils_zip.js"></script>
     <script src="./utils/utils_branch.js"></script>
     <script src="./utils/viewport_diff.js"></script>
+    <script src="./utils/semantic_diff.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -135,6 +136,17 @@
               </label>
               
               <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; padding-bottom: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; border-bottom: 2px solid #08c988; color: #333; letter-spacing: 0.3px;">DIFF VIEW SETTINGS</div>
+              
+              <div class="semantic-diff-toggle" style="display: flex; align-items: flex-start; margin-bottom: 12px; padding: 10px; border-radius: 6px; background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fc 100%); border: 1px solid #cce5ff;">
+                <input type="checkbox" id="setting-semantic-diff" checked style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px; flex: 1;">
+                  <div style="font-weight: 500; color: #004085; display: flex; align-items: center; gap: 6px;">
+                    🧬 Semantic JSON Diff
+                    <span style="font-size: 9px; padding: 2px 6px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; font-weight: 600; letter-spacing: 0.5px;">NEW</span>
+                  </div>
+                  <div style="color: #004085; font-size: 11px; margin-top: 3px; font-family: 'Segoe UI', system-ui, sans-serif; opacity: 0.85;">Structure-aware diff for arrays of objects. Shows added/removed/modified items clearly.</div>
+                </div>
+              </div>
               
               <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
                 <input type="checkbox" id="setting-highlight-changes" checked style="margin-top: 2px; cursor: pointer;" />
@@ -564,6 +576,9 @@
         initializeExtraSettingsPanel();
         initializeInfoDropdown();
         
+        // Initialize semantic diff engine
+        initSemanticDiff();
+        
         // Initialize branch system - load active branches if they exist
         await initializeBranches();
       }
@@ -636,6 +651,18 @@
         document.getElementById('setting-orientation').value = settings.orientation;
         document.getElementById('setting-revert-controls').value = settings.revertControls;
         document.getElementById('setting-scan-limit').value = settings.scanLimit;
+        
+        // Load semantic diff setting (default to true)
+        const semanticDiffEnabled = SettingsManager.get('semanticDiff');
+        const semanticDiffCheckbox = document.getElementById('setting-semantic-diff');
+        if (semanticDiffCheckbox) {
+          semanticDiffCheckbox.checked = semanticDiffEnabled !== false; // Default to true
+          semanticDiffCheckbox.addEventListener('change', (e) => {
+            SettingsManager.set('semanticDiff', e.target.checked);
+            updateDiffStatus(); // Recalculate diff with new setting
+          });
+        }
+        
         // Sync quick toggles
         const quickCollapse = document.getElementById('quick-collapse-unchanged');
         const quickHighlight = document.getElementById('quick-highlight-changes');
@@ -2393,6 +2420,137 @@
         updatePaneButtonVisibility();
       }
 
+      // Semantic diff instance
+      let semanticDiffer = null;
+      let lastSemanticDiffResult = null;
+      let semanticDecorationTimer = null;
+      
+      // Initialize semantic diff engine
+      function initSemanticDiff() {
+        if (window.SemanticJSONDiff) {
+          semanticDiffer = new window.SemanticJSONDiff();
+          console.log('[SemanticDiff] Initialized');
+        }
+      }
+
+      // Apply semantic diff decorations to the editors
+      function applySemanticDiffDecorations(diffResult) {
+        if (!diffResult || !mergeView) return;
+        
+        // Clear any pending decoration timer
+        if (semanticDecorationTimer) {
+          clearTimeout(semanticDecorationTimer);
+        }
+        
+        // Wait for CodeMirror to finish rendering
+        semanticDecorationTimer = setTimeout(() => {
+          const leftEditor = mergeView.a;
+          const rightEditor = mergeView.b;
+          
+          applySemanticLineClasses(leftEditor, diffResult.leftLineChanges, 'left');
+          applySemanticLineClasses(rightEditor, diffResult.rightLineChanges, 'right');
+        }, 100);
+      }
+      
+      // Apply CSS classes to lines based on semantic diff
+      function applySemanticLineClasses(editor, lineChanges, side) {
+        if (!editor || !lineChanges) return;
+        
+        const contentElement = editor.contentDOM;
+        if (!contentElement) return;
+        
+        // Get all line elements
+        const lineElements = contentElement.querySelectorAll('.cm-line');
+        
+        // First, remove all previous semantic classes from all lines
+        lineElements.forEach(el => {
+          el.classList.remove(
+            'cm-semantic-added-line',
+            'cm-semantic-removed-line',
+            'cm-semantic-modified-line',
+            'cm-semantic-unchanged-line',
+            'cm-semantic-field-added',
+            'cm-semantic-field-removed',
+            'cm-semantic-field-modified'
+          );
+        });
+        
+        // Apply new classes based on diff result
+        Object.entries(lineChanges).forEach(([lineNum, change]) => {
+          const lineIndex = parseInt(lineNum, 10);
+          if (lineIndex >= 0 && lineIndex < lineElements.length) {
+            const el = lineElements[lineIndex];
+            
+            switch (change.type) {
+              case 'added':
+                el.classList.add('cm-semantic-added-line');
+                break;
+              case 'removed':
+                el.classList.add('cm-semantic-removed-line');
+                break;
+              case 'modified':
+                el.classList.add('cm-semantic-modified-line');
+                // Highlight specific changed fields within this line
+                if (change.fieldDiff) {
+                  highlightChangedFields(el, change.fieldDiff, side);
+                }
+                break;
+            }
+          }
+        });
+        
+        console.log(`[SemanticDiff] Applied ${Object.keys(lineChanges).length} line decorations to ${side} editor`);
+      }
+      
+      // Highlight individual changed fields within a line
+      function highlightChangedFields(lineElement, fieldDiff, side) {
+        if (!fieldDiff) return;
+        
+        const lineText = lineElement.textContent;
+        
+        // Check if this line contains a modified field
+        const modifiedKeys = Object.keys(fieldDiff.modified || {});
+        const addedKeys = Object.keys(fieldDiff.added || {});
+        const removedKeys = Object.keys(fieldDiff.removed || {});
+        
+        // Find which key this line contains
+        const keyMatch = lineText.match(/"([^"]+)"\s*:/);
+        if (!keyMatch) return;
+        
+        const lineKey = keyMatch[1];
+        
+        // Apply appropriate highlighting based on side and change type
+        if (modifiedKeys.includes(lineKey)) {
+          // Modified field - highlight the value portion
+          lineElement.classList.add('cm-semantic-field-modified');
+        } else if (side === 'right' && addedKeys.includes(lineKey)) {
+          lineElement.classList.add('cm-semantic-field-added');
+        } else if (side === 'left' && removedKeys.includes(lineKey)) {
+          lineElement.classList.add('cm-semantic-field-removed');
+        }
+      }
+      
+      // Clear semantic diff decorations
+      function clearSemanticDecorations() {
+        if (!mergeView) return;
+        
+        [mergeView.a, mergeView.b].forEach(editor => {
+          if (!editor?.contentDOM) return;
+          const lineElements = editor.contentDOM.querySelectorAll('.cm-line');
+          lineElements.forEach(el => {
+            el.classList.remove(
+              'cm-semantic-added-line',
+              'cm-semantic-removed-line',
+              'cm-semantic-modified-line',
+              'cm-semantic-unchanged-line',
+              'cm-semantic-field-added',
+              'cm-semantic-field-removed',
+              'cm-semantic-field-modified'
+            );
+          });
+        });
+      }
+
       // Update diff status
       function updateDiffStatus() {
         const leftContent = mergeView.a.state.doc.toString().trim();
@@ -2401,13 +2559,55 @@
         
         if (!leftContent || !rightContent) {
           if (summaryDiv) summaryDiv.textContent = "Add content to both panels to compare";
+          lastSemanticDiffResult = null;
           return;
         }
 
         if (leftContent === rightContent) {
           if (summaryDiv) summaryDiv.textContent = "No differences found";
+          lastSemanticDiffResult = null;
           return;
         }
+        
+        // Check if semantic diff is enabled
+        const semanticDiffEnabled = document.getElementById('setting-semantic-diff')?.checked ?? true;
+        
+        // Try semantic diff first if enabled
+        if (semanticDiffEnabled && semanticDiffer) {
+          try {
+            const semanticResult = semanticDiffer.diff(leftContent, rightContent);
+            
+            if (semanticResult) {
+              lastSemanticDiffResult = semanticResult;
+              
+              // Apply visual decorations
+              applySemanticDiffDecorations(semanticResult);
+              
+              // Build summary message
+              const { summary } = semanticResult;
+              const parts = [];
+              
+              if (summary.added > 0) parts.push(`<span style="color:#28a745;font-weight:600;">+${summary.added}</span>`);
+              if (summary.removed > 0) parts.push(`<span style="color:#dc3545;font-weight:600;">−${summary.removed}</span>`);
+              if (summary.modified > 0) parts.push(`<span style="color:#ffc107;font-weight:600;">●${summary.modified}</span>`);
+              
+              if (parts.length > 0) {
+                const typeLabel = semanticResult.type === 'array-of-objects' ? 'objects' : 'fields';
+                summaryDiv.innerHTML = `<span class="semantic-diff-badge">Semantic</span> ${parts.join(' ')} ${typeLabel} changed`;
+              } else {
+                summaryDiv.textContent = "No differences found";
+              }
+              
+              return;
+            }
+          } catch (err) {
+            console.warn('Semantic diff failed, falling back to text diff:', err);
+          }
+        }
+        
+        // Clear semantic decorations if not using semantic diff
+        lastSemanticDiffResult = null;
+        clearSemanticDecorations();
         
         // If viewport diff mode is enabled, use that instead
         if (viewportDiffManager?.enabled) {

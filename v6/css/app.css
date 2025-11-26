@@ -1045,3 +1045,277 @@ select.toggle-button {
         font-size: 11px;
     }
 }
+
+/* ============================================================
+   SEMANTIC JSON DIFF STYLES
+   Structure-aware diff highlighting for arrays of objects
+   Like Proxyman's industry-leading JSON diff visualization
+   ============================================================ */
+
+/* Object-level: Added object (entire block) */
+.semantic-added-object {
+    background-color: #d4edda !important;
+    border-left: 4px solid #28a745 !important;
+}
+
+.semantic-added-object .cm-line {
+    background-color: #d4edda !important;
+}
+
+/* Object-level: Removed object (entire block) */
+.semantic-removed-object {
+    background-color: #f8d7da !important;
+    border-left: 4px solid #dc3545 !important;
+}
+
+.semantic-removed-object .cm-line {
+    background-color: #f8d7da !important;
+}
+
+/* Object-level: Modified object container (subtle) */
+.semantic-modified-object {
+    background-color: #fff8e1 !important;
+    border-left: 4px solid #ffc107 !important;
+}
+
+/* Line-level semantic markers */
+.cm-semantic-added-line {
+    background-color: #e6ffec !important;
+}
+
+.cm-semantic-removed-line {
+    background-color: #ffebe9 !important;
+}
+
+.cm-semantic-modified-line {
+    background-color: #fff8e1 !important;
+}
+
+.cm-semantic-unchanged-line {
+    background-color: transparent !important;
+}
+
+/* Field-level: Changed field key-value pair */
+.cm-semantic-field-added {
+    background-color: #acf2bd !important;
+    border-radius: 2px;
+    padding: 0 2px;
+}
+
+.cm-semantic-field-removed {
+    background-color: #ffc1ba !important;
+    border-radius: 2px;
+    padding: 0 2px;
+    text-decoration: line-through;
+    text-decoration-color: #dc3545;
+}
+
+.cm-semantic-field-modified {
+    background-color: #ffe9a6 !important;
+    border-radius: 2px;
+    padding: 0 2px;
+}
+
+/* Value-level highlighting within modified fields */
+.cm-semantic-value-old {
+    background-color: #ffc1ba !important;
+    text-decoration: line-through;
+    text-decoration-color: rgba(220, 53, 69, 0.5);
+}
+
+.cm-semantic-value-new {
+    background-color: #acf2bd !important;
+    font-weight: 500;
+}
+
+/* Diff gutter markers for semantic diff */
+.cm-semantic-gutter-added {
+    color: #28a745 !important;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.cm-semantic-gutter-added::before {
+    content: '+';
+}
+
+.cm-semantic-gutter-removed {
+    color: #dc3545 !important;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.cm-semantic-gutter-removed::before {
+    content: '−';
+}
+
+.cm-semantic-gutter-modified {
+    color: #ffc107 !important;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.cm-semantic-gutter-modified::before {
+    content: '●';
+}
+
+/* Status badge for semantic diff mode */
+.semantic-diff-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+    margin-left: 8px;
+}
+
+.semantic-diff-badge::before {
+    content: '🧬';
+    font-size: 11px;
+}
+
+/* Summary box for semantic diff */
+.semantic-diff-summary {
+    display: flex;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    font-size: 12px;
+    margin: 4px 0;
+}
+
+.semantic-diff-stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.semantic-diff-stat.added {
+    color: #28a745;
+}
+
+.semantic-diff-stat.removed {
+    color: #dc3545;
+}
+
+.semantic-diff-stat.modified {
+    color: #ffc107;
+}
+
+.semantic-diff-stat-count {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.semantic-diff-stat-label {
+    color: #666;
+}
+
+/* Object boundary indicators */
+.cm-semantic-object-start {
+    position: relative;
+}
+
+.cm-semantic-object-start::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, currentColor, transparent);
+    opacity: 0.3;
+}
+
+.cm-semantic-object-end {
+    position: relative;
+}
+
+.cm-semantic-object-end::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, currentColor, transparent);
+    opacity: 0.3;
+}
+
+/* Semantic diff toggle in settings */
+.semantic-diff-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.semantic-diff-toggle-icon {
+    font-size: 16px;
+}
+
+.semantic-diff-toggle-label {
+    flex: 1;
+}
+
+.semantic-diff-toggle-label strong {
+    display: block;
+    font-size: 13px;
+    color: #333;
+}
+
+.semantic-diff-toggle-label span {
+    display: block;
+    font-size: 11px;
+    color: #666;
+    margin-top: 2px;
+}
+
+/* Dark theme support for semantic diff */
+.cm-theme-dark .semantic-added-object,
+.cm-theme-dark .cm-semantic-added-line {
+    background-color: rgba(40, 167, 69, 0.2) !important;
+}
+
+.cm-theme-dark .semantic-removed-object,
+.cm-theme-dark .cm-semantic-removed-line {
+    background-color: rgba(220, 53, 69, 0.2) !important;
+}
+
+.cm-theme-dark .semantic-modified-object,
+.cm-theme-dark .cm-semantic-modified-line {
+    background-color: rgba(255, 193, 7, 0.15) !important;
+}
+
+.cm-theme-dark .cm-semantic-field-added {
+    background-color: rgba(40, 167, 69, 0.35) !important;
+}
+
+.cm-theme-dark .cm-semantic-field-removed {
+    background-color: rgba(220, 53, 69, 0.35) !important;
+}
+
+.cm-theme-dark .cm-semantic-field-modified {
+    background-color: rgba(255, 193, 7, 0.3) !important;
+}
+
+.cm-theme-dark .semantic-diff-summary {
+    background: #2d2d2d;
+    border-color: #444;
+}
+
+.cm-theme-dark .semantic-diff-stat-label {
+    color: #aaa;
+}
