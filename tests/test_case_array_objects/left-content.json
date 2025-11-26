@@ -1,0 +1,46 @@
+[
+  {
+    "batters": {
+      "batter": [
+        {
+          "id": "1001",
+          "type": "Regular"
+        },
+        {
+          "id": "1002",
+          "type": "Chocolate"
+        },
+        {
+          "id": "1003",
+          "type": "Blueberry"
+        },
+        {
+          "id": "1004",
+          "type": "Devil's Food"
+        }
+      ]
+    },
+    "id": "0002",
+    "name": "Cake",
+    "ppu": 0.55,
+    "topping": [
+      {
+        "id": "5001",
+        "type": "None"
+      },
+      {
+        "id": "5002",
+        "type": "Glazed"
+      },
+      {
+        "id": "5004",
+        "type": "Maple"
+      },
+      {
+        "id": "5007",
+        "type": "Powdered Sugar"
+      }
+    ],
+    "type": "Ice Cream"
+  }
+]

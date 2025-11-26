@@ -1,3 +1,32 @@
+# Plan: Semantic Structure-Aware JSON Diff Engine
+
+Transform the current text-based diff into an object-aware semantic diff that detects Added/Removed/Modified objects in arrays and highlights only the specific fields that differ within modified objects—replicating Proxyman's superior UX.
+
+### Steps
+
+1. **Create semantic diff engine** in `v6/utils/semantic_diff.js` — Implement `computeSemanticDiff(leftJSON, rightJSON)` that returns structured diff with change types (added/removed/modified) and JSON paths for each difference.
+
+2. **Implement key-agnostic array element matching** in the same file — Use content similarity scoring (Jaccard index or deep-equality count) to match objects across left/right arrays without relying on `id` or specific keys.
+
+3. **Add JSON canonicalization** in json_utils.js — Create `canonicalizeJSON()` to sort keys alphabetically and normalize values (numbers, whitespace) before diff, eliminating false positives from key reordering.
+
+4. **Create custom CodeMirror ViewPlugin** in `v6/utils/semantic_diff_view.js` — Apply semantic decorations (colored backgrounds, gutter markers) on top of MergeView using `RangeSet` to show object-level change indicators.
+
+5. **Integrate with MergeView lifecycle** in index.html lines 500-533 and 1071-1113 — Add semantic diff toggle to settings, call semantic differ after content changes, and apply decorations via the ViewPlugin.
+
+6. **Add UI controls and validate with test cases** — Wire up "Semantic Diff" toggle in the settings panel (lines 137-198), test against existing semantic_diff_test_data.json and test_case_array_objects.
+
+### Further Considerations
+
+1. **Performance for large files?** Consider running semantic diff in the existing Web Worker (`v6/utils/viewport_diff.js`) for files >100KB, or limit semantic analysis to visible viewport.
+
+2. **How to handle nested arrays?** Recursive semantic diff at all levels (full depth) vs. shallow (top-level arrays only)? Recommend configurable depth limit defaulting to 3 levels.
+
+3. **Preserve MergeView's native diff or replace entirely?** Option A: Overlay semantic decorations on top (additive) / Option B: Pre-canonicalize JSON so MergeView shows cleaner diff / Option C: Both combined for best results.
+
+---
+
+
 ## Plan: Structure-Aware JSON Diff for Arrays of Objects
 
 **TL;DR:** Replace the current line-by-line text diff engine with a semantic, JSON-aware diff algorithm that understands object-level changes (additions, deletions, modifications), matches objects intelligently without relying on ID fields, and highlights granular field-level differences within modified objects. Implement custom decorations in CodeMirror 6 to visualize these semantic changes with intuitive colors and markers.
