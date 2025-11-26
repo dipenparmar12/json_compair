@@ -40,6 +40,7 @@
     <script src="./utils/json_utils.js"></script>
     <script src="./utils/utils_csv.js"></script>
     <script src="./utils/utils_zip.js"></script>
+    <script src="./utils/utils_branch.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -440,7 +441,10 @@
       let mergeView = null;
 
       // Initialize the application
-      function initializeApp() {
+      async function initializeApp() {
+        // Initialize BranchManager first
+        await window.BranchManager.init();
+        
         // Load content from URL parameters first, then from storage, then use defaults
         const urlContent = URLManager.loadFromURL();
         const savedContent = StorageManager.loadFromStorage();
@@ -536,6 +540,50 @@
         initializeQuickToggles();
         initializeExtraSettingsPanel();
         initializeInfoDropdown();
+        
+        // Initialize branch system - load active branches if they exist
+        await initializeBranches();
+      }
+      
+      // Initialize branch system and load saved branches
+      async function initializeBranches() {
+        // Load active branch IDs from settings
+        const leftBranchId = SettingsManager.get('leftBranch') || 'main';
+        const rightBranchId = SettingsManager.get('rightBranch') || 'main';
+        
+        // Update active branches tracker
+        activeBranches.left = leftBranchId;
+        activeBranches.right = rightBranchId;
+        
+        // Try to load content from saved branches (if not already loaded from URL/storage)
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+        
+        // If editors are empty or have default template, try loading from branches
+        const isDefaultTemplate = leftContent === DefaultTemplates.simple.left.trim() && 
+                                  rightContent === DefaultTemplates.simple.right.trim();
+        
+        if (!leftContent || isDefaultTemplate) {
+          const leftBranch = await window.BranchManager.getBranch(leftBranchId);
+          if (leftBranch && leftBranch.content) {
+            mergeView.a.dispatch({
+              changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftBranch.content }
+            });
+          }
+        }
+        
+        if (!rightContent || isDefaultTemplate) {
+          const rightBranch = await window.BranchManager.getBranch(rightBranchId);
+          if (rightBranch && rightBranch.content) {
+            mergeView.b.dispatch({
+              changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightBranch.content }
+            });
+          }
+        }
+        
+        // Update branch selectors
+        updateBranchSelectors();
+        updateDiffStatus();
       }
 
       // Load merge settings from localStorage
@@ -968,46 +1016,323 @@
         // Add CSV conversion button (initially hidden)
         addCSVConversionButton(paneElement, side);
         
-        // Add panel name input at bottom-right
-        addPanelNameInput(paneElement, side);
+        // Add branch selector at bottom-right (replaces panel name input)
+        addBranchSelector(paneElement, side);
         
         // Initial visibility update
         updatePaneButtonVisibility();
         updateCSVConversionButtons();
       }
       
-      // Add panel name input at bottom-right of each pane
-      function addPanelNameInput(paneElement, side) {
+      // Track active branches per side
+      let activeBranches = {
+        left: SettingsManager.get('leftBranch') || 'main',
+        right: SettingsManager.get('rightBranch') || 'main'
+      };
+      
+      // Track if content is modified from saved branch
+      let branchModified = {
+        left: false,
+        right: false
+      };
+      
+      // Add branch selector dropdown at bottom-right of each pane
+      function addBranchSelector(paneElement, side) {
         const container = document.createElement('div');
-        container.className = `panel-name-container panel-name-${side}`;
+        container.className = `branch-selector-container branch-selector-${side}`;
+        container.id = `branch-container-${side}`;
         
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'panel-name-input';
-        input.id = `panel-name-${side}`;
-        input.placeholder = side === 'left' ? 'Source name...' : 'Target name...';
-        input.title = `Name or ID for ${side} panel (e.g., "Production", "v2.1", "API Response")`;
+        // Modified indicator
+        const modifiedIndicator = document.createElement('span');
+        modifiedIndicator.className = 'branch-modified-indicator';
+        modifiedIndicator.id = `branch-modified-${side}`;
+        modifiedIndicator.textContent = '●';
+        modifiedIndicator.title = 'Unsaved changes';
+        modifiedIndicator.style.display = 'none';
         
-        // Load saved panel name
-        const savedName = SettingsManager.get(side === 'left' ? 'leftPanelName' : 'rightPanelName');
-        if (savedName) {
-          input.value = savedName;
+        // Branch name display / button
+        const branchBtn = document.createElement('button');
+        branchBtn.className = 'branch-selector-btn';
+        branchBtn.id = `branch-btn-${side}`;
+        branchBtn.title = 'Switch branch';
+        
+        // Dropdown menu
+        const dropdown = document.createElement('div');
+        dropdown.className = 'branch-dropdown';
+        dropdown.id = `branch-dropdown-${side}`;
+        dropdown.style.display = 'none';
+        
+        // Update button text
+        const updateBranchButton = () => {
+          const branchId = activeBranches[side];
+          const branches = window.BranchManager.listBranches();
+          const branch = branches.find(b => b.id === branchId);
+          branchBtn.innerHTML = `<span class="branch-icon">🌿</span> ${branch ? branch.name : branchId} <span class="branch-arrow">▼</span>`;
+        };
+        
+        // Populate dropdown
+        const populateDropdown = async () => {
+          dropdown.innerHTML = '';
+          const branches = window.BranchManager.listBranches();
+          
+          // Branch list
+          branches.forEach(branch => {
+            const item = document.createElement('div');
+            item.className = 'branch-dropdown-item';
+            if (branch.id === activeBranches[side]) {
+              item.classList.add('active');
+            }
+            item.innerHTML = `<span class="branch-item-icon">🌿</span> ${branch.name}`;
+            item.onclick = async (e) => {
+              e.stopPropagation();
+              await switchBranch(side, branch.id);
+              dropdown.style.display = 'none';
+            };
+            dropdown.appendChild(item);
+          });
+          
+          // Divider
+          const divider = document.createElement('div');
+          divider.className = 'branch-dropdown-divider';
+          dropdown.appendChild(divider);
+          
+          // New Branch option
+          const newBranchItem = document.createElement('div');
+          newBranchItem.className = 'branch-dropdown-item branch-action';
+          newBranchItem.innerHTML = '<span class="branch-item-icon">➕</span> New Branch';
+          newBranchItem.onclick = async (e) => {
+            e.stopPropagation();
+            dropdown.style.display = 'none';
+            await createNewBranch(side);
+          };
+          dropdown.appendChild(newBranchItem);
+          
+          // Rename option (only if not main)
+          if (activeBranches[side] !== 'main') {
+            const renameItem = document.createElement('div');
+            renameItem.className = 'branch-dropdown-item branch-action';
+            renameItem.innerHTML = '<span class="branch-item-icon">✏️</span> Rename Branch';
+            renameItem.onclick = async (e) => {
+              e.stopPropagation();
+              dropdown.style.display = 'none';
+              await renameBranch(side);
+            };
+            dropdown.appendChild(renameItem);
+          }
+          
+          // Delete option (only if not main)
+          if (activeBranches[side] !== 'main') {
+            const deleteItem = document.createElement('div');
+            deleteItem.className = 'branch-dropdown-item branch-action branch-delete';
+            deleteItem.innerHTML = '<span class="branch-item-icon">🗑️</span> Delete Branch';
+            deleteItem.onclick = async (e) => {
+              e.stopPropagation();
+              dropdown.style.display = 'none';
+              await deleteBranch(side);
+            };
+            dropdown.appendChild(deleteItem);
+          }
+          
+          // Save current option
+          const saveItem = document.createElement('div');
+          saveItem.className = 'branch-dropdown-item branch-action';
+          saveItem.innerHTML = '<span class="branch-item-icon">💾</span> Save to Branch';
+          saveItem.onclick = async (e) => {
+            e.stopPropagation();
+            dropdown.style.display = 'none';
+            await saveCurrentToBranch(side);
+          };
+          dropdown.appendChild(saveItem);
+        };
+        
+        // Toggle dropdown
+        branchBtn.onclick = async (e) => {
+          e.stopPropagation();
+          const isVisible = dropdown.style.display !== 'none';
+          
+          // Close all other dropdowns
+          document.querySelectorAll('.branch-dropdown').forEach(d => d.style.display = 'none');
+          
+          if (!isVisible) {
+            await populateDropdown();
+            dropdown.style.display = 'block';
+          }
+        };
+        
+        // Close dropdown on outside click
+        document.addEventListener('click', () => {
+          dropdown.style.display = 'none';
+        });
+        
+        container.appendChild(modifiedIndicator);
+        container.appendChild(branchBtn);
+        container.appendChild(dropdown);
+        paneElement.appendChild(container);
+        
+        // Initial button text
+        updateBranchButton();
+        
+        // Store reference for updates
+        container._updateButton = updateBranchButton;
+        container._populateDropdown = populateDropdown;
+      }
+      
+      // Switch to a different branch
+      async function switchBranch(side, newBranchId) {
+        const currentBranchId = activeBranches[side];
+        
+        if (currentBranchId === newBranchId) return;
+        
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const currentContent = editor.state.doc.toString();
+        
+        // Auto-save current content to current branch before switching
+        if (currentContent.trim()) {
+          await window.BranchManager.saveBranch(currentBranchId, currentContent, {
+            source: 'auto-save'
+          });
         }
         
-        // Save on change
-        input.addEventListener('input', () => {
-          const settingKey = side === 'left' ? 'leftPanelName' : 'rightPanelName';
-          SettingsManager.set(settingKey, input.value);
+        // Load new branch
+        const newBranch = await window.BranchManager.getBranch(newBranchId);
+        const newContent = newBranch ? newBranch.content : '';
+        
+        // Update editor content
+        editor.dispatch({
+          changes: { from: 0, to: editor.state.doc.length, insert: newContent }
         });
         
-        // Save on blur (for mobile/touch)
-        input.addEventListener('blur', () => {
-          const settingKey = side === 'left' ? 'leftPanelName' : 'rightPanelName';
-          SettingsManager.set(settingKey, input.value);
-        });
+        // Update active branch
+        activeBranches[side] = newBranchId;
+        SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', newBranchId);
         
-        container.appendChild(input);
-        paneElement.appendChild(container);
+        // Update panel name from branch name
+        if (newBranch) {
+          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', newBranch.name);
+        }
+        
+        // Reset modified state
+        branchModified[side] = false;
+        updateBranchModifiedIndicator(side);
+        
+        // Update UI
+        updateBranchSelectors();
+        updateDiffStatus();
+        updateStatus(`Switched to branch: ${newBranch ? newBranch.name : newBranchId}`);
+      }
+      
+      // Create a new branch
+      async function createNewBranch(side) {
+        const name = prompt('Enter new branch name:', '');
+        if (!name || !name.trim()) return;
+        
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const content = editor.state.doc.toString();
+        
+        try {
+          const branch = await window.BranchManager.createBranch(name.trim(), content, {
+            source: 'manual'
+          });
+          
+          // Switch to new branch
+          activeBranches[side] = branch.id;
+          SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', branch.id);
+          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', branch.name);
+          
+          branchModified[side] = false;
+          updateBranchModifiedIndicator(side);
+          updateBranchSelectors();
+          updateStatus(`Created branch: ${branch.name}`);
+        } catch (err) {
+          showErrorMessage('Failed to create branch: ' + err.message);
+        }
+      }
+      
+      // Rename current branch
+      async function renameBranch(side) {
+        const currentId = activeBranches[side];
+        const branches = window.BranchManager.listBranches();
+        const current = branches.find(b => b.id === currentId);
+        
+        const newName = prompt('Enter new name:', current ? current.name : currentId);
+        if (!newName || !newName.trim()) return;
+        
+        try {
+          await window.BranchManager.renameBranch(currentId, newName.trim());
+          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', newName.trim());
+          updateBranchSelectors();
+          updateStatus(`Renamed branch to: ${newName.trim()}`);
+        } catch (err) {
+          showErrorMessage('Failed to rename branch: ' + err.message);
+        }
+      }
+      
+      // Delete current branch
+      async function deleteBranch(side) {
+        const currentId = activeBranches[side];
+        const branches = window.BranchManager.listBranches();
+        const current = branches.find(b => b.id === currentId);
+        
+        if (!confirm(`Delete branch "${current ? current.name : currentId}"? This cannot be undone.`)) {
+          return;
+        }
+        
+        try {
+          await window.BranchManager.deleteBranch(currentId);
+          
+          // Switch to main branch
+          await switchBranch(side, 'main');
+          updateStatus(`Deleted branch: ${current ? current.name : currentId}`);
+        } catch (err) {
+          showErrorMessage('Failed to delete branch: ' + err.message);
+        }
+      }
+      
+      // Save current content to branch
+      async function saveCurrentToBranch(side) {
+        const currentId = activeBranches[side];
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const content = editor.state.doc.toString();
+        
+        try {
+          await window.BranchManager.saveBranch(currentId, content, {
+            source: 'manual-save'
+          });
+          
+          branchModified[side] = false;
+          updateBranchModifiedIndicator(side);
+          updateStatus('Branch saved');
+        } catch (err) {
+          showErrorMessage('Failed to save branch: ' + err.message);
+        }
+      }
+      
+      // Update modified indicator for a side
+      function updateBranchModifiedIndicator(side) {
+        const indicator = document.getElementById(`branch-modified-${side}`);
+        if (indicator) {
+          indicator.style.display = branchModified[side] ? 'inline' : 'none';
+        }
+      }
+      
+      // Update all branch selectors
+      function updateBranchSelectors() {
+        ['left', 'right'].forEach(side => {
+          const container = document.getElementById(`branch-container-${side}`);
+          if (container && container._updateButton) {
+            container._updateButton();
+          }
+        });
+      }
+      
+      // Check if content is modified from saved branch (called on content change)
+      async function checkBranchModified(side) {
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const content = editor.state.doc.toString();
+        const branchId = activeBranches[side];
+        
+        branchModified[side] = await window.BranchManager.isModified(branchId, content);
+        updateBranchModifiedIndicator(side);
       }
       
       // Add CSV to JSON conversion button at bottom of pane
@@ -1078,16 +1403,10 @@
       }
       
       // Update panel name inputs from settings (used after import/URL load)
+      // Now also updates branch selectors
       function updatePanelNameInputs() {
-        const leftInput = document.getElementById('panel-name-left');
-        const rightInput = document.getElementById('panel-name-right');
-        
-        if (leftInput) {
-          leftInput.value = SettingsManager.get('leftPanelName') || '';
-        }
-        if (rightInput) {
-          rightInput.value = SettingsManager.get('rightPanelName') || '';
-        }
+        // Update branch selectors with current branch names
+        updateBranchSelectors();
       }
 
       // Update visibility of copy/clear buttons based on content
@@ -1377,6 +1696,22 @@
 
           URLManager.clearURL();
           
+          // Import branches if present in snapshot
+          if (data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0) {
+            try {
+              const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
+              console.log('Branches imported:', importResult);
+              
+              // Update active branches from settings if present
+              if (data.settings) {
+                activeBranches.left = data.settings.leftBranch || 'main';
+                activeBranches.right = data.settings.rightBranch || 'main';
+              }
+            } catch (err) {
+              console.warn('Failed to import branches:', err);
+            }
+          }
+          
           // Recreate merge view with new settings if they were present
           if (data.settings && typeof data.settings === 'object') {
             setTimeout(() => {
@@ -1392,8 +1727,8 @@
               initializeSettingsPanel();
               initializeThemeSelector();
               
-              // Update panel name inputs with imported values
-              updatePanelNameInputs();
+              // Update branch selectors with imported values
+              updateBranchSelectors();
             }, 100);
           }
           
@@ -1649,6 +1984,10 @@
             });
           }
         }
+        
+        // Mark branches as modified (check in background)
+        checkBranchModified('left');
+        checkBranchModified('right');
 
         updateClearButtonVisibility();
         updateDiffStatus();

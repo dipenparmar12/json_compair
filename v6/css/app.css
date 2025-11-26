@@ -789,3 +789,198 @@ select.toggle-button {
         width: 130px;
     }
 }
+
+/* ============================================================
+   BRANCH SELECTOR STYLES
+   Git-like branch switching for JSON Compare panels
+   ============================================================ */
+
+.branch-selector-container {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.branch-modified-indicator {
+    color: #f0ad4e;
+    font-size: 10px;
+    margin-right: 2px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+.branch-selector-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #555;
+    background: rgba(248, 249, 250, 0.95);
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+.branch-selector-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.98);
+    border-color: #08c988;
+    color: #333;
+}
+
+.branch-selector-btn:active {
+    transform: scale(0.98);
+}
+
+.branch-icon {
+    font-size: 12px;
+}
+
+.branch-arrow {
+    font-size: 8px;
+    opacity: 0.6;
+    margin-left: 2px;
+}
+
+.branch-dropdown {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 4px;
+    min-width: 180px;
+    max-width: 250px;
+    max-height: 300px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    z-index: 1001;
+}
+
+.branch-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.branch-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.branch-dropdown-item:hover {
+    background: #f8f9fa;
+}
+
+.branch-dropdown-item.active {
+    background: #e8f5e9;
+    color: #08c988;
+    font-weight: 600;
+}
+
+.branch-dropdown-item.active::before {
+    content: '✓';
+    margin-right: 4px;
+    font-size: 10px;
+}
+
+.branch-item-icon {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.branch-dropdown-divider {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 4px 0;
+}
+
+.branch-dropdown-item.branch-action {
+    color: #666;
+    font-size: 11px;
+}
+
+.branch-dropdown-item.branch-action:hover {
+    background: #f0f8ff;
+}
+
+.branch-dropdown-item.branch-delete {
+    color: #dc3545;
+}
+
+.branch-dropdown-item.branch-delete:hover {
+    background: #fff5f5;
+}
+
+/* Dark theme support for branch selector */
+.cm-editor[style*="background-color: rgb(30"] .branch-selector-btn,
+.cm-theme-dark .branch-selector-btn {
+    background: rgba(50, 50, 50, 0.95);
+    color: #aaa;
+    border-color: #555;
+}
+
+.cm-theme-dark .branch-selector-btn:hover {
+    background: rgba(60, 60, 60, 0.98);
+    border-color: #08c988;
+    color: #ccc;
+}
+
+.cm-theme-dark .branch-dropdown {
+    background: #2d2d2d;
+    border-color: #444;
+}
+
+.cm-theme-dark .branch-dropdown-item {
+    color: #ccc;
+    border-bottom-color: #3a3a3a;
+}
+
+.cm-theme-dark .branch-dropdown-item:hover {
+    background: #3a3a3a;
+}
+
+.cm-theme-dark .branch-dropdown-item.active {
+    background: #1e3a2f;
+    color: #08c988;
+}
+
+.cm-theme-dark .branch-dropdown-divider {
+    background: #444;
+}
+
+/* Responsive - smaller on mobile */
+@media (max-width: 768px) {
+    .branch-selector-btn {
+        padding: 3px 8px;
+        font-size: 10px;
+    }
+    
+    .branch-dropdown {
+        min-width: 150px;
+    }
+    
+    .branch-dropdown-item {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+}

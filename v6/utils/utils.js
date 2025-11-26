@@ -227,9 +227,12 @@
       revertControls: "none",
       scanLimit: 6000,     // Increased from 500 to better detect identical lines in different positions
       timeout: 5000,        // Max 5 seconds for detailed diff computation
-      // Panel names for UX
+      // Panel names for UX (deprecated, replaced by branches)
       leftPanelName: "",    // Name/ID for left panel
       rightPanelName: "",   // Name/ID for right panel
+      // Branch settings - track active branch per panel
+      leftBranch: "main",   // Active branch ID for left panel
+      rightBranch: "main",  // Active branch ID for right panel
     },
 
     loadAll: function () {
