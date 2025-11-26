@@ -13,3 +13,5 @@ exec(`python3 -m http.server ${PORT}`, (error, stdout, stderr) => {
     }
     console.log(`Python HTTP server started on port ${PORT}`);
 });
+
+// lsof -ti:8000 | xargs kill -9 2>/dev/null; sleep 1; python3 -m http.server 8000
