@@ -341,6 +341,147 @@ ins {
     opacity: 0.9;
 }
 
+/* JSON→CSV conversion button */
+.json-convert-btn {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    z-index: 100;
+    font-size: 11px;
+    padding: 4px 8px;
+    background: white;
+    border: 1px solid #28a745;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.json-convert-btn.visible {
+    opacity: 0.7;
+    pointer-events: auto;
+}
+
+.json-convert-btn.visible:hover {
+    opacity: 1;
+    background: #e6f4ea;
+}
+
+.cm-mergeViewEditor:hover .json-convert-btn.visible {
+    opacity: 0.9;
+}
+
+/* Export dropdown container */
+.export-dropdown-container {
+    position: absolute;
+    bottom: 10px;
+    left: 110px;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.export-dropdown-container.visible {
+    opacity: 0.7;
+    pointer-events: auto;
+}
+
+.export-dropdown-container.visible:hover {
+    opacity: 1;
+}
+
+.cm-mergeViewEditor:hover .export-dropdown-container.visible {
+    opacity: 0.9;
+}
+
+.export-dropdown-btn {
+    font-size: 11px;
+    padding: 4px 8px;
+    background: white;
+    border: 1px solid #6c757d;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.export-dropdown-btn:hover {
+    background: #f8f9fa;
+    border-color: #495057;
+}
+
+.export-dropdown-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 4px;
+    min-width: 140px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+}
+
+.export-dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 11px;
+    text-align: left;
+    background: white;
+    border: none;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.export-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.export-dropdown-item:hover {
+    background: #f8f9fa;
+}
+
+/* Dark theme support for conversion buttons */
+.cm-theme-dark .csv-convert-btn,
+.cm-theme-dark .json-convert-btn {
+    background: #2d2d2d;
+    color: #ccc;
+}
+
+.cm-theme-dark .csv-convert-btn:hover,
+.cm-theme-dark .json-convert-btn:hover {
+    background: #3d3d3d;
+}
+
+.cm-theme-dark .export-dropdown-btn {
+    background: #2d2d2d;
+    color: #ccc;
+    border-color: #555;
+}
+
+.cm-theme-dark .export-dropdown-btn:hover {
+    background: #3d3d3d;
+}
+
+.cm-theme-dark .export-dropdown-menu {
+    background: #2d2d2d;
+    border-color: #444;
+}
+
+.cm-theme-dark .export-dropdown-item {
+    background: #2d2d2d;
+    color: #ccc;
+    border-bottom-color: #444;
+}
+
+.cm-theme-dark .export-dropdown-item:hover {
+    background: #3d3d3d;
+}
+
 .pane-wrapper {
     position: relative;
     flex: 1;

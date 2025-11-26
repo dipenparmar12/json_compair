@@ -1269,12 +1269,18 @@
         // Add CSV conversion button (initially hidden)
         addCSVConversionButton(paneElement, side);
         
+        // Add JSON→CSV conversion button (initially hidden)
+        addJSONToCSVButton(paneElement, side);
+        
+        // Add export dropdown (initially hidden)
+        addExportDropdown(paneElement, side);
+        
         // Add branch selector at bottom-right (replaces panel name input)
         addBranchSelector(paneElement, side);
         
         // Initial visibility update
         updatePaneButtonVisibility();
-        updateCSVConversionButtons();
+        updateConversionButtons();
       }
       
       // Track active branches per side
@@ -1743,34 +1749,217 @@
         paneElement.appendChild(convertBtn);
       }
       
-      // Update CSV conversion button visibility based on content
-      function updateCSVConversionButtons() {
+      // Add JSON to CSV conversion button at bottom of pane (next to CSV→JSON)
+      function addJSONToCSVButton(paneElement, side) {
+        const convertBtn = document.createElement('button');
+        convertBtn.className = `json-convert-btn json-convert-${side}`;
+        convertBtn.textContent = '📄 JSON→CSV';
+        convertBtn.title = 'Convert this JSON array to CSV format';
+        
+        convertBtn.onclick = async () => {
+          const editor = side === 'left' ? mergeView.a : mergeView.b;
+          const text = editor.state.doc.toString();
+          
+          try {
+            const csvContent = window.CSVUtils.jsonToCSV(text);
+            
+            editor.dispatch({
+              changes: { from: 0, to: editor.state.doc.length, insert: csvContent }
+            });
+            
+            showConversionMessage("JSON converted to CSV successfully");
+            
+            // Force immediate refresh
+            setTimeout(() => {
+              refreshMergeViewIfNeeded();
+              updateDiffStatus();
+              updatePaneButtonVisibility();
+              updateConversionButtons();
+            }, 100);
+          } catch (err) {
+            showErrorMessage("JSON→CSV conversion failed: " + err.message);
+          }
+        };
+        
+        paneElement.appendChild(convertBtn);
+      }
+      
+      // Add export dropdown button at bottom of pane
+      function addExportDropdown(paneElement, side) {
+        const container = document.createElement('div');
+        container.className = `export-dropdown-container export-dropdown-${side}`;
+        
+        const exportBtn = document.createElement('button');
+        exportBtn.className = 'export-dropdown-btn';
+        exportBtn.textContent = '📥 Export';
+        exportBtn.title = 'Export content as file';
+        
+        const dropdown = document.createElement('div');
+        dropdown.className = 'export-dropdown-menu';
+        dropdown.style.display = 'none';
+        
+        // Export as JSON option
+        const exportJSON = document.createElement('button');
+        exportJSON.className = 'export-dropdown-item';
+        exportJSON.textContent = '📋 Export as JSON';
+        exportJSON.onclick = (e) => {
+          e.stopPropagation();
+          exportPanelContent(side, 'json');
+          dropdown.style.display = 'none';
+        };
+        
+        // Export as CSV option
+        const exportCSV = document.createElement('button');
+        exportCSV.className = 'export-dropdown-item';
+        exportCSV.textContent = '📊 Export as CSV';
+        exportCSV.onclick = (e) => {
+          e.stopPropagation();
+          exportPanelContent(side, 'csv');
+          dropdown.style.display = 'none';
+        };
+        
+        dropdown.appendChild(exportJSON);
+        dropdown.appendChild(exportCSV);
+        
+        // Toggle dropdown
+        exportBtn.onclick = (e) => {
+          e.stopPropagation();
+          const isOpen = dropdown.style.display === 'block';
+          // Close all other dropdowns first
+          document.querySelectorAll('.export-dropdown-menu').forEach(d => d.style.display = 'none');
+          dropdown.style.display = isOpen ? 'none' : 'block';
+        };
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!container.contains(e.target)) {
+            dropdown.style.display = 'none';
+          }
+        });
+        
+        container.appendChild(exportBtn);
+        container.appendChild(dropdown);
+        paneElement.appendChild(container);
+      }
+      
+      // Export panel content as JSON or CSV file
+      function exportPanelContent(side, format) {
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const content = editor.state.doc.toString().trim();
+        
+        if (!content) {
+          showErrorMessage("No content to export");
+          return;
+        }
+        
+        const branchId = activeBranches[side] || 'panel';
+        const branchName = branchId.replace(/[^a-zA-Z0-9-_]/g, '_');
+        const timestamp = new Date().toISOString().slice(0, 10);
+        
+        try {
+          if (format === 'json') {
+            let jsonContent = content;
+            
+            // Check if content is CSV - convert to JSON first
+            if (window.CSVUtils.isCSV(content) && !window.CSVUtils.isConvertibleToCSV(content)) {
+              try {
+                const jsonData = window.CSVUtils.csvToJSON(content, { coerceTypes: true });
+                jsonContent = JSON.stringify(jsonData, null, 2);
+              } catch (e) {
+                showErrorMessage("Failed to convert CSV to JSON: " + e.message);
+                return;
+              }
+            } else {
+              // Try to format existing JSON nicely
+              try {
+                const parsed = JSON.parse(content);
+                jsonContent = JSON.stringify(parsed, null, 2);
+              } catch (e) {
+                // Not valid JSON, export as-is
+              }
+            }
+            
+            const filename = `${side}-${branchName}-${timestamp}.json`;
+            window.CSVUtils.downloadFile(jsonContent, filename, 'application/json');
+            showConversionMessage(`Exported as ${filename}`);
+          } else if (format === 'csv') {
+            // Convert JSON to CSV first if needed
+            let csvContent = content;
+            
+            // Check if content is JSON that can be converted
+            if (window.CSVUtils.isConvertibleToCSV(content)) {
+              try {
+                csvContent = window.CSVUtils.jsonToCSV(content);
+              } catch (e) {
+                showErrorMessage("Failed to convert JSON to CSV: " + e.message);
+                return;
+              }
+            } else if (!window.CSVUtils.isCSV(content)) {
+              // Not CSV and not convertible JSON
+              showErrorMessage("Content cannot be exported as CSV. Must be CSV or JSON array.");
+              return;
+            }
+            
+            const filename = `${side}-${branchName}-${timestamp}.csv`;
+            window.CSVUtils.downloadFile(csvContent, filename, 'text/csv');
+            showConversionMessage(`Exported as ${filename}`);
+          }
+        } catch (err) {
+          showErrorMessage("Export failed: " + err.message);
+        }
+      }
+      
+      // Update all conversion button visibility based on content
+      function updateConversionButtons() {
         const leftContent = mergeView.a.state.doc.toString().trim();
         const rightContent = mergeView.b.state.doc.toString().trim();
         
-        const leftBtn = document.querySelector('.csv-convert-left');
-        const rightBtn = document.querySelector('.csv-convert-right');
+        // CSV→JSON buttons
+        const leftCsvBtn = document.querySelector('.csv-convert-left');
+        const rightCsvBtn = document.querySelector('.csv-convert-right');
         
-        // Check if content is CSV
+        // JSON→CSV buttons
+        const leftJsonBtn = document.querySelector('.json-convert-left');
+        const rightJsonBtn = document.querySelector('.json-convert-right');
+        
+        // Export dropdowns
+        const leftExportBtn = document.querySelector('.export-dropdown-left');
+        const rightExportBtn = document.querySelector('.export-dropdown-right');
+        
+        // Check content types
         const leftIsCSV = leftContent && window.CSVUtils && window.CSVUtils.isCSV(leftContent);
         const rightIsCSV = rightContent && window.CSVUtils && window.CSVUtils.isCSV(rightContent);
+        const leftIsConvertibleJSON = leftContent && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(leftContent);
+        const rightIsConvertibleJSON = rightContent && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(rightContent);
         
-        // Show button only if content is CSV (using class toggle for CSS transitions)
-        if (leftBtn) {
-          if (leftIsCSV) {
-            leftBtn.classList.add('visible');
-          } else {
-            leftBtn.classList.remove('visible');
-          }
+        // CSV→JSON: show only if content is CSV (and NOT convertible JSON)
+        if (leftCsvBtn) {
+          leftCsvBtn.classList.toggle('visible', leftIsCSV && !leftIsConvertibleJSON);
+        }
+        if (rightCsvBtn) {
+          rightCsvBtn.classList.toggle('visible', rightIsCSV && !rightIsConvertibleJSON);
         }
         
-        if (rightBtn) {
-          if (rightIsCSV) {
-            rightBtn.classList.add('visible');
-          } else {
-            rightBtn.classList.remove('visible');
-          }
+        // JSON→CSV: show only if content is convertible JSON array
+        if (leftJsonBtn) {
+          leftJsonBtn.classList.toggle('visible', leftIsConvertibleJSON);
         }
+        if (rightJsonBtn) {
+          rightJsonBtn.classList.toggle('visible', rightIsConvertibleJSON);
+        }
+        
+        // Export dropdown: show if any content exists
+        if (leftExportBtn) {
+          leftExportBtn.classList.toggle('visible', !!leftContent);
+        }
+        if (rightExportBtn) {
+          rightExportBtn.classList.toggle('visible', !!rightContent);
+        }
+      }
+      
+      // Backward compatibility alias
+      function updateCSVConversionButtons() {
+        updateConversionButtons();
       }
       
       // Update panel name inputs from settings (used after import/URL load)

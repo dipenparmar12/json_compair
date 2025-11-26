@@ -55,18 +55,47 @@
           const key = headers[c] || `col${c}`;
           const raw = c < cells.length ? cells[c] : "";
           const val = (raw === undefined || raw === null) ? '' : String(raw).trim();
+          
+          // Try to parse value with type coercion and nested JSON restoration
           if (options.coerceTypes) {
-            if (/^-?\d+$/.test(val)) obj[key] = parseInt(val, 10);
-            else if (/^-?\d*\.\d+$/.test(val)) obj[key] = parseFloat(val);
-            else if (/^(true|false)$/i.test(val)) obj[key] = /^true$/i.test(val);
-            else if (val === "") obj[key] = null;
-            else obj[key] = val;
-          } else { obj[key] = val; }
+            if (/^-?\d+$/.test(val)) {
+              obj[key] = parseInt(val, 10);
+            } else if (/^-?\d*\.\d+$/.test(val)) {
+              obj[key] = parseFloat(val);
+            } else if (/^(true|false)$/i.test(val)) {
+              obj[key] = /^true$/i.test(val);
+            } else if (val === "") {
+              obj[key] = null;
+            } else {
+              // Try to parse as JSON (for nested objects/arrays)
+              obj[key] = tryParseNestedJSON(val);
+            }
+          } else {
+            // Still try to restore nested JSON even without coerceTypes
+            obj[key] = tryParseNestedJSON(val);
+          }
         }
         data.push(obj);
       }
 
       return data;
+      
+      // Helper to parse nested JSON strings back to objects/arrays
+      function tryParseNestedJSON(val) {
+        if (typeof val !== 'string') return val;
+        const trimmed = val.trim();
+        // Check if it looks like JSON object or array
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+            (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          try {
+            return JSON.parse(trimmed);
+          } catch (e) {
+            // Not valid JSON, return as string
+            return val;
+          }
+        }
+        return val;
+      }
     },
 
     // Convert JSON (array of objects or array of arrays) to CSV string
@@ -101,6 +130,41 @@
       }
     }
   };
+  // Check if JSON content is convertible to CSV (array of objects or arrays)
+  CSVUtils.isConvertibleToCSV = function(text) {
+    if (!text || typeof text !== 'string') return false;
+    const trimmed = text.trim();
+    // Quick check: must start with [ for array
+    if (!trimmed.startsWith('[')) return false;
+    
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (!Array.isArray(parsed) || parsed.length === 0) return false;
+      
+      // Check first element - must be object or array
+      const first = parsed[0];
+      if (Array.isArray(first)) return true; // Array of arrays
+      if (first && typeof first === 'object' && first !== null) return true; // Array of objects
+      
+      return false;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Download helper for exporting files
+  CSVUtils.downloadFile = function(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType || 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   window.CSVUtils = CSVUtils;
   // Async adapter: use PapaParse for large inputs when available (returns a Promise)
   CSVUtils.csvToJSONAsync = function(csvText, options) {
