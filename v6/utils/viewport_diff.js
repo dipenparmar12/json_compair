@@ -326,6 +326,7 @@
 
   /**
    * PerformanceMode - Bundles multiple performance optimizations
+   * Note: Preserves highlightChanges by default since visual diffs are important
    */
   class PerformanceMode {
     constructor() {
@@ -335,13 +336,14 @@
 
     /**
      * Performance mode settings
+     * Note: We keep highlightChanges enabled as it's important for visual comparison
+     * Only disable collapseUnchanged and adjust timeout for faster processing
      */
     static get SETTINGS() {
       return {
-        scanLimit: 1000,
-        highlightChanges: false,
-        collapseUnchanged: true,
-        timeout: 2000,
+        collapseUnchanged: true,  // Collapse unchanged sections to reduce rendering
+        timeout: 3000,            // Shorter timeout for faster fallback
+        // Note: We do NOT modify scanLimit or highlightChanges - user controls these
       };
     }
 

@@ -193,7 +193,7 @@
                 <input type="checkbox" id="setting-performance-mode" style="margin-top: 2px; cursor: pointer;" />
                 <div style="margin-left: 10px;">
                   <div style="font-weight: 500; color: #856404;">⚡ Performance Mode</div>
-                  <div style="color: #856404; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Optimized for large files: lower scan limit, disable character highlighting</div>
+                  <div style="color: #856404; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Auto-collapse unchanged sections for faster rendering</div>
                 </div>
               </label>
               
@@ -770,37 +770,27 @@
         if (enabled) {
           performanceMode.enable();
           
-          // Also update UI checkboxes to reflect changes
-          const highlightCheckbox = document.getElementById('setting-highlight-changes');
+          // Update UI checkboxes to reflect changes
           const collapseCheckbox = document.getElementById('setting-collapse-unchanged');
-          const scanLimitInput = document.getElementById('setting-scan-limit');
-          const quickHighlight = document.getElementById('quick-highlight-changes');
           const quickCollapse = document.getElementById('quick-collapse-unchanged');
           
-          if (highlightCheckbox) highlightCheckbox.checked = false;
+          // Performance mode: enable collapse unchanged for faster rendering
+          // Note: We preserve highlightChanges and scanLimit - user controls these
           if (collapseCheckbox) collapseCheckbox.checked = true;
-          if (scanLimitInput) scanLimitInput.value = '1000';
-          if (quickHighlight) quickHighlight.checked = false;
           if (quickCollapse) quickCollapse.checked = true;
           
           // Apply settings
           applyMergeSettings();
-          PerformanceToast.show('Performance Mode enabled - optimized for large files', 'success');
+          PerformanceToast.show('Performance Mode enabled - unchanged sections collapsed', 'success');
         } else {
           performanceMode.disable();
           
-          // Reload saved settings to UI
+          // Reload saved settings to UI (just collapseUnchanged)
           const settings = loadMergeSettings();
-          const highlightCheckbox = document.getElementById('setting-highlight-changes');
           const collapseCheckbox = document.getElementById('setting-collapse-unchanged');
-          const scanLimitInput = document.getElementById('setting-scan-limit');
-          const quickHighlight = document.getElementById('quick-highlight-changes');
           const quickCollapse = document.getElementById('quick-collapse-unchanged');
           
-          if (highlightCheckbox) highlightCheckbox.checked = settings.highlightChanges;
           if (collapseCheckbox) collapseCheckbox.checked = settings.collapseUnchanged;
-          if (scanLimitInput) scanLimitInput.value = settings.scanLimit;
-          if (quickHighlight) quickHighlight.checked = settings.highlightChanges;
           if (quickCollapse) quickCollapse.checked = settings.collapseUnchanged;
           
           // Apply settings

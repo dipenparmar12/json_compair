@@ -40,19 +40,19 @@ manager.enable();
 
 ### 2. Performance Mode
 
-A bundle of settings optimized for large files:
+A lighter-weight optimization that focuses on rendering efficiency while preserving visual diff features:
 
 | Setting | Normal | Performance Mode |
 |---------|--------|------------------|
-| scanLimit | 6000 | 1000 |
-| highlightChanges | true | false |
 | collapseUnchanged | false | true |
-| timeout | 5000ms | 2000ms |
+| timeout | 5000ms | 3000ms |
+
+**Note:** User-controlled settings like `scanLimit` and `highlightChanges` are preserved. Users can still adjust these independently.
 
 **Benefits:**
-- Reduces character-level diff computation
-- Collapses unchanged regions automatically
-- Lower scan limit means faster (but less precise) diffing
+- Collapses unchanged regions automatically (reduces DOM rendering)
+- Shorter timeout for faster fallback on complex diffs
+- Preserves character-level diff highlighting for visual comparison
 
 **UI Toggle:** Settings → Performance → "⚡ Performance Mode"
 
