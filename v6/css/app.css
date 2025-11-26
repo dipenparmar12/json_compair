@@ -1045,3 +1045,81 @@ select.toggle-button {
         font-size: 11px;
     }
 }
+
+/* ===== Drop Overlay for Snapshot Import ===== */
+#drop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    pointer-events: none;
+}
+
+#drop-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.drop-overlay-content {
+    background: #fff;
+    border-radius: 16px;
+    padding: 48px 64px;
+    text-align: center;
+    border: 3px dashed #007bff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.drop-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    animation: bounce 1s ease infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.drop-text {
+    font-size: 24px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.drop-subtext {
+    font-size: 14px;
+    color: #666;
+}
+
+/* Dark theme support for drop overlay */
+.cm-theme-dark #drop-overlay,
+[data-theme="dark"] #drop-overlay {
+    background: rgba(0, 0, 0, 0.85);
+}
+
+.cm-theme-dark .drop-overlay-content,
+[data-theme="dark"] .drop-overlay-content {
+    background: #2d2d2d;
+    border-color: #0d6efd;
+}
+
+.cm-theme-dark .drop-text,
+[data-theme="dark"] .drop-text {
+    color: #eee;
+}
+
+.cm-theme-dark .drop-subtext,
+[data-theme="dark"] .drop-subtext {
+    color: #aaa;
+}

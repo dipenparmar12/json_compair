@@ -222,7 +222,7 @@
           <div class="extra-settings-dropdown" style="position: relative; display: inline-block;">
             <button id="btn-extra-settings" title="Extra Settings">⚙️ Extra Settings</button>
             <div id="extra-settings-panel" class="dropdown-panel">
-              <button id="btn-share" class="dropdown-item">📋 Share URL</button>
+              <button id="btn-share" class="dropdown-item">📤 Export / Share</button>
               <button id="btn-import" class="dropdown-item">📥 Import Snapshot</button>
               <input type="file" id="file-import" accept=".zip,.gz,.gzip,application/zip,application/gzip,application/octet-stream,.json" style="display: none" />
               <div style="margin-top: 8px; font-size: 12px; color: #555;">Examples</div>
@@ -2112,6 +2112,184 @@
         }
       }
 
+      // Handle snapshot file drop (ZIP or GZ files)
+      async function handleSnapshotFileDrop(file) {
+        try {
+          // Use unified snapshot handler (supports both .zip and .json.gz)
+          const data = await SnapshotHandler.importSnapshot(file);
+          
+          // Apply settings from snapshot if present
+          if (data.settings && typeof data.settings === 'object') {
+            try {
+              Object.keys(data.settings).forEach(key => {
+                SettingsManager.set(key, data.settings[key]);
+              });
+              console.log('Settings loaded from snapshot:', data.settings);
+              
+              // Reload global settings
+              wordWrapEnabled = SettingsManager.get('wordWrap');
+              scrollLocked = SettingsManager.get('scrollLock');
+              currentTheme = SettingsManager.get('theme');
+            } catch (err) {
+              console.warn('Failed to apply snapshot settings:', err);
+            }
+          }
+          
+          mergeView.a.dispatch({
+            changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
+          });
+
+          mergeView.b.dispatch({
+            changes: { from: 0, to: mergeView.b.state.doc.length, insert: data.right || "" }
+          });
+
+          URLManager.clearURL();
+          
+          // Import branches if present in snapshot
+          if (data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0) {
+            try {
+              const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
+              console.log('Branches imported:', importResult);
+              
+              // Update active branches from settings if present
+              if (data.settings) {
+                activeBranches.left = data.settings.leftBranch || 'main';
+                activeBranches.right = data.settings.rightBranch || 'main';
+              }
+            } catch (err) {
+              console.warn('Failed to import branches:', err);
+            }
+          }
+          
+          // Recreate merge view with new settings if they were present
+          if (data.settings && typeof data.settings === 'object') {
+            setTimeout(() => {
+              const currentSettings = {
+                highlightChanges: SettingsManager.get('highlightChanges'),
+                gutter: SettingsManager.get('gutter'),
+                collapseUnchanged: SettingsManager.get('collapseUnchanged'),
+                orientation: SettingsManager.get('orientation'),
+                revertControls: SettingsManager.get('revertControls'),
+                scanLimit: SettingsManager.get('scanLimit'),
+              };
+              recreateMergeView(currentSettings, wordWrapEnabled);
+              initializeSettingsPanel();
+              initializeThemeSelector();
+              
+              // Update branch selectors with imported values
+              updateBranchSelectors();
+            }, 100);
+          }
+          
+          updateStatus("Snapshot imported successfully");
+          updateDiffStatus();
+          hideDropOverlay();
+        } catch (err) {
+          updateStatus("Failed to import snapshot: " + err.message);
+          hideDropOverlay();
+        }
+      }
+
+      // Check if file is a snapshot file (ZIP or GZ)
+      function isSnapshotFile(file) {
+        const filename = file.name.toLowerCase();
+        const type = file.type.toLowerCase();
+        
+        // Check by extension
+        if (filename.endsWith('.zip') || filename.endsWith('.gz') || filename.endsWith('.gzip')) {
+          return true;
+        }
+        
+        // Check by MIME type
+        if (type.includes('zip') || type.includes('gzip') || type === 'application/octet-stream') {
+          // For octet-stream, also check filename pattern
+          if (type === 'application/octet-stream') {
+            return filename.includes('snapshot') || filename.endsWith('.zip') || filename.endsWith('.gz');
+          }
+          return true;
+        }
+        
+        return false;
+      }
+
+      // Show drop overlay for snapshot import
+      function showDropOverlay() {
+        let overlay = document.getElementById('drop-overlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'drop-overlay';
+          overlay.innerHTML = `
+            <div class="drop-overlay-content">
+              <div class="drop-icon">📥</div>
+              <div class="drop-text">Drop snapshot to import</div>
+              <div class="drop-subtext">Supports .zip and .gz files</div>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+        }
+        overlay.classList.add('visible');
+      }
+
+      // Hide drop overlay
+      function hideDropOverlay() {
+        const overlay = document.getElementById('drop-overlay');
+        if (overlay) {
+          overlay.classList.remove('visible');
+        }
+      }
+
+      // Setup global document drop zone for snapshots
+      function setupGlobalDropZone() {
+        let dragCounter = 0;
+        
+        document.addEventListener('dragenter', (e) => {
+          e.preventDefault();
+          dragCounter++;
+          
+          // Check if dragging files
+          if (e.dataTransfer.types.includes('Files')) {
+            showDropOverlay();
+          }
+        });
+        
+        document.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          dragCounter--;
+          
+          if (dragCounter === 0) {
+            hideDropOverlay();
+          }
+        });
+        
+        document.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        });
+        
+        document.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          dragCounter = 0;
+          hideDropOverlay();
+          
+          const files = e.dataTransfer.files;
+          if (files && files.length > 0) {
+            const file = files[0];
+            
+            // Only handle snapshot files at document level
+            // Editor-specific drops are handled by setupEditorDrop
+            if (isSnapshotFile(file)) {
+              // Check if drop was on an editor (let editor handle JSON/CSV)
+              const target = e.target;
+              const isEditorDrop = target.closest('.cm-editor');
+              
+              if (!isEditorDrop) {
+                await handleSnapshotFileDrop(file);
+              }
+            }
+          }
+        });
+      }
+
       // Setup drag and drop handlers
       function setupDragDrop() {
         const leftEditor = mergeView.a.dom;
@@ -2119,6 +2297,9 @@
 
         setupEditorDrop(leftEditor, 'left');
         setupEditorDrop(rightEditor, 'right');
+        
+        // Setup global drop zone for snapshots anywhere on page
+        setupGlobalDropZone();
       }
 
       function setupEditorDrop(editorElement, side) {
@@ -2140,6 +2321,12 @@
       }
 
       async function handleFileDrop(file, side) {
+        // Check if it's a snapshot file (ZIP or GZ) - handle specially
+        if (isSnapshotFile(file)) {
+          await handleSnapshotFileDrop(file);
+          return;
+        }
+        
         try {
           const text = await file.text();
           const editor = side === 'left' ? mergeView.a : mergeView.b;
