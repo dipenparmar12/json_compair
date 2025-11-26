@@ -1237,11 +1237,24 @@
         clearBtn.textContent = '🗑 Clear';
         clearBtn.title = 'Clear content';
         clearBtn.className = 'copy-clear-btn'; // Add class for easy selection
-        clearBtn.onclick = () => {
+        clearBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: "" }
           });
+          
+          // Save cleared content to current branch
+          const branchId = activeBranches[side];
+          if (branchId && window.BranchManager) {
+            try {
+              await window.BranchManager.saveBranch(branchId, '', { source: 'clear' });
+              branchModified[side] = false;
+              updateBranchModifiedIndicator(side);
+            } catch (err) {
+              console.warn('Failed to save cleared branch:', err);
+            }
+          }
+          
           updateDiffStatus();
           updatePaneButtonVisibility();
         };
@@ -2318,7 +2331,7 @@
       }
 
       // Clear all content
-      function clearAll() {
+      async function clearAll() {
         if (!confirm("Clear all content?")) return;
 
         mergeView.a.dispatch({
@@ -2328,6 +2341,27 @@
         mergeView.b.dispatch({
           changes: { from: 0, to: mergeView.b.state.doc.length, insert: "" }
         });
+
+        // Save cleared content to both branches
+        if (window.BranchManager) {
+          try {
+            const leftBranchId = activeBranches.left;
+            const rightBranchId = activeBranches.right;
+            
+            if (leftBranchId) {
+              await window.BranchManager.saveBranch(leftBranchId, '', { source: 'clear-all' });
+              branchModified.left = false;
+              updateBranchModifiedIndicator('left');
+            }
+            if (rightBranchId) {
+              await window.BranchManager.saveBranch(rightBranchId, '', { source: 'clear-all' });
+              branchModified.right = false;
+              updateBranchModifiedIndicator('right');
+            }
+          } catch (err) {
+            console.warn('Failed to save cleared branches:', err);
+          }
+        }
 
         updateStatus("Content cleared");
         updateDiffStatus();
