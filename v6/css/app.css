@@ -1,3 +1,418 @@
+* {
+    box-sizing: border-box;
+}
+
+#container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.intro {
+    padding: 8px 10px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #ddd;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.intro-left,
+.intro-center,
+.intro-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.intro-left {
+    flex: 1;
+}
+
+.intro-center {
+    justify-content: center;
+    flex: 1;
+}
+
+.intro-right {
+    justify-content: flex-end;
+    flex: 1;
+}
+
+#view-container {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+    /* Important for flex child scrolling */
+    display: flex;
+    flex-direction: row;
+}
+
+/* Button styles */
+button {
+    padding: 6px 14px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+button:hover {
+    background: #f5f5f5;
+    border-color: #999;
+}
+
+button.active {
+    background: #08c988;
+    color: white;
+    border-color: #08c988;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Pane-specific buttons */
+.pane-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    font-size: 12px;
+    padding: 4px 10px;
+}
+
+.copy-btn {
+    display: none;
+}
+
+/* CodeMirror 6 custom styling */
+.cm-editor {
+    height: 100%;
+    font-size: 14px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.cm-scroller {
+    overflow: auto;
+}
+
+/* Merge view styling - Fixed to match actual DOM structure */
+.cm-mergeView {
+    height: 100% !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex: 1;
+}
+
+/* The wrapper that contains both editors */
+.cm-mergeViewEditors {
+    display: flex !important;
+    flex-direction: row !important;
+    width: 100% !important;
+    height: 100% !important;
+    gap: 2px;
+    flex: 1;
+}
+
+/* Force each editor to be exactly 50% */
+.cm-mergeViewEditor {
+    flex: 1 1 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+    min-width: 0 !important;
+    /* Critical: allows shrinking below content size */
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden !important;
+    /* Prevent overflow from breaking layout */
+    position: relative;
+}
+
+/* Editor container within each panel */
+.cm-mergeView .cm-editor {
+    height: 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+}
+
+/* Scroller must respect parent constraints */
+.cm-mergeView .cm-scroller {
+    overflow: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+}
+
+/* Prevent content from forcing panel expansion */
+.cm-mergeView .cm-content {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* Ensure lines don't stretch the container */
+.cm-mergeView .cm-line {
+    max-width: 100% !important;
+}
+
+/* Word wrap specific styles */
+.cm-mergeView .cm-line[style*="white-space: pre-wrap"] {
+    max-width: 100% !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+}
+
+/* No wrap mode - ensure horizontal scrolling */
+.cm-mergeView .cm-line[style*="white-space: pre"] {
+    max-width: none;
+    /* Allow line to extend for scrolling */
+    white-space: pre !important;
+}
+
+/* ====================================================================
+         DIFF HIGHLIGHTING - Enhanced Red/Green Scheme
+         Matches modern Git/GitHub diff visualization
+         ==================================================================== */
+
+/* Changed line container - light background */
+.cm-changedLine {
+    background-color: transparent !important;
+}
+
+/* Deleted lines (left side) - Red background */
+.cm-deletedLine {
+    background-color: #ffebe9 !important;
+    display: inline-block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Inserted lines (right side) - Green background */
+.cm-insertedLine {
+    background-color: #e6ffec !important;
+    display: inline-block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Changed text within deleted lines - Darker red highlight */
+.cm-deletedLine .cm-changedText {
+    background-color: #ffc1ba !important;
+    font-weight: 500 !important;
+}
+
+/* Changed text within inserted lines - Darker green highlight */
+.cm-insertedLine .cm-changedText {
+    background-color: #acf2bd !important;
+    font-weight: 500 !important;
+}
+
+/* Legacy chunk backgrounds (fallback for older code) */
+.cm-deletedChunk {
+    background-color: #ffebe9 !important;
+}
+
+.cm-insertedChunk {
+    background-color: #e6ffec !important;
+}
+
+/* Legacy text backgrounds (fallback) */
+.cm-deletedText {
+    background-color: #ffc1ba !important;
+    text-decoration: none !important;
+    font-weight: 500 !important;
+}
+
+.cm-insertedText {
+    background-color: #acf2bd !important;
+    text-decoration: none !important;
+    font-weight: 500 !important;
+}
+
+/* Remove underlines from del/ins elements */
+del.cm-deletedLine,
+ins.cm-insertedLine,
+del,
+ins {
+    text-decoration: none !important;
+    background-image: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+
+/* Ensure changed text doesn't have underlines either */
+.cm-changedText {
+    text-decoration: none !important;
+    background-image: none !important;
+    border-bottom: none !important;
+}
+
+/* Gutter markers for changed lines */
+.cm-changedLineGutter {
+    background-color: #ffd33d !important;
+    width: 3px !important;
+    margin-left: 2px !important;
+}
+
+/* Status bar removed (was #diff-status) */
+
+/* Error message area */
+#conversion-error-area {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ff4444;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    display: none;
+    z-index: 2000;
+    max-width: 80%;
+    text-align: center;
+}
+
+/* Per-pane action buttons */
+.pane-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 100;
+    display: flex;
+    gap: 5px;
+}
+
+.pane-controls button {
+    font-size: 11px;
+    padding: 4px 8px;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.pane-controls button:hover {
+    opacity: 1;
+    background: #f5f5f5;
+}
+
+/* CSV conversion button */
+.csv-convert-btn {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    z-index: 100;
+    font-size: 11px;
+    padding: 4px 8px;
+    background: white;
+    border: 1px solid #007bff;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.csv-convert-btn.visible {
+    opacity: 0.7;
+    pointer-events: auto;
+}
+
+.csv-convert-btn.visible:hover {
+    opacity: 1;
+    background: #e7f3ff;
+}
+
+/* Show CSV button on pane hover if content is CSV */
+.cm-mergeViewEditor:hover .csv-convert-btn.visible {
+    opacity: 0.9;
+}
+
+.pane-wrapper {
+    position: relative;
+    flex: 1;
+}
+
+/* Dropdown panels */
+.dropdown-panel {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 12px;
+    min-width: 260px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    z-index: 1000;
+    margin-top: 4px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+.dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.dropdown-item+.dropdown-item {
+    margin-top: 6px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .intro {
+        flex-wrap: wrap;
+    }
+
+    button {
+        font-size: 12px;
+        padding: 5px 10px;
+    }
+
+    .pane-controls button {
+        font-size: 10px;
+        padding: 3px 6px;
+    }
+
+    .intro-left,
+    .intro-center,
+    .intro-right {
+        flex: 100%;
+        justify-content: flex-start;
+    }
+}
+
+button {
+    white-space: nowrap;
+}
+
+
+/* ------------------------------------------------------------ */
+/* v6/css/app.css */
+/* ------------------------------------------------------------ */
 body {
     margin: 0;
     padding: 0;
