@@ -14,13 +14,18 @@ permissions:
   pages: write
   id-token: write
 
+# Disable Jekyll processing since this is a pure static site
+env:
+  JEKYLL_SKIP_INITIAL_BUILD: true
+  DISABLE_JEKYLL: true
+
 # Allow only one concurrent deployment
 concurrency:
   group: "pages"
   cancel-in-progress: true
 
 jobs:
-  # Single deploy job since we're just deploying
+  # Single deploy job since we're just deploying static files
   deploy:
     environment:
       name: github-pages
@@ -28,14 +33,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
       - name: Setup Pages
-        uses: actions/configure-pages@v3
+        uses: actions/configure-pages@v5
+
+      - name: Disable Jekyll via .nojekyll
+        run: |
+          touch .nojekyll
+
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
+          # Upload entire repository (static assets only)
           path: '.'
+
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
