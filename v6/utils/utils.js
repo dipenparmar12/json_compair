@@ -227,6 +227,9 @@
       revertControls: "none",
       scanLimit: 6000,     // Increased from 500 to better detect identical lines in different positions
       timeout: 5000,        // Max 5 seconds for detailed diff computation
+      // Panel names for UX
+      leftPanelName: "",    // Name/ID for left panel
+      rightPanelName: "",   // Name/ID for right panel
     },
 
     loadAll: function () {

@@ -968,9 +968,46 @@
         // Add CSV conversion button (initially hidden)
         addCSVConversionButton(paneElement, side);
         
+        // Add panel name input at bottom-right
+        addPanelNameInput(paneElement, side);
+        
         // Initial visibility update
         updatePaneButtonVisibility();
         updateCSVConversionButtons();
+      }
+      
+      // Add panel name input at bottom-right of each pane
+      function addPanelNameInput(paneElement, side) {
+        const container = document.createElement('div');
+        container.className = `panel-name-container panel-name-${side}`;
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'panel-name-input';
+        input.id = `panel-name-${side}`;
+        input.placeholder = side === 'left' ? 'Source name...' : 'Target name...';
+        input.title = `Name or ID for ${side} panel (e.g., "Production", "v2.1", "API Response")`;
+        
+        // Load saved panel name
+        const savedName = SettingsManager.get(side === 'left' ? 'leftPanelName' : 'rightPanelName');
+        if (savedName) {
+          input.value = savedName;
+        }
+        
+        // Save on change
+        input.addEventListener('input', () => {
+          const settingKey = side === 'left' ? 'leftPanelName' : 'rightPanelName';
+          SettingsManager.set(settingKey, input.value);
+        });
+        
+        // Save on blur (for mobile/touch)
+        input.addEventListener('blur', () => {
+          const settingKey = side === 'left' ? 'leftPanelName' : 'rightPanelName';
+          SettingsManager.set(settingKey, input.value);
+        });
+        
+        container.appendChild(input);
+        paneElement.appendChild(container);
       }
       
       // Add CSV to JSON conversion button at bottom of pane
@@ -1037,6 +1074,19 @@
           } else {
             rightBtn.classList.remove('visible');
           }
+        }
+      }
+      
+      // Update panel name inputs from settings (used after import/URL load)
+      function updatePanelNameInputs() {
+        const leftInput = document.getElementById('panel-name-left');
+        const rightInput = document.getElementById('panel-name-right');
+        
+        if (leftInput) {
+          leftInput.value = SettingsManager.get('leftPanelName') || '';
+        }
+        if (rightInput) {
+          rightInput.value = SettingsManager.get('rightPanelName') || '';
         }
       }
 
@@ -1341,6 +1391,9 @@
               recreateMergeView(currentSettings, wordWrapEnabled);
               initializeSettingsPanel();
               initializeThemeSelector();
+              
+              // Update panel name inputs with imported values
+              updatePanelNameInputs();
             }, 100);
           }
           
