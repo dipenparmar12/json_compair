@@ -2590,6 +2590,15 @@
 
         let content = text;
         let isJSON = false;
+
+  // Resolve the target editor and current selection for this side so that
+  // any auto-processed paste only affects the selection/caret, not the
+  // entire document. This preserves normal editor experience when
+  // pasting into the middle of existing content.
+  const editor = side === 'left' ? mergeView.a : mergeView.b;
+  const mainSelection = editor.state.selection?.main;
+  const from = mainSelection ? mainSelection.from : 0;
+  const to = mainSelection ? mainSelection.to : editor.state.doc.length;
         
         // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
         if (autoCSV || autoFormat || autoSort) {
@@ -2610,14 +2619,12 @@
             e.preventDefault();
             e.stopPropagation();
 
-            const editor = side === 'left' ? mergeView.a : mergeView.b;
-
             try {
               const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
               content = buildJSONString(jsonData, { autoSort });
 
               editor.dispatch({
-                changes: { from: 0, to: editor.state.doc.length, insert: content }
+                changes: { from, to, insert: content }
               });
 
               showConversionMessage("CSV converted to JSON");
@@ -2643,10 +2650,8 @@
           e.preventDefault();
           e.stopPropagation();
 
-          const editor = side === 'left' ? mergeView.a : mergeView.b;
-
           editor.dispatch({
-            changes: { from: 0, to: editor.state.doc.length, insert: content }
+            changes: { from, to, insert: content }
           });
 
           // Force immediate diff refresh
