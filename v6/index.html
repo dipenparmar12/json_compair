@@ -2431,12 +2431,32 @@
       function setupGlobalDropZone() {
         let dragCounter = 0;
         
+        // Check if dragged items look like snapshot files
+        function hasSnapshotFiles(dataTransfer) {
+          // Check items if available (modern browsers)
+          if (dataTransfer.items && dataTransfer.items.length > 0) {
+            for (let i = 0; i < dataTransfer.items.length; i++) {
+              const item = dataTransfer.items[i];
+              if (item.kind === 'file') {
+                const type = item.type.toLowerCase();
+                // Only show overlay for ZIP/GZIP types
+                if (type.includes('zip') || type.includes('gzip') || type === 'application/octet-stream') {
+                  return true;
+                }
+              }
+            }
+            return false;
+          }
+          // Fallback: can't determine type during drag, don't show overlay
+          return false;
+        }
+        
         document.addEventListener('dragenter', (e) => {
           e.preventDefault();
           dragCounter++;
           
-          // Check if dragging files
-          if (e.dataTransfer.types.includes('Files')) {
+          // Only show overlay if dragging snapshot files (ZIP/GZ)
+          if (e.dataTransfer.types.includes('Files') && hasSnapshotFiles(e.dataTransfer)) {
             showDropOverlay();
           }
         });
@@ -2467,7 +2487,7 @@
             // Only handle snapshot files at document level
             // Editor-specific drops are handled by setupEditorDrop
             if (isSnapshotFile(file)) {
-              // Check if drop was on an editor (let editor handle JSON/CSV)
+              // Check if drop was on an editor (let editor handle it there)
               const target = e.target;
               const isEditorDrop = target.closest('.cm-editor');
               
