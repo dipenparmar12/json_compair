@@ -445,10 +445,10 @@ await switchBranch("left", "api-v2");
 
 3. **Post-Completion Action**
 
-   - **After completing all assigned tasks**, Copilot **must** check for new work at `.github/todo.md`.
+   - **After completing all assigned tasks**, Copilot **must** check for new work at `./todo.md`.
    - If the file exists and is non-empty, Copilot must output:
      ```bash
-     echo "NEXT: Pending tasks found in .github/todo.md — review required, since its contains new work";
+     echo "NEXT: Pending tasks found in ./todo.md — review required, since its contains new work";
      ```
    - If the file does not exist or is empty, output:
      ```bash
