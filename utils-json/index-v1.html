@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JSON Toolbox - Comprehensive JSON Utilities</title>
+  <meta name="description" content="Comprehensive client-side JSON utilities: Schema Generator, Shaper, Linter, CSV Converter, Table Generator, Flattener, and Fuzzer">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2308c988'/%3E%3Ctext x='50' y='70' font-family='monospace' font-size='60' font-weight='bold' fill='white' text-anchor='middle'%3E%7B%7D%3C/text%3E%3C/svg%3E">
+  
+  <!-- CodeMirror 6 Import Map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@codemirror/view": "https://unpkg.com/@codemirror/view@6.35.3/dist/index.js",
+      "@codemirror/state": "https://unpkg.com/@codemirror/state@6.5.2/dist/index.js",
+      "@codemirror/language": "https://unpkg.com/@codemirror/language@6.11.0/dist/index.js",
+      "@codemirror/commands": "https://unpkg.com/@codemirror/commands@6.8.0/dist/index.js",
+      "@codemirror/search": "https://unpkg.com/@codemirror/search@6.5.10/dist/index.js",
+      "@codemirror/autocomplete": "https://unpkg.com/@codemirror/autocomplete@6.18.6/dist/index.js",
+      "@codemirror/lint": "https://unpkg.com/@codemirror/lint@6.8.5/dist/index.js",
+      "@codemirror/lang-json": "https://unpkg.com/@codemirror/lang-json@6.0.1/dist/index.js",
+      "@lezer/common": "https://unpkg.com/@lezer/common@1.2.3/dist/index.js",
+      "@lezer/highlight": "https://unpkg.com/@lezer/highlight@1.2.1/dist/index.js",
+      "@lezer/json": "https://unpkg.com/@lezer/json@1.0.3/dist/index.js",
+      "@lezer/lr": "https://unpkg.com/@lezer/lr@1.4.2/dist/index.js",
+      "@marijn/find-cluster-break": "https://unpkg.com/@marijn/find-cluster-break@1.0.2/src/index.js",
+      "crelt": "https://unpkg.com/crelt@1.0.6/index.js",
+      "style-mod": "https://unpkg.com/style-mod@4.1.2/src/style-mod.js",
+      "w3c-keyname": "https://unpkg.com/w3c-keyname@2.2.8/index.js"
+    }
+  }
+  </script>
+  
+  <!-- Utility Scripts -->
+  <script src="utils/utils_core.js"></script>
+  <script src="utils/schema_generator.js"></script>
+  <script src="utils/json_shaper.js"></script>
+  <script src="utils/json_linter.js"></script>
+  <script src="utils/json_flattener.js"></script>
+  <script src="utils/json_to_table.js"></script>
+  <script src="utils/json_fuzzer.js"></script>
+
+  <style>
+    /* ============================================
+       CSS Variables & Theme
+       ============================================ */
+    :root {
+      --primary: #08c988;
+      --primary-hover: #06a070;
+      --bg: #ffffff;
+      --bg-secondary: #f8f9fa;
+      --bg-tertiary: #e9ecef;
+      --text: #212529;
+      --text-secondary: #6c757d;
+      --text-muted: #adb5bd;
+      --border: #dee2e6;
+      --danger: #dc3545;
+      --warning: #ffc107;
+      --success: #28a745;
+      --editor-bg: #ffffff;
+      --header-height: 44px;
+      --toolbar-height: 36px;
+    }
+
+    [data-theme="dark"] {
+      --bg: #1e1e1e;
+      --bg-secondary: #252526;
+      --bg-tertiary: #333333;
+      --text: #d4d4d4;
+      --text-secondary: #9d9d9d;
+      --text-muted: #666666;
+      --border: #404040;
+      --editor-bg: #1e1e1e;
+    }
+
+    /* ============================================
+       Reset & Base
+       ============================================ */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* ============================================
+       Layout
+       ============================================ */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Header - Combined Logo, Tabs, and Actions */
+    .header {
+      height: var(--header-height);
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .logo-icon {
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, var(--primary), #048a5f);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .logo span { color: var(--primary); }
+
+    /* Tool Tabs - Compact */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 0 4px;
+    }
+
+    .tab {
+      padding: 6px 12px;
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .tab:hover { background: var(--bg-tertiary); color: var(--text); }
+    .tab.active { background: var(--primary); color: white; }
+
+    .tab-icon { margin-right: 4px; }
+
+    /* Spacer */
+    .spacer { flex: 1; }
+
+    /* Header Actions */
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn:hover { background: var(--bg-tertiary); }
+    .btn-primary { background: var(--primary); border-color: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-icon { padding: 5px; min-width: 28px; }
+    .btn-icon span { font-size: 14px; }
+
+    /* Options Toolbar */
+    .toolbar {
+      height: var(--toolbar-height);
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      gap: 12px;
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+
+    .toolbar::-webkit-scrollbar { height: 0; }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .toolbar-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+    }
+
+    .toolbar-select {
+      padding: 3px 6px;
+      font-size: 11px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .toolbar-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .toolbar-toggle input { margin: 0; width: 14px; height: 14px; }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    /* Main Content */
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* Split Panes - Equal 50/50 */
+    .pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .pane-input { border-right: 1px solid var(--border); }
+
+    .pane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 8px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      height: 32px;
+      flex-shrink: 0;
+    }
+
+    .pane-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+    }
+
+    .pane-actions { display: flex; gap: 4px; }
+
+    .pane-body {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Resizer */
+    .resizer {
+      width: 4px;
+      background: var(--border);
+      cursor: col-resize;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+
+    .resizer:hover, .resizer.active { background: var(--primary); }
+
+    /* Editor */
+    .editor-wrap {
+      height: 100%;
+      background: var(--editor-bg);
+    }
+
+    .editor-wrap .cm-editor { height: 100%; }
+    .editor-wrap .cm-scroller { overflow: auto; }
+    .editor-wrap .cm-gutters { background: var(--bg-secondary); border-right: 1px solid var(--border); }
+
+    /* Output */
+    .output {
+      height: 100%;
+      overflow: auto;
+      padding: 8px;
+      font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--bg);
+    }
+
+    .output.error { color: var(--danger); background: rgba(220, 53, 69, 0.05); }
+
+    /* Empty State */
+    .empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 20px;
+    }
+
+    .empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+    .empty-title { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
+    .empty-desc { font-size: 12px; margin-top: 4px; max-width: 240px; }
+
+    /* Status Bar */
+    .status {
+      height: 24px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    .status-msg { display: flex; align-items: center; gap: 4px; }
+    .status-msg.success { color: var(--success); }
+    .status-msg.error { color: var(--danger); }
+    .status-msg.warning { color: var(--warning); }
+
+    .status-stats { display: flex; gap: 12px; }
+
+    /* Drop Zone */
+    .drop-zone {
+      position: absolute;
+      inset: 0;
+      background: rgba(8, 201, 136, 0.1);
+      border: 2px dashed var(--primary);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s;
+      z-index: 10;
+    }
+
+    .drop-zone.active { opacity: 1; visibility: visible; }
+    .drop-zone-icon { font-size: 32px; color: var(--primary); }
+    .drop-zone-text { font-size: 13px; color: var(--primary); margin-top: 8px; }
+
+    /* Tooltip - Fixed positioning (below buttons) */
+    .tooltip-wrap { position: relative; }
+    
+    .tooltip-wrap::after {
+      content: attr(data-tip);
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-top: 6px;
+      padding: 4px 8px;
+      background: var(--text);
+      color: var(--bg);
+      font-size: 11px;
+      border-radius: 4px;
+      white-space: nowrap;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.15s;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    .tooltip-wrap:hover::after { opacity: 1; visibility: visible; }
+
+    /* Copy Feedback */
+    .copy-toast {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: var(--text);
+      color: var(--bg);
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 12px;
+      opacity: 0;
+      transition: all 0.2s;
+      z-index: 1100;
+      pointer-events: none;
+    }
+
+    .copy-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Table Output - Theme Aware & Compact */
+    .table-wrap {
+      padding: 8px;
+      overflow: auto;
+      height: 100%;
+      background: var(--bg);
+    }
+
+    .table-wrap table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .table-wrap th,
+    .table-wrap td {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table-wrap th {
+      background: var(--bg-tertiary);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .table-wrap tr:hover td { background: rgba(8, 201, 136, 0.05); }
+
+    /* Compact Expandable Nested View - Postman Style */
+    .table-wrap details {
+      cursor: pointer;
+      margin: 0;
+      padding: 0;
+    }
+
+    .table-wrap details summary {
+      color: var(--primary);
+      font-weight: 500;
+      outline: none;
+      padding: 2px 0;
+      list-style: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .table-wrap details summary::-webkit-details-marker { display: none; }
+
+    .table-wrap details summary::before {
+      content: '▶';
+      font-size: 8px;
+      transition: transform 0.15s;
+      color: var(--primary);
+    }
+
+    .table-wrap details[open] > summary::before { transform: rotate(90deg); }
+
+    .table-wrap details summary:hover { text-decoration: underline; }
+
+    .table-wrap details > .nested-content {
+      margin: 4px 0 4px 12px;
+      padding: 6px 8px;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      border-left: 2px solid var(--primary);
+    }
+
+    .table-wrap .nested-table {
+      margin: 0;
+      font-size: 11px;
+      border: none;
+    }
+
+    .table-wrap .nested-table th,
+    .table-wrap .nested-table td {
+      padding: 3px 6px;
+      border: 1px solid var(--border);
+    }
+
+    .table-wrap .nested-table th {
+      background: var(--bg-tertiary);
+    }
+
+    .table-wrap .key-col {
+      color: var(--primary);
+      font-weight: 500;
+      white-space: nowrap;
+      width: 1%;
+    }
+
+    .table-wrap .type-badge {
+      display: inline-block;
+      padding: 1px 4px;
+      border-radius: 2px;
+      font-size: 9px;
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      margin-left: 4px;
+      font-weight: normal;
+    }
+
+    .table-wrap .value-preview {
+      color: var(--text-muted);
+      font-size: 10px;
+      margin-left: 4px;
+    }
+
+    .table-wrap .array-badge {
+      background: rgba(8, 201, 136, 0.1);
+      color: var(--primary);
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    /* Alert */
+    .alert {
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+
+    .alert-error {
+      background: rgba(220, 53, 69, 0.1);
+      color: var(--danger);
+      border: 1px solid rgba(220, 53, 69, 0.2);
+    }
+
+    /* Hidden */
+    .hidden { display: none !important; }
+
+    /* File Input */
+    #file-input { display: none; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .main { flex-direction: column; }
+      .pane-input { border-right: none; border-bottom: 1px solid var(--border); }
+      .resizer { width: 100%; height: 4px; cursor: row-resize; }
+      .logo-text { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header with Logo, Tabs, Actions -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">{}</div>
+        <span class="logo-text">JSON <span>Toolbox</span></span>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tool="schema" role="tab">
+          <span class="tab-icon">📐</span>Schema
+        </button>
+        <button class="tab" data-tool="shape" role="tab">
+          <span class="tab-icon">🔍</span>Shape
+        </button>
+        <button class="tab" data-tool="lint" role="tab">
+          <span class="tab-icon">✅</span>Lint
+        </button>
+        <button class="tab" data-tool="flatten" role="tab">
+          <span class="tab-icon">📊</span>Flatten
+        </button>
+        <button class="tab" data-tool="table" role="tab">
+          <span class="tab-icon">📋</span>Table
+        </button>
+        <button class="tab" data-tool="fuzz" role="tab">
+          <span class="tab-icon">🎲</span>Random
+        </button>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="actions">
+        <button class="btn" id="btn-clear">🗑️ Clear</button>
+        <button class="btn" id="btn-paste">📋 Paste</button>
+        <button class="btn" id="btn-sample">📄 Sample</button>
+        <button class="btn btn-icon" id="btn-theme" title="Toggle Theme"><span>🌙</span></button>
+      </div>
+    </header>
+
+    <!-- Options Toolbar -->
+    <div class="toolbar" id="toolbar">
+      <!-- Schema Options (default) -->
+      <div class="tool-options" id="opts-schema">
+        <div class="toolbar-group">
+          <label class="toolbar-label">Version</label>
+          <select class="toolbar-select" id="schema-version">
+            <option value="draft-2020-12">Draft 2020-12</option>
+            <option value="draft-07">Draft-07</option>
+            <option value="draft-04">Draft-04</option>
+          </select>
+        </div>
+        <div class="toolbar-divider"></div>
+        <label class="toolbar-toggle"><input type="checkbox" id="schema-required" checked> Required</label>
+        <label class="toolbar-toggle"><input type="checkbox" id="schema-examples" checked> Examples</label>
+        <label class="toolbar-toggle"><input type="checkbox" id="schema-formats" checked> Detect Formats</label>
+        <label class="toolbar-toggle"><input type="checkbox" id="schema-additional"> Additional Props</label>
+      </div>
+
+      <!-- Shape Options -->
+      <div class="tool-options hidden" id="opts-shape">
+        <div class="toolbar-group">
+          <label class="toolbar-label">Mode</label>
+          <select class="toolbar-select" id="shape-mode">
+            <option value="verbose">Verbose</option>
+            <option value="compact">Compact</option>
+            <option value="compact-typed">Compact+Types</option>
+            <option value="tree">Tree</option>
+          </select>
+        </div>
+        <div class="toolbar-divider"></div>
+        <label class="toolbar-toggle"><input type="checkbox" id="shape-stats"> Stats</label>
+        <div class="toolbar-group">
+          <label class="toolbar-label">Depth</label>
+          <input type="number" class="toolbar-select" id="shape-depth" value="0" min="0" max="50" style="width:50px">
+        </div>
+      </div>
+
+      <!-- Lint Options -->
+      <div class="tool-options hidden" id="opts-lint">
+        <label class="toolbar-toggle"><input type="checkbox" id="lint-autorepair" checked> Auto-repair</label>
+        <label class="toolbar-toggle"><input type="checkbox" id="lint-format" checked> Format</label>
+        <label class="toolbar-toggle"><input type="checkbox" id="lint-sortkeys"> Sort Keys</label>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-group">
+          <label class="toolbar-label">Indent</label>
+          <select class="toolbar-select" id="lint-indent">
+            <option value="2">2 spaces</option>
+            <option value="3" selected>3 spaces</option>
+            <option value="4">4 spaces</option>
+            <option value="\t">Tab</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Flatten Options -->
+      <div class="tool-options hidden" id="opts-flatten">
+        <div class="toolbar-group">
+          <label class="toolbar-label">Operation</label>
+          <select class="toolbar-select" id="flatten-op">
+            <option value="flatten">Flatten</option>
+            <option value="unflatten">Unflatten</option>
+          </select>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-group">
+          <label class="toolbar-label">Delimiter</label>
+          <input type="text" class="toolbar-select" id="flatten-delimiter" value="." style="width:40px">
+        </div>
+        <label class="toolbar-toggle"><input type="checkbox" id="flatten-arrays" checked> Arrays</label>
+        <label class="toolbar-toggle"><input type="checkbox" id="flatten-empty"> Preserve Empty</label>
+      </div>
+
+      <!-- Table Options -->
+      <div class="tool-options hidden" id="opts-table">
+        <div class="toolbar-group">
+          <label class="toolbar-label">Format</label>
+          <select class="toolbar-select" id="table-format">
+            <option value="markdown">Markdown</option>
+            <option value="html">HTML</option>
+            <option value="expandable">Expandable</option>
+          </select>
+        </div>
+        <div class="toolbar-divider"></div>
+        <label class="toolbar-toggle"><input type="checkbox" id="table-flatten" checked> Flatten</label>
+        <label class="toolbar-toggle"><input type="checkbox" id="table-header" checked> Headers</label>
+        <div class="toolbar-group">
+          <label class="toolbar-label">Max Cols</label>
+          <input type="number" class="toolbar-select" id="table-maxcols" value="0" min="0" style="width:50px">
+        </div>
+      </div>
+
+      <!-- Fuzz Options -->
+      <div class="tool-options hidden" id="opts-fuzz">
+        <div class="toolbar-group">
+          <label class="toolbar-label">Mode</label>
+          <select class="toolbar-select" id="fuzz-mode">
+            <option value="normal">Normal</option>
+            <option value="edge">Edge Cases</option>
+            <option value="stress">Stress</option>
+          </select>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-group">
+          <label class="toolbar-label">Count</label>
+          <input type="number" class="toolbar-select" id="fuzz-count" value="5" min="1" max="100" style="width:50px">
+        </div>
+        <div class="toolbar-group">
+          <label class="toolbar-label">Seed</label>
+          <input type="number" class="toolbar-select" id="fuzz-seed" placeholder="Random" style="width:70px">
+        </div>
+        <label class="toolbar-toggle"><input type="checkbox" id="fuzz-fromschema"> Input is Schema</label>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Input Pane -->
+      <div class="pane pane-input">
+        <div class="pane-header">
+          <span class="pane-title">Input JSON</span>
+          <div class="pane-actions">
+            <button class="btn btn-icon tooltip-wrap" data-tip="Upload" id="btn-upload"><span>📁</span></button>
+            <button class="btn btn-icon tooltip-wrap" data-tip="Format" id="btn-format"><span>✨</span></button>
+            <button class="btn btn-icon tooltip-wrap" data-tip="Minify" id="btn-minify"><span>📦</span></button>
+          </div>
+        </div>
+        <div class="pane-body">
+          <div class="editor-wrap" id="input-editor"></div>
+          <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-icon">📄</div>
+            <div class="drop-zone-text">Drop JSON file here</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resizer -->
+      <div class="resizer" id="resizer"></div>
+
+      <!-- Output Pane -->
+      <div class="pane pane-output">
+        <div class="pane-header">
+          <span class="pane-title" id="output-title">Schema Output</span>
+          <div class="pane-actions">
+            <button class="btn btn-icon tooltip-wrap" data-tip="Copy" id="btn-copy"><span>📋</span></button>
+            <button class="btn btn-icon tooltip-wrap" data-tip="Download" id="btn-download"><span>💾</span></button>
+          </div>
+        </div>
+        <div class="pane-body">
+          <div class="output" id="output-area">
+            <div class="empty">
+              <div class="empty-icon">📐</div>
+              <div class="empty-title">Enter JSON to Generate Schema</div>
+              <div class="empty-desc">Paste or type JSON in the input panel</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Status Bar -->
+    <footer class="status">
+      <div class="status-msg" id="status-msg">Ready</div>
+      <div class="status-stats">
+        <span id="stat-size">Size: 0 B</span>
+        <span id="stat-lines">Lines: 0</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" accept=".json,.txt,.csv">
+
+  <!-- Copy toast -->
+  <div class="copy-toast" id="copy-toast">Copied!</div>
+
+  <!-- Main Script -->
+  <script type="module">
+    import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine } from '@codemirror/view';
+    import { EditorState, Compartment } from '@codemirror/state';
+    import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+    import { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldKeymap } from '@codemirror/language';
+    import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+    import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+    import { lintKeymap } from '@codemirror/lint';
+    import { json } from '@codemirror/lang-json';
+
+    // State
+    const State = {
+      tool: 'schema',
+      theme: localStorage.getItem('json-toolbox-theme') || 'light',
+      editor: null,
+      themeComp: new Compartment(),
+      wrapComp: new Compartment(),
+      debounce: null
+    };
+
+    // Tool config
+    const TOOLS = {
+      schema: { title: 'Schema Output', empty: { icon: '📐', title: 'Enter JSON to Generate Schema', desc: 'Paste JSON to generate JSON Schema' }},
+      shape: { title: 'Structure Output', empty: { icon: '🔍', title: 'Enter JSON to View Structure', desc: 'Shows structural outline with types' }},
+      lint: { title: 'Lint Results', empty: { icon: '✅', title: 'Enter JSON to Validate', desc: 'Validates and repairs JSON' }},
+      flatten: { title: 'Flattened Output', empty: { icon: '📊', title: 'Enter JSON to Flatten', desc: 'Converts nested to flat' }},
+      table: { title: 'Table Output', empty: { icon: '📋', title: 'Enter JSON Array', desc: 'Converts arrays to tables' }},
+      fuzz: { title: 'Generated Data', empty: { icon: '🎲', title: 'Enter JSON or Schema', desc: 'Generates random test data' }}
+    };
+
+    // Sample
+    const SAMPLE = {
+      user: {
+        id: 12345,
+        name: "Alice Johnson",
+        email: "alice.johnson@example.com",
+        age: 28,
+        active: true,
+        registered: "2024-01-15T10:30:00Z",
+        profile: {
+          avatar: "https://example.com/avatars/alice.jpg",
+          bio: "Software developer",
+          location: { city: "San Francisco", country: "USA" }
+        },
+        roles: ["admin", "developer"],
+        settings: { theme: "dark", notifications: { email: true, push: false } }
+      }
+    };
+
+    // Themes
+    const lightTheme = EditorView.theme({
+      '&': { backgroundColor: '#ffffff' },
+      '.cm-gutters': { backgroundColor: '#f8f9fa', borderRight: '1px solid #dee2e6' }
+    }, { dark: false });
+
+    const darkTheme = EditorView.theme({
+      '&': { backgroundColor: '#1e1e1e' },
+      '.cm-gutters': { backgroundColor: '#252526', borderRight: '1px solid #404040' },
+      '.cm-content': { color: '#d4d4d4' }
+    }, { dark: true });
+
+    // Create editor
+    function createEditor() {
+      const exts = [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightSpecialChars(),
+        history(),
+        foldGutter(),
+        drawSelection(),
+        dropCursor(),
+        EditorState.allowMultipleSelections.of(true),
+        indentOnInput(),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        bracketMatching(),
+        closeBrackets(),
+        autocompletion(),
+        rectangularSelection(),
+        crosshairCursor(),
+        highlightActiveLine(),
+        highlightSelectionMatches(),
+        keymap.of([
+          ...closeBracketsKeymap,
+          ...defaultKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
+          ...foldKeymap,
+          ...completionKeymap,
+          ...lintKeymap,
+          indentWithTab
+        ]),
+        json(),
+        State.themeComp.of(State.theme === 'dark' ? darkTheme : lightTheme),
+        State.wrapComp.of(EditorView.lineWrapping),
+        EditorView.updateListener.of(u => {
+          if (u.docChanged) { updateStats(); debouncedProcess(); }
+        })
+      ];
+
+      State.editor = new EditorView({
+        state: EditorState.create({ doc: '', extensions: exts }),
+        parent: document.getElementById('input-editor')
+      });
+    }
+
+    // Process functions
+    function processSchema(input, opts) {
+      try {
+        const data = JSON.parse(input);
+        const schema = SchemaGenerator.inferSchema(data, {
+          includeExamples: opts.examples,
+          detectFormats: opts.formats,
+          additionalProperties: opts.additional
+        });
+        const versions = {
+          'draft-2020-12': 'https://json-schema.org/draft/2020-12/schema',
+          'draft-07': 'http://json-schema.org/draft-07/schema#',
+          'draft-04': 'http://json-schema.org/draft-04/schema#'
+        };
+        schema.$schema = versions[opts.version] || versions['draft-2020-12'];
+        return { ok: true, out: JSON.stringify(schema, null, 3) };
+      } catch (e) { return { ok: false, err: e.message }; }
+    }
+
+    function processShape(input, opts) {
+      try {
+        const data = JSON.parse(input);
+        const result = JSONShaper.getStructure(data, { mode: opts.mode, maxDepth: opts.depth });
+        let out;
+        if (opts.mode === 'tree') out = JSON.stringify(result.tree, null, 3);
+        else if (opts.mode === 'compact' || opts.mode === 'compact-typed') out = result.structure;
+        else out = JSON.stringify(result.verboseObject, null, 3);
+        return { ok: true, out };
+      } catch (e) { return { ok: false, err: e.message }; }
+    }
+
+    function processLint(input, opts) {
+      const lint = JSONLinter.lint(input, { autoRepair: opts.autorepair });
+      if (lint.valid || lint.repaired) {
+        const json = lint.repaired || input;
+        if (opts.format) {
+          try {
+            let parsed = JSON.parse(json);
+            if (opts.sortkeys) parsed = JSONLinter.sortKeys(parsed).sorted;
+            const indent = opts.indent === '\\t' ? '\t' : parseInt(opts.indent) || 3;
+            return { ok: true, out: JSON.stringify(parsed, null, indent), repaired: !!lint.repaired };
+          } catch (e) { return { ok: false, err: 'Parse error: ' + e.message }; }
+        }
+        return { ok: true, out: json };
+      }
+      return { ok: false, err: 'Invalid JSON', issues: lint.issues };
+    }
+
+    function processFlatten(input, opts) {
+      try {
+        const data = JSON.parse(input);
+        if (opts.op === 'unflatten') {
+          return { ok: true, out: JSON.stringify(JSONFlattener.unflatten(data, { delimiter: opts.delimiter }), null, 3) };
+        }
+        const flat = JSONFlattener.flatten(data, { delimiter: opts.delimiter, flattenArrays: opts.arrays, preserveEmpty: opts.empty });
+        return { ok: true, out: JSON.stringify(flat, null, 3) };
+      } catch (e) { return { ok: false, err: e.message }; }
+    }
+
+    function processTable(input, opts) {
+      try {
+        const data = JSON.parse(input);
+        const tableOpts = { flatten: opts.flatten, includeHeader: opts.header, maxColumns: opts.maxcols };
+        if (opts.format === 'html') {
+          const r = JSONToTable.toHTMLTable(data, tableOpts);
+          return { ok: true, out: r.html, isHtml: true, rawHtml: r.html };
+        }
+        if (opts.format === 'expandable') {
+          // Custom expandable table with Postman-like UX
+          const html = buildExpandableTable(data);
+          return { ok: true, out: html, isHtml: true, rawHtml: html };
+        }
+        const r = JSONToTable.toMarkdownTable(data, tableOpts);
+        return { ok: true, out: r.markdown };
+      } catch (e) { return { ok: false, err: e.message }; }
+    }
+
+    // Build Postman-style expandable table
+    function buildExpandableTable(data) {
+      if (Array.isArray(data)) {
+        if (data.length === 0) return '<p>Empty array</p>';
+        return `<table><thead><tr><th>#</th><th>Value</th></tr></thead><tbody>${
+          data.map((item, i) => `<tr><td class="key-col">${i}</td><td>${renderValue(item)}</td></tr>`).join('')
+        }</tbody></table>`;
+      }
+      if (typeof data === 'object' && data !== null) {
+        const entries = Object.entries(data);
+        if (entries.length === 0) return '<p>Empty object</p>';
+        return `<table><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>${
+          entries.map(([k, v]) => `<tr><td class="key-col">${esc(k)}</td><td>${renderValue(v)}</td></tr>`).join('')
+        }</tbody></table>`;
+      }
+      return `<pre>${esc(JSON.stringify(data, null, 2))}</pre>`;
+    }
+
+    function renderValue(val) {
+      if (val === null) return '<span class="type-badge">null</span>';
+      if (typeof val === 'boolean') return `<span class="type-badge">${val}</span>`;
+      if (typeof val === 'number') return `<span style="color: #164">${val}</span>`;
+      if (typeof val === 'string') {
+        if (val.length > 100) return `<span style="color: #a11">"${esc(val.slice(0, 100))}..."</span>`;
+        return `<span style="color: #a11">"${esc(val)}"</span>`;
+      }
+      if (Array.isArray(val)) {
+        const preview = val.length > 3 ? `${val.length} items` : val.map(v => typeof v === 'object' ? '{...}' : JSON.stringify(v)).join(', ');
+        return `<details><summary><span class="array-badge">Array[${val.length}]</span> <span class="value-preview">${esc(preview.slice(0, 50))}</span></summary><div class="nested-content">${buildExpandableTable(val)}</div></details>`;
+      }
+      if (typeof val === 'object') {
+        const keys = Object.keys(val);
+        const preview = keys.slice(0, 3).join(', ') + (keys.length > 3 ? '...' : '');
+        return `<details><summary><span class="type-badge">Object</span> <span class="value-preview">{${esc(preview)}}</span></summary><div class="nested-content">${buildExpandableTable(val)}</div></details>`;
+      }
+      return esc(String(val));
+    }
+
+    function processFuzz(input, opts) {
+      try {
+        const data = JSON.parse(input);
+        const fuzzOpts = { count: opts.count, seed: opts.seed ? parseInt(opts.seed) : undefined, mode: opts.mode };
+        let results;
+        if (opts.fromschema) results = JSONFuzzer.generateMultiple(data, fuzzOpts);
+        else {
+          const schema = SchemaGenerator.inferSchema(data);
+          results = JSONFuzzer.generateMultiple(schema, fuzzOpts);
+        }
+        return { ok: true, out: JSON.stringify(results, null, 3) };
+      } catch (e) { return { ok: false, err: e.message }; }
+    }
+
+    // Main process
+    function process() {
+      const input = State.editor.state.doc.toString().trim();
+      if (!input) { showEmpty(); return; }
+
+      const tool = State.tool;
+      let result;
+
+      switch (tool) {
+        case 'schema':
+          result = processSchema(input, {
+            version: gid('schema-version').value,
+            examples: gid('schema-examples').checked,
+            formats: gid('schema-formats').checked,
+            additional: gid('schema-additional').checked
+          });
+          break;
+        case 'shape':
+          result = processShape(input, {
+            mode: gid('shape-mode').value,
+            depth: parseInt(gid('shape-depth').value) || 0
+          });
+          break;
+        case 'lint':
+          result = processLint(input, {
+            autorepair: gid('lint-autorepair').checked,
+            format: gid('lint-format').checked,
+            sortkeys: gid('lint-sortkeys').checked,
+            indent: gid('lint-indent').value
+          });
+          break;
+        case 'flatten':
+          result = processFlatten(input, {
+            op: gid('flatten-op').value,
+            delimiter: gid('flatten-delimiter').value || '.',
+            arrays: gid('flatten-arrays').checked,
+            empty: gid('flatten-empty').checked
+          });
+          break;
+        case 'table':
+          result = processTable(input, {
+            format: gid('table-format').value,
+            flatten: gid('table-flatten').checked,
+            header: gid('table-header').checked,
+            maxcols: parseInt(gid('table-maxcols').value) || 0
+          });
+          break;
+        case 'fuzz':
+          result = processFuzz(input, {
+            mode: gid('fuzz-mode').value,
+            count: parseInt(gid('fuzz-count').value) || 5,
+            seed: gid('fuzz-seed').value,
+            fromschema: gid('fuzz-fromschema').checked
+          });
+          break;
+      }
+
+      display(result);
+    }
+
+    function debouncedProcess() {
+      clearTimeout(State.debounce);
+      State.debounce = setTimeout(process, 300);
+    }
+
+    // Display
+    function display(r) {
+      const out = gid('output-area');
+      if (!r.ok) {
+        out.innerHTML = `<div class="alert alert-error">❌ ${esc(r.err)}</div>`;
+        setStatus('error', 'Error');
+        return;
+      }
+      if (r.isHtml) {
+        out.innerHTML = `<div class="table-wrap">${r.out}</div>`;
+      } else {
+        out.innerHTML = `<pre class="output">${esc(r.out)}</pre>`;
+      }
+      setStatus(r.repaired ? 'warning' : 'success', r.repaired ? 'Repaired' : 'Done');
+    }
+
+    function showEmpty() {
+      const t = TOOLS[State.tool].empty;
+      gid('output-area').innerHTML = `
+        <div class="empty">
+          <div class="empty-icon">${t.icon}</div>
+          <div class="empty-title">${t.title}</div>
+          <div class="empty-desc">${t.desc}</div>
+        </div>
+      `;
+      setStatus('', 'Ready');
+    }
+
+    function setStatus(type, msg) {
+      const el = gid('status-msg');
+      el.className = 'status-msg ' + type;
+      el.textContent = msg;
+    }
+
+    function updateStats() {
+      const content = State.editor.state.doc.toString();
+      const size = new Blob([content]).size;
+      const lines = State.editor.state.doc.lines;
+      const fmt = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : (b/1048576).toFixed(2) + ' MB';
+      gid('stat-size').textContent = 'Size: ' + fmt(size);
+      gid('stat-lines').textContent = 'Lines: ' + lines;
+    }
+
+    // Switch tool
+    function switchTool(id) {
+      State.tool = id;
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tool === id));
+      document.querySelectorAll('.tool-options').forEach(o => o.classList.toggle('hidden', o.id !== 'opts-' + id));
+      gid('output-title').textContent = TOOLS[id].title;
+      process();
+    }
+
+    // Theme
+    function toggleTheme() {
+      State.theme = State.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('json-toolbox-theme', State.theme);
+      document.documentElement.setAttribute('data-theme', State.theme);
+      gid('btn-theme').querySelector('span').textContent = State.theme === 'dark' ? '☀️' : '🌙';
+      State.editor.dispatch({ effects: State.themeComp.reconfigure(State.theme === 'dark' ? darkTheme : lightTheme) });
+    }
+
+    // Utils
+    function gid(id) { return document.getElementById(id); }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function setContent(c) { State.editor.dispatch({ changes: { from: 0, to: State.editor.state.doc.length, insert: c } }); }
+    function toast(msg) { const t = gid('copy-toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
+
+    // Events
+    function setupEvents() {
+      // Tabs
+      document.querySelectorAll('.tab').forEach(t => t.onclick = () => switchTool(t.dataset.tool));
+
+      // Header buttons
+      gid('btn-clear').onclick = () => { setContent(''); showEmpty(); };
+      gid('btn-paste').onclick = async () => {
+        try { setContent(await navigator.clipboard.readText()); }
+        catch { setStatus('error', 'Clipboard denied'); }
+      };
+      gid('btn-sample').onclick = () => setContent(JSON.stringify(SAMPLE, null, 3));
+      gid('btn-theme').onclick = toggleTheme;
+
+      // Pane buttons
+      gid('btn-upload').onclick = () => gid('file-input').click();
+      gid('file-input').onchange = e => {
+        const f = e.target.files[0];
+        if (f) { const r = new FileReader(); r.onload = ev => setContent(ev.target.result); r.readAsText(f); }
+        e.target.value = '';
+      };
+      gid('btn-format').onclick = () => {
+        try { setContent(JSON.stringify(JSON.parse(State.editor.state.doc.toString()), null, 3)); setStatus('success', 'Formatted'); }
+        catch { setStatus('error', 'Invalid JSON'); }
+      };
+      gid('btn-minify').onclick = () => {
+        try { setContent(JSON.stringify(JSON.parse(State.editor.state.doc.toString()))); setStatus('success', 'Minified'); }
+        catch { setStatus('error', 'Invalid JSON'); }
+      };
+      gid('btn-copy').onclick = () => {
+        const out = gid('output-area');
+        const pre = out.querySelector('pre');
+        const table = out.querySelector('.table-wrap');
+        if (pre) { navigator.clipboard.writeText(pre.textContent); toast('Copied!'); }
+        else if (table) { navigator.clipboard.writeText(table.innerHTML); toast('HTML Copied!'); }
+      };
+      gid('btn-download').onclick = () => {
+        const out = gid('output-area');
+        const pre = out.querySelector('pre');
+        const table = out.querySelector('.table-wrap');
+        
+        if (pre) {
+          // JSON/text download
+          const blob = new Blob([pre.textContent], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = State.tool + '-output.json';
+          a.click();
+          URL.revokeObjectURL(url);
+        } else if (table) {
+          // HTML table download
+          const format = gid('table-format').value;
+          const content = format === 'markdown' ? table.textContent : `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>JSON Table Export</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; padding: 20px; background: #fff; color: #333; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f5f5f5; font-weight: 600; }
+    tr:hover td { background: #f9f9f9; }
+    details { cursor: pointer; }
+    details summary { color: #08c988; font-weight: 500; list-style: none; display: inline-flex; align-items: center; gap: 4px; }
+    details summary::-webkit-details-marker { display: none; }
+    details summary::before { content: '▶'; font-size: 8px; transition: transform 0.15s; }
+    details[open] > summary::before { transform: rotate(90deg); }
+    details > .nested-content { margin: 4px 0 4px 12px; padding: 6px 8px; background: #f8f9fa; border-radius: 4px; border-left: 2px solid #08c988; }
+    .key-col { color: #08c988; font-weight: 500; white-space: nowrap; }
+    .type-badge { display: inline-block; padding: 1px 4px; border-radius: 2px; font-size: 9px; background: #e9ecef; color: #6c757d; }
+    .array-badge { background: rgba(8, 201, 136, 0.1); color: #08c988; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 500; }
+    .value-preview { color: #adb5bd; font-size: 10px; }
+  </style>
+</head>
+<body>
+${table.innerHTML}
+</body>
+</html>`;
+          const ext = format === 'markdown' ? '.md' : '.html';
+          const type = format === 'markdown' ? 'text/markdown' : 'text/html';
+          const blob = new Blob([content], { type });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'table-output' + ext;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      };
+
+      // Drag & drop
+      const dropZone = gid('drop-zone');
+      const inputPane = document.querySelector('.pane-input');
+      inputPane.ondragover = e => { e.preventDefault(); dropZone.classList.add('active'); };
+      inputPane.ondragleave = () => dropZone.classList.remove('active');
+      inputPane.ondrop = e => {
+        e.preventDefault();
+        dropZone.classList.remove('active');
+        const f = e.dataTransfer.files[0];
+        if (f) { const r = new FileReader(); r.onload = ev => setContent(ev.target.result); r.readAsText(f); }
+      };
+
+      // Resizer
+      const resizer = gid('resizer');
+      let resizing = false;
+      resizer.onmousedown = () => { resizing = true; resizer.classList.add('active'); };
+      document.onmousemove = e => {
+        if (!resizing) return;
+        const main = document.querySelector('.main');
+        const rect = main.getBoundingClientRect();
+        const pct = ((e.clientX - rect.left) / rect.width) * 100;
+        if (pct >= 20 && pct <= 80) {
+          document.querySelector('.pane-input').style.flex = `0 0 ${pct}%`;
+          document.querySelector('.pane-output').style.flex = `0 0 ${100 - pct}%`;
+        }
+      };
+      document.onmouseup = () => { resizing = false; resizer.classList.remove('active'); };
+
+      // Options trigger reprocess
+      document.querySelectorAll('.tool-options select, .tool-options input').forEach(el => el.onchange = debouncedProcess);
+    }
+
+    // Init
+    function init() {
+      document.documentElement.setAttribute('data-theme', State.theme);
+      gid('btn-theme').querySelector('span').textContent = State.theme === 'dark' ? '☀️' : '🌙';
+      createEditor();
+      setupEvents();
+      showEmpty();
+      console.log('JSON Toolbox ready');
+    }
+
+    init();
+  </script>
+</body>
+</html>

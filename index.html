@@ -45,8 +45,8 @@
 
         .version-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
             margin-bottom: 40px;
         }
 
@@ -74,6 +74,11 @@
             font-size: 0.75em;
             font-weight: 600;
             margin-bottom: 15px;
+        }
+
+        .card-toolbox .card-badge {
+            background: #8b5cf6;
+            color: white;
         }
 
         .card-recommended .card-badge {
@@ -171,6 +176,21 @@
         </div>
 
         <div class="version-cards">
+            <!-- JSON Toolbox - New -->
+            <a href="./utils-json/index.html" class="card card-toolbox">
+                <span class="card-badge">TOOLBOX</span>
+                <h2>JSON Toolbox</h2>
+                <p class="card-version">All-in-one JSON Utilities</p>
+                <ul class="card-features">
+                    <li>Schema Generator</li>
+                    <li>JSON Linter & Validator</li>
+                    <li>CSV Converter</li>
+                    <li>Table Generator</li>
+                    <li>Flattener & Fuzzer</li>
+                </ul>
+                <button class="card-button">Launch Toolbox</button>
+            </a>
+
             <!-- CodeMirror 6 - Recommended -->
             <a href="./v6/index.html" class="card card-recommended">
                 <span class="card-badge">RECOMMENDED</span>
