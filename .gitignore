@@ -28,3 +28,7 @@ node_modules/
 .taskmaster
 .cursor
 .outputs/
+
+# Task files
+# tasks.json
+# tasks/ 
