@@ -1,0 +1,360 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Project Foundation - Create Directory Structure",
+        "description": "Set up the utils-json project directory structure with folders for css, utils, and tests. Create initial placeholder files.",
+        "details": "Create the following structure:\nutils-json/\n├── index.html (main app entry)\n├── css/\n│   ├── app.css (core styles)\n│   └── ccsiteV6.css (branding - copy from v6)\n├── utils/\n│   ├── utils_core.js (shared utilities)\n│   ├── schema_generator.js\n│   ├── json_shaper.js\n│   ├── json_linter.js\n│   ├── json_flattener.js\n│   ├── json_to_table.js\n│   └── json_fuzzer.js\n└── tests/\n    └── test_runner.html",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Main Application Shell - index.html with Navigation",
+        "description": "Create the main index.html with CodeMirror 6 integration, tab navigation for all tools, and shared workspace layout matching v6 quality.",
+        "details": "Features:\n- Tab navigation: Schema, Shape, Lint, CSV, Table, Flatten, Fuzz\n- Shared input editor (CodeMirror 6 with JSON syntax)\n- Output panel area (changes per tool)\n- Tool options panel\n- Header with branding, settings dropdown, export/import buttons\n- Footer with version info\n- Use same ES Module Import Map pattern as v6/index.html\n- Include all CDN scripts: pako, jszip, diff_match_patch",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          1
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Core Utilities - utils_core.js Implementation",
+        "description": "Implement utils_core.js with shared utility functions for type detection, deep cloning, path manipulation, and format inference.",
+        "details": "Functions to implement:\n- inferType(value): Returns 'string'|'number'|'integer'|'boolean'|'null'|'array'|'object'\n- isObject(val), isArray(val), isString(val), isNumber(val), isBoolean(val), isNull(val)\n- deepClone(obj): Safe deep copy\n- getValueAtPath(obj, path): Get value using dot notation\n- setValueAtPath(obj, path, value): Set value using dot notation\n- detectFormat(str): Detect email, uri, date-time, uuid, ipv4, ipv6 patterns\n- getAllPaths(obj): Get all leaf paths in an object\n- mergeDeep(target, source): Deep merge objects\nExport all to window.JSONToolsCore",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          1
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "JSON Schema Generator - schema_generator.js",
+        "description": "Implement JSON Schema Generator that creates Draft 2020-12 compliant schemas from sample JSON data.",
+        "details": "Features:\n- inferSchema(sample, options): Generate schema from single sample\n- mergeSchemas(schemas[]): Merge multiple schemas, detect optional fields\n- Infer types: string, integer, number, boolean, null, array, object\n- Detect formats: email, uri, date-time, uuid, ipv4, hostname\n- Handle nested objects recursively\n- Handle arrays with item type inference (homogeneous/heterogeneous)\n- Options: addTitles, addDescriptions, markRequired, uniqueItems for arrays\n- Output includes $schema, $id, title, type, properties, required, items\n- Handle edge cases: empty objects, null values, mixed arrays\nExport to window.SchemaGenerator",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          3
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "JSON Shaper - json_shaper.js Implementation",
+        "description": "Implement JSON Shaper that generates structure outlines showing types without values.",
+        "details": "Features:\n- getStructure(json, options): Returns structure representation\n- Modes:\n  - 'verbose': Full JSON structure with type names as values\n  - 'compact': Single-line { id, name, address { city, zip } }\n  - 'compact-typed': { id:number, name:string, address { city:string } }\n- Handle nested objects and arrays\n- Array representation: [ { item:type, price:type } ]\n- Options: showTypes, compactMode, maxDepth\n- Return both string and object representations\n- Support collapsible tree data structure for UI\nExport to window.JSONShaper",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          3
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "JSON Linter - json_linter.js Implementation",
+        "description": "Implement JSON Linter with validation, error reporting, and auto-repair capabilities.",
+        "details": "Features:\n- lint(text): Returns { valid: boolean, errors: [], repaired?: string }\n- Error types to detect:\n  - Missing commas between properties\n  - Trailing commas\n  - Unquoted keys\n  - Mismatched brackets/braces\n  - Invalid escape sequences\n  - Single quotes instead of double\n- Error location: { line, column, message, severity }\n- autoRepair(text): Attempt to fix common issues\n- Repair strategies:\n  - Add missing commas\n  - Remove trailing commas\n  - Quote unquoted keys\n  - Fix bracket matching\n  - Convert single to double quotes\n- Integration with parseFlexibleJSON for Python syntax support\n- Show before/after diff of repairs\nExport to window.JSONLinter",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          3
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "JSON Flattener - json_flattener.js Implementation",
+        "description": "Implement JSON Flattener and Unflattener with dot notation support.",
+        "details": "Features:\n- flatten(obj, options): Convert nested object to flat key-value pairs\n  - Dot notation: user.address.city\n  - Array notation: tags[0], tags[1] or tags.0, tags.1\n  - Options: delimiter (default '.'), arrayNotation ('bracket'|'dot'), maxDepth\n- unflatten(obj, options): Restore nested structure from flat\n  - Auto-detect array notation\n  - Preserve original types\n- Round-trip guarantee: unflatten(flatten(obj)) === obj\n- Handle edge cases:\n  - Empty arrays/objects\n  - Null values\n  - Keys with dots in names (escape handling)\n  - Deep nesting (100+ levels)\n  - Mixed array/object structures\nExport to window.JSONFlattener",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          3
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "JSON to Table - json_to_table.js Implementation",
+        "description": "Implement JSON to Table converter with Markdown and HTML output support.",
+        "details": "Features:\n- toMarkdownTable(data, options): Generate markdown table\n  - Flatten nested objects to dot notation columns\n  - Array handling: comma-separated or indexed columns\n  - Auto-align columns\n  - Handle missing values gracefully\n- toHTMLTable(data, options): Generate HTML table\n  - Mode 1: Simple flat table\n  - Mode 2: Expandable sections using <details>/<summary>\n  - Mode 3: Rowspan/colspan for nested structures\n  - Inline styles for standalone use\n  - Nested arrays become sub-tables\n- Options:\n  - flatten: true/false\n  - arrayMode: 'index'|'named'|'expand'\n  - expandNested: true/false\n  - includeEmpty: true/false\n  - format: 'markdown'|'html'\n- Auto-detect input structure (array vs single object)\nExport to window.JSONToTable",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          7
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "JSON Fuzzer - json_fuzzer.js Implementation",
+        "description": "Implement JSON Fuzzer/Randomizer that generates random valid JSON from schemas or samples.",
+        "details": "Features:\n- generateFromSchema(schema, options): Create random data matching schema\n  - Type-specific generation: string, number, integer, boolean, null\n  - Format-aware: email, uri, date-time, uuid, ipv4\n  - Respect constraints: minLength, maxLength, minimum, maximum, enum\n  - Array generation with minItems, maxItems\n  - Nested object generation\n- generateFromSample(sample, options): Infer structure and generate similar\n  - Preserve structure, randomize values\n  - Type-appropriate random values\n- Options:\n  - mode: 'normal'|'edge'|'stress'\n  - Edge mode: empty strings, max values, special chars, unicode\n  - Stress mode: very long strings, deep nesting, large arrays\n  - seed: for reproducible randomness\n- Random data generators:\n  - Names, emails, addresses (realistic)\n  - Numbers within ranges\n  - Dates within ranges\n  - UUIDs, IPs, URLs\nExport to window.JSONFuzzer",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          4
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "CSS Styling - app.css for JSON Toolbox",
+        "description": "Create CSS styles for the JSON Toolbox matching v6 quality and design patterns.",
+        "details": "Style requirements:\n- Copy and adapt v6/css/app.css patterns\n- Copy v6/css/ccsiteV6.css for branding\n- Add new styles:\n  - Tab navigation (.tool-tabs, .tool-tab, .tool-tab.active)\n  - Split pane layout (.pane-input, .pane-output)\n  - Tool options panel (.tool-options)\n  - Output preview areas (.output-markdown, .output-html, .output-json)\n  - Error highlighting (.lint-error, .lint-warning)\n  - Collapsible sections for structure view\n  - Table preview styles\n- Dark/light theme support using CSS variables\n- Responsive design for smaller screens\n- Consistent button, input, dropdown styles with v6",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          1
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "Schema Generator UI Integration",
+        "description": "Implement Schema Generator UI tab with options panel and real-time preview.",
+        "details": "UI Features:\n- Schema output in CodeMirror editor (readonly, JSON mode)\n- Options panel:\n  - Add titles checkbox\n  - Add descriptions checkbox\n  - Mark all required checkbox\n  - Unique items for arrays checkbox\n  - Schema ID input field\n  - Schema title input field\n- Real-time generation on input change (debounced)\n- Copy schema button\n- Download as .json file button\n- Validate against JSON Schema spec\n- Show generation statistics (properties count, depth)\n- Handle multiple samples (textarea to add more samples)\n- Show merged schema when multiple samples provided",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2,
+          4
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 12,
+        "title": "JSON Shaper UI Integration",
+        "description": "Implement JSON Shaper UI tab with collapsible tree view and mode selection.",
+        "details": "UI Features:\n- Dual output: Text view and Tree view toggle\n- Mode selector: Verbose | Compact | Compact with Types\n- Tree view with collapsible nodes\n- Click to expand/collapse sections\n- Syntax highlighting for type annotations\n- Copy structure button (copies text format)\n- Show depth statistics\n- Path display on hover\n- Search within structure\n- Dark mode compatible tree rendering",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2,
+          5
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 13,
+        "title": "JSON Linter UI Integration",
+        "description": "Implement JSON Linter UI tab with error highlighting and auto-repair functionality.",
+        "details": "UI Features:\n- Real-time linting with error markers in CodeMirror\n- Error list panel showing all issues with line:column\n- Click error to jump to location\n- Auto-repair button with preview\n- Show diff between original and repaired\n- Severity icons (error, warning, info)\n- Format/Beautify button (using existing Format JSON logic)\n- Minify button\n- Options: strict mode, allow comments, allow trailing commas\n- Status bar: Valid JSON ✓ or X errors found\n- Python dict syntax support indicator",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2,
+          6
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 14,
+        "title": "JSON Flattener UI Integration",
+        "description": "Implement JSON Flatten/Unflatten UI tab with bidirectional conversion.",
+        "details": "UI Features:\n- Toggle button: Flatten ↔ Unflatten\n- Live preview in output editor\n- Options panel:\n  - Delimiter selector (. or custom)\n  - Array notation: [index] or .index\n  - Max depth slider\n- Statistics: Original depth, keys count\n- Copy result button\n- Download as .json button\n- Show path mapping table\n- Preserve original in separate panel for comparison\n- Round-trip validation indicator",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2,
+          7
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 15,
+        "title": "JSON to Table UI Integration",
+        "description": "Implement JSON to Table UI tab with format selection and live preview.",
+        "details": "UI Features:\n- Output format tabs: Markdown | HTML Simple | HTML Expandable\n- Live preview panel (rendered HTML or raw markdown)\n- Options panel:\n  - Flatten nested: on/off\n  - Array mode: inline | indexed columns | expand rows\n  - Include empty values: on/off\n  - Max columns limit\n- HTML Preview with actual table rendering\n- Markdown preview with raw code\n- Copy button (format-specific)\n- Download options: .md, .html, .csv\n- Handle single object (as single row or key-value)\n- Show column count and row count",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2,
+          8
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 16,
+        "title": "JSON Fuzzer UI Integration",
+        "description": "Implement JSON Fuzzer UI tab with generation options and schema input.",
+        "details": "UI Features:\n- Input mode selector: From Sample | From Schema\n- Generation options:\n  - Mode: Normal | Edge Cases | Stress Test\n  - Count: Number of samples to generate\n  - Seed input for reproducibility\n- Generate button (not real-time due to performance)\n- Output: Multiple generated samples in scrollable list\n- Copy single sample or all samples\n- Download as .json array\n- Statistics: Show what was generated\n- Schema validation of output (when using schema mode)\n- Integration with Schema Generator (use generated schema)",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2,
+          9
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 17,
+        "title": "CSV Conversion UI Integration",
+        "description": "Implement enhanced CSV tools UI with bidirectional JSON-CSV conversion.",
+        "details": "UI Features:\n- Mode toggle: JSON → CSV | CSV → JSON\n- Leverage existing utils_csv.js functions\n- JSON to CSV options:\n  - Flatten nested objects\n  - Array handling: inline | expand rows\n  - Custom delimiter\n  - Include headers: yes/no\n- CSV to JSON options:\n  - Detect nested from dot notation headers\n  - Type inference (numbers, booleans)\n  - Custom delimiter detection\n- Live preview of output\n- Download buttons for both formats\n- Drag-and-drop file support\n- Handle large files with progress indicator",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 18,
+        "title": "Unit Test Suite - All Utilities",
+        "description": "Create comprehensive unit test suite for all JSON utility functions.",
+        "details": "Test files to create:\n1. tests/test_core.js - utils_core.js tests\n2. tests/test_schema.js - schema_generator.js tests\n3. tests/test_shaper.js - json_shaper.js tests\n4. tests/test_linter.js - json_linter.js tests\n5. tests/test_flattener.js - json_flattener.js tests\n6. tests/test_table.js - json_to_table.js tests\n7. tests/test_fuzzer.js - json_fuzzer.js tests\n\nTest coverage:\n- Happy path for each function\n- Edge cases (empty, null, deep nesting)\n- Error handling\n- Round-trip tests where applicable\n- Performance tests for large inputs\n\nUse simple assertion framework (no external deps)\nCreate test_runner.html for browser execution",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 19,
+        "title": "Integration Tests - Tool Interoperability",
+        "description": "Create integration tests verifying tool interoperability and data flow between tools.",
+        "details": "Integration tests:\n1. Schema → Fuzzer flow: Generate schema from sample, use to generate new data\n2. JSON → CSV → JSON roundtrip: Verify data integrity\n3. JSON → Flatten → Table: Complex nested data through pipeline\n4. Lint → Format → Compare: Bad JSON fixed and compared\n5. Sample → Schema → Validate: Generate schema, validate original against it\n6. Large file handling: 1MB+ JSON through each tool\n7. Shared workspace: Data persists when switching tools\n8. URL sharing: Generate and load shareable links\n9. Export/Import: Save and restore workspace state\n\nCreate tests/integration_tests.js and integration section in test_runner.html",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 20,
+        "title": "Shared Workspace - File Handling and Persistence",
+        "description": "Implement shared workspace features: file upload, drag-drop, localStorage persistence, history.",
+        "details": "Features:\n- File upload button with accept=\".json,.csv,.txt\"\n- Drag and drop anywhere on input editor\n- Auto-detect file type (JSON vs CSV)\n- localStorage persistence (30 day expiry like v6)\n- History panel:\n  - Last 10 operations saved\n  - Click to restore previous state\n  - Clear history button\n- Session management:\n  - Auto-save on change (debounced 300ms)\n  - Restore on page load\n- URL sharing:\n  - Generate shareable URL button\n  - URL length limit check (>2000 chars → suggest download)\n  - Load from URL on page load\nReuse patterns from v6/utils/utils.js (StorageManager, URLManager)",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 21,
+        "title": "Theme System - Dark/Light Mode Support",
+        "description": "Implement theme system with dark/light modes and real-time switching.",
+        "details": "Features:\n- Theme selector dropdown (Default, Light, Dark, One Dark)\n- CSS variables for theme colors\n- CodeMirror 6 theme integration (using Compartment)\n- System preference detection (prefers-color-scheme)\n- Persist theme choice in localStorage\n- Smooth transitions between themes\n- Tool-specific styling (tables, tree views) theme-aware\n- Consistent with v6 theme implementation\n- Apply themes to:\n  - Editor backgrounds\n  - Syntax highlighting\n  - UI elements (buttons, panels, tabs)\n  - Output previews (tables, code)",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          10
+        ],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": 22,
+        "title": "Documentation - API Reference and Usage Guide",
+        "description": "Create comprehensive API documentation in Markdown format.",
+        "details": "Documentation files to create:\n1. docs/json-tools/API.md - Complete API reference\n   - All functions with signatures\n   - Parameter descriptions\n   - Return value descriptions\n   - Example code for each function\n\n2. docs/json-tools/USAGE.md - Usage guide\n   - Getting started\n   - Tool-by-tool walkthrough\n   - Common workflows\n   - Tips and best practices\n\n3. docs/json-tools/EXAMPLES.md - Example collection\n   - Real-world use cases\n   - Input/output examples for each tool\n   - Edge case handling\n\n4. Update README.md to reference new tool\n\nJSDoc comments in all utility files",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          18,
+          19
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 23,
+        "title": "Performance Optimization - Large File Handling",
+        "description": "Performance optimization review and implementation for large JSON handling.",
+        "details": "Optimizations:\n- Debounced real-time updates (300ms for input, 500ms for heavy operations)\n- Web Worker for heavy operations (schema gen, flattening large objects)\n- Virtual scrolling for large output lists\n- Streaming JSON parsing option for 10MB+ files\n- Memory-efficient flattening (avoid full object copies)\n- Lazy rendering for tree views\n- Cancel long-running operations\n- Progress indicators for slow operations\n- Performance benchmarks:\n  - 10KB JSON: < 50ms\n  - 100KB JSON: < 200ms\n  - 1MB JSON: < 1s\n  - 10MB JSON: < 5s with streaming\nAdd performance test cases to test suite",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 24,
+        "title": "Navigation - Update Version Selector",
+        "description": "Update root index.html version selector to include JSON Toolbox link.",
+        "details": "Changes:\n- Add JSON Toolbox card/button to version selector\n- Description: \"All-in-one JSON utilities: Schema, Lint, Flatten, CSV, Tables, and more\"\n- Link to utils-json/index.html\n- Consistent styling with existing v5/v6 links\n- Update any navigation footers to include toolbox link\n- Add link in v6/index.html footer to toolbox",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          2
+        ],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": 25,
+        "title": "QA and Production Readiness Check",
+        "description": "Final quality assurance, cross-browser testing, and production readiness check.",
+        "details": "QA Checklist:\n- Cross-browser testing: Chrome, Firefox, Safari, Edge\n- Mobile responsiveness check\n- All features work without server (client-side only)\n- No console errors in any tool\n- All tests passing (unit + integration)\n- Documentation complete and accurate\n- Performance benchmarks met\n- Accessibility check (keyboard navigation, ARIA labels)\n- Error handling for all edge cases\n- Memory leak check (long sessions)\n- GitHub Pages deployment test\n- Final code review for:\n  - Consistent coding style\n  - Proper error messages\n  - No dead code\n  - Optimized bundle size",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          22,
+          23
+        ],
+        "priority": "high",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-12-30T10:31:51.801Z",
+      "description": "Default tasks context",
+      "updated": "2025-12-30T10:45:03.559Z"
+    }
+  }
+}
