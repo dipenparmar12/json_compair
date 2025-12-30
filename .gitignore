@@ -25,7 +25,7 @@ node_modules/
 .DS_Store
 
 # AI Agent files
-.taskmaster
+# .taskmaster
 .cursor
 .outputs/
 
