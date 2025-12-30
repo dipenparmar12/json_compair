@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JSON Toolbox - Test Runner</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; margin-bottom: 20px; }
+    h2 { color: #555; margin-top: 30px; border-bottom: 2px solid #08c988; padding-bottom: 5px; }
+    .summary {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    .summary .pass { color: #28a745; }
+    .summary .fail { color: #dc3545; }
+    .test-group {
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .test-group-header {
+      background: #f8f9fa;
+      padding: 10px 15px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .test-group-header:hover { background: #e9ecef; }
+    .test-group-content { padding: 0; }
+    .test-case {
+      padding: 10px 15px;
+      border-top: 1px solid #eee;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .test-case.pass { background: #f0fff4; }
+    .test-case.fail { background: #fff5f5; }
+    .test-icon { font-size: 16px; }
+    .test-name { flex: 1; }
+    .test-error {
+      color: #dc3545;
+      font-size: 12px;
+      font-family: monospace;
+      margin-top: 5px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: normal;
+    }
+    .badge.pass { background: #d4edda; color: #155724; }
+    .badge.fail { background: #f8d7da; color: #721c24; }
+    .btn {
+      padding: 10px 20px;
+      background: #08c988;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn:hover { background: #06a070; }
+    .progress-bar {
+      height: 4px;
+      background: #e9ecef;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #08c988;
+      transition: width 0.3s;
+    }
+    #log {
+      margin-top: 20px;
+      padding: 15px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 JSON Toolbox Test Runner</h1>
+  
+  <div class="summary">
+    <button class="btn" onclick="runAllTests()">▶️ Run All Tests</button>
+    <button class="btn" onclick="clearResults()" style="background: #6c757d; margin-left: 10px;">Clear</button>
+    
+    <div id="summary-stats" style="margin-top: 15px; display: none;">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+      <p style="margin-top: 10px;">
+        Total: <strong id="total-count">0</strong> |
+        <span class="pass">Passed: <strong id="pass-count">0</strong></span> |
+        <span class="fail">Failed: <strong id="fail-count">0</strong></span>
+      </p>
+    </div>
+  </div>
+  
+  <div id="test-results"></div>
+  
+  <div id="log"></div>
+
+  <!-- Load utilities -->
+  <script src="../utils/utils_core.js"></script>
+  <script src="../utils/schema_generator.js"></script>
+  <script src="../utils/json_shaper.js"></script>
+  <script src="../utils/json_linter.js"></script>
+  <script src="../utils/json_flattener.js"></script>
+  <script src="../utils/json_to_table.js"></script>
+  <script src="../utils/json_fuzzer.js"></script>
+
+  <script>
+    // Simple test framework
+    const TestRunner = {
+      results: [],
+      currentGroup: null,
+      
+      log(message) {
+        const logEl = document.getElementById('log');
+        logEl.innerHTML += message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      },
+      
+      describe(name, fn) {
+        this.currentGroup = { name, tests: [] };
+        fn();
+        this.results.push(this.currentGroup);
+        this.currentGroup = null;
+      },
+      
+      it(name, fn) {
+        const test = { name, pass: false, error: null };
+        try {
+          fn();
+          test.pass = true;
+        } catch (e) {
+          test.error = e.message || String(e);
+        }
+        if (this.currentGroup) {
+          this.currentGroup.tests.push(test);
+        }
+      },
+      
+      expect(actual) {
+        return {
+          toBe(expected) {
+            if (actual !== expected) {
+              throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+            }
+          },
+          toEqual(expected) {
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+              throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+            }
+          },
+          toBeTruthy() {
+            if (!actual) {
+              throw new Error(`Expected truthy value, got ${JSON.stringify(actual)}`);
+            }
+          },
+          toBeFalsy() {
+            if (actual) {
+              throw new Error(`Expected falsy value, got ${JSON.stringify(actual)}`);
+            }
+          },
+          toContain(item) {
+            if (Array.isArray(actual)) {
+              if (!actual.includes(item)) {
+                throw new Error(`Expected array to contain ${JSON.stringify(item)}`);
+              }
+            } else if (typeof actual === 'string') {
+              if (!actual.includes(item)) {
+                throw new Error(`Expected string to contain "${item}"`);
+              }
+            }
+          },
+          toBeGreaterThan(expected) {
+            if (!(actual > expected)) {
+              throw new Error(`Expected ${actual} to be greater than ${expected}`);
+            }
+          },
+          toBeInstanceOf(type) {
+            if (!(actual instanceof type)) {
+              throw new Error(`Expected instance of ${type.name}`);
+            }
+          },
+          toHaveProperty(prop) {
+            if (!(prop in actual)) {
+              throw new Error(`Expected object to have property "${prop}"`);
+            }
+          },
+          toThrow() {
+            let threw = false;
+            try {
+              actual();
+            } catch (e) {
+              threw = true;
+            }
+            if (!threw) {
+              throw new Error('Expected function to throw');
+            }
+          }
+        };
+      },
+      
+      render() {
+        const container = document.getElementById('test-results');
+        container.innerHTML = '';
+        
+        let totalPass = 0;
+        let totalFail = 0;
+        
+        for (const group of this.results) {
+          const passCount = group.tests.filter(t => t.pass).length;
+          const failCount = group.tests.length - passCount;
+          totalPass += passCount;
+          totalFail += failCount;
+          
+          const groupEl = document.createElement('div');
+          groupEl.className = 'test-group';
+          
+          const headerEl = document.createElement('div');
+          headerEl.className = 'test-group-header';
+          headerEl.innerHTML = `
+            <span>${group.name}</span>
+            <span class="badge ${failCount > 0 ? 'fail' : 'pass'}">
+              ${passCount}/${group.tests.length}
+            </span>
+          `;
+          headerEl.onclick = () => {
+            contentEl.style.display = contentEl.style.display === 'none' ? 'block' : 'none';
+          };
+          
+          const contentEl = document.createElement('div');
+          contentEl.className = 'test-group-content';
+          
+          for (const test of group.tests) {
+            const testEl = document.createElement('div');
+            testEl.className = `test-case ${test.pass ? 'pass' : 'fail'}`;
+            testEl.innerHTML = `
+              <span class="test-icon">${test.pass ? '✅' : '❌'}</span>
+              <div class="test-name">
+                ${test.name}
+                ${test.error ? `<div class="test-error">${test.error}</div>` : ''}
+              </div>
+            `;
+            contentEl.appendChild(testEl);
+          }
+          
+          groupEl.appendChild(headerEl);
+          groupEl.appendChild(contentEl);
+          container.appendChild(groupEl);
+        }
+        
+        // Update summary
+        document.getElementById('summary-stats').style.display = 'block';
+        document.getElementById('total-count').textContent = totalPass + totalFail;
+        document.getElementById('pass-count').textContent = totalPass;
+        document.getElementById('fail-count').textContent = totalFail;
+        
+        const percent = totalPass / (totalPass + totalFail) * 100;
+        document.getElementById('progress-fill').style.width = percent + '%';
+        document.getElementById('progress-fill').style.background = totalFail > 0 ? '#dc3545' : '#08c988';
+      },
+      
+      reset() {
+        this.results = [];
+        document.getElementById('test-results').innerHTML = '';
+        document.getElementById('log').innerHTML = '';
+        document.getElementById('summary-stats').style.display = 'none';
+      }
+    };
+
+    // Shorthand
+    const { describe, it, expect } = TestRunner;
+
+    // ============================================
+    // TESTS
+    // ============================================
+
+    function runCoreTests() {
+      describe('JSONToolsCore - Type Detection', () => {
+        it('should detect null', () => {
+          expect(JSONToolsCore.isNull(null)).toBe(true);
+          expect(JSONToolsCore.isNull(undefined)).toBe(false);
+          expect(JSONToolsCore.isNull('')).toBe(false);
+        });
+
+        it('should detect boolean', () => {
+          expect(JSONToolsCore.isBoolean(true)).toBe(true);
+          expect(JSONToolsCore.isBoolean(false)).toBe(true);
+          expect(JSONToolsCore.isBoolean(0)).toBe(false);
+        });
+
+        it('should detect number', () => {
+          expect(JSONToolsCore.isNumber(42)).toBe(true);
+          expect(JSONToolsCore.isNumber(3.14)).toBe(true);
+          expect(JSONToolsCore.isNumber(NaN)).toBe(false);
+          expect(JSONToolsCore.isNumber('42')).toBe(false);
+        });
+
+        it('should detect integer', () => {
+          expect(JSONToolsCore.isInteger(42)).toBe(true);
+          expect(JSONToolsCore.isInteger(3.14)).toBe(false);
+        });
+
+        it('should detect string', () => {
+          expect(JSONToolsCore.isString('')).toBe(true);
+          expect(JSONToolsCore.isString('hello')).toBe(true);
+          expect(JSONToolsCore.isString(42)).toBe(false);
+        });
+
+        it('should detect array', () => {
+          expect(JSONToolsCore.isArray([])).toBe(true);
+          expect(JSONToolsCore.isArray([1, 2, 3])).toBe(true);
+          expect(JSONToolsCore.isArray({})).toBe(false);
+        });
+
+        it('should detect object', () => {
+          expect(JSONToolsCore.isObject({})).toBe(true);
+          expect(JSONToolsCore.isObject({ a: 1 })).toBe(true);
+          expect(JSONToolsCore.isObject(null)).toBe(false);
+          expect(JSONToolsCore.isObject([])).toBe(false);
+        });
+
+        it('should infer types correctly', () => {
+          expect(JSONToolsCore.inferType(null)).toBe('null');
+          expect(JSONToolsCore.inferType(true)).toBe('boolean');
+          expect(JSONToolsCore.inferType(42)).toBe('integer');
+          expect(JSONToolsCore.inferType(3.14)).toBe('number');
+          expect(JSONToolsCore.inferType('hello')).toBe('string');
+          expect(JSONToolsCore.inferType([])).toBe('array');
+          expect(JSONToolsCore.inferType({})).toBe('object');
+        });
+      });
+
+      describe('JSONToolsCore - Deep Clone', () => {
+        it('should clone primitive values', () => {
+          expect(JSONToolsCore.deepClone(42)).toBe(42);
+          expect(JSONToolsCore.deepClone('hello')).toBe('hello');
+          expect(JSONToolsCore.deepClone(null)).toBe(null);
+        });
+
+        it('should clone arrays', () => {
+          const arr = [1, 2, 3];
+          const clone = JSONToolsCore.deepClone(arr);
+          expect(clone).toEqual(arr);
+          clone.push(4);
+          expect(arr.length).toBe(3);
+        });
+
+        it('should clone nested objects', () => {
+          const obj = { a: { b: { c: 1 } } };
+          const clone = JSONToolsCore.deepClone(obj);
+          expect(clone).toEqual(obj);
+          clone.a.b.c = 2;
+          expect(obj.a.b.c).toBe(1);
+        });
+      });
+
+      describe('JSONToolsCore - Path Operations', () => {
+        it('should get value at path', () => {
+          const obj = { user: { name: 'Alice', address: { city: 'NYC' } } };
+          expect(JSONToolsCore.getValueAtPath(obj, 'user.name')).toBe('Alice');
+          expect(JSONToolsCore.getValueAtPath(obj, 'user.address.city')).toBe('NYC');
+        });
+
+        it('should get value at path with array notation', () => {
+          const obj = { users: [{ name: 'Alice' }, { name: 'Bob' }] };
+          expect(JSONToolsCore.getValueAtPath(obj, 'users[0].name')).toBe('Alice');
+          expect(JSONToolsCore.getValueAtPath(obj, 'users[1].name')).toBe('Bob');
+        });
+
+        it('should set value at path', () => {
+          const obj = {};
+          JSONToolsCore.setValueAtPath(obj, 'user.name', 'Alice');
+          expect(obj.user.name).toBe('Alice');
+        });
+
+        it('should get all paths', () => {
+          const obj = { a: 1, b: { c: 2 } };
+          const paths = JSONToolsCore.getAllPaths(obj);
+          expect(paths).toContain('a');
+          expect(paths).toContain('b.c');
+        });
+      });
+
+      describe('JSONToolsCore - Format Detection', () => {
+        it('should detect email format', () => {
+          expect(JSONToolsCore.detectFormat('user@example.com')).toBe('email');
+        });
+
+        it('should detect URI format', () => {
+          expect(JSONToolsCore.detectFormat('https://example.com')).toBe('uri');
+        });
+
+        it('should detect date-time format', () => {
+          expect(JSONToolsCore.detectFormat('2024-01-15T10:30:00Z')).toBe('date-time');
+        });
+
+        it('should detect UUID format', () => {
+          expect(JSONToolsCore.detectFormat('123e4567-e89b-12d3-a456-426614174000')).toBe('uuid');
+        });
+
+        it('should return null for non-formatted strings', () => {
+          expect(JSONToolsCore.detectFormat('hello world')).toBe(null);
+        });
+      });
+    }
+
+    function runSchemaTests() {
+      describe('SchemaGenerator - Basic Types', () => {
+        it('should generate schema for string', () => {
+          const schema = SchemaGenerator.inferSchema('hello');
+          expect(schema.type).toBe('string');
+        });
+
+        it('should generate schema for integer', () => {
+          const schema = SchemaGenerator.inferSchema(42);
+          expect(schema.type).toBe('integer');
+        });
+
+        it('should generate schema for number', () => {
+          const schema = SchemaGenerator.inferSchema(3.14);
+          expect(schema.type).toBe('number');
+        });
+
+        it('should generate schema for boolean', () => {
+          const schema = SchemaGenerator.inferSchema(true);
+          expect(schema.type).toBe('boolean');
+        });
+
+        it('should generate schema for null', () => {
+          const schema = SchemaGenerator.inferSchema(null);
+          expect(schema.type).toBe('null');
+        });
+      });
+
+      describe('SchemaGenerator - Complex Types', () => {
+        it('should generate schema for simple object', () => {
+          const schema = SchemaGenerator.inferSchema({ name: 'Alice', age: 30 });
+          expect(schema.type).toBe('object');
+          expect(schema.properties.name.type).toBe('string');
+          expect(schema.properties.age.type).toBe('integer');
+        });
+
+        it('should generate schema for array', () => {
+          const schema = SchemaGenerator.inferSchema([1, 2, 3]);
+          expect(schema.type).toBe('array');
+          expect(schema.items.type).toBe('integer');
+        });
+
+        it('should generate schema for nested object', () => {
+          const schema = SchemaGenerator.inferSchema({
+            user: { name: 'Alice', address: { city: 'NYC' } }
+          });
+          expect(schema.properties.user.type).toBe('object');
+          expect(schema.properties.user.properties.address.type).toBe('object');
+        });
+
+        it('should detect email format', () => {
+          const schema = SchemaGenerator.inferSchema({ email: 'user@example.com' });
+          expect(schema.properties.email.format).toBe('email');
+        });
+      });
+
+      describe('SchemaGenerator - Multiple Samples', () => {
+        it('should merge schemas from multiple samples', () => {
+          const samples = [
+            { name: 'Alice', age: 30 },
+            { name: 'Bob', email: 'bob@example.com' }
+          ];
+          const schema = SchemaGenerator.inferSchemaFromSamples(samples);
+          expect(schema.properties.name).toBeTruthy();
+          expect(schema.properties.age).toBeTruthy();
+          expect(schema.properties.email).toBeTruthy();
+        });
+      });
+    }
+
+    function runShaperTests() {
+      describe('JSONShaper - Verbose Mode', () => {
+        it('should generate verbose structure', () => {
+          const result = JSONShaper.getStructure({ name: 'Alice', age: 30 }, { mode: 'verbose' });
+          expect(result.verboseObject.name).toBe('string');
+          expect(result.verboseObject.age).toBe('integer');
+        });
+
+        it('should handle arrays', () => {
+          const result = JSONShaper.getStructure({ tags: ['a', 'b'] }, { mode: 'verbose' });
+          expect(result.verboseObject.tags).toEqual(['string']);
+        });
+      });
+
+      describe('JSONShaper - Compact Mode', () => {
+        it('should generate compact structure', () => {
+          const result = JSONShaper.getStructure({ name: 'Alice', age: 30 }, { mode: 'compact' });
+          expect(result.structure).toContain('name');
+          expect(result.structure).toContain('age');
+        });
+
+        it('should generate compact-typed structure', () => {
+          const result = JSONShaper.getStructure({ name: 'Alice', age: 30 }, { mode: 'compact-typed' });
+          expect(result.structure).toContain('name:string');
+          expect(result.structure).toContain('age:integer');
+        });
+      });
+
+      describe('JSONShaper - Tree Structure', () => {
+        it('should generate tree structure', () => {
+          const result = JSONShaper.getStructure({ user: { name: 'Alice' } }, { mode: 'tree' });
+          expect(result.tree).toBeTruthy();
+          expect(result.tree.type).toBe('object');
+        });
+      });
+    }
+
+    function runLinterTests() {
+      describe('JSONLinter - Valid JSON', () => {
+        it('should validate correct JSON', () => {
+          const result = JSONLinter.lint('{"name": "Alice"}');
+          expect(result.valid).toBe(true);
+        });
+
+        it('should validate JSON with arrays', () => {
+          const result = JSONLinter.lint('[1, 2, 3]');
+          expect(result.valid).toBe(true);
+        });
+      });
+
+      describe('JSONLinter - Invalid JSON', () => {
+        it('should detect missing quotes', () => {
+          const result = JSONLinter.lint('{name: "Alice"}');
+          expect(result.valid).toBe(false);
+        });
+
+        it('should detect trailing commas', () => {
+          const result = JSONLinter.lint('{"name": "Alice",}');
+          expect(result.valid).toBe(false);
+        });
+
+        it('should detect single quotes', () => {
+          const result = JSONLinter.lint("{'name': 'Alice'}");
+          expect(result.valid).toBe(false);
+        });
+      });
+
+      describe('JSONLinter - Auto Repair', () => {
+        it('should repair trailing commas', () => {
+          const result = JSONLinter.autoRepair('{"name": "Alice",}');
+          expect(result.changes.length).toBeGreaterThan(0);
+        });
+
+        it('should quote unquoted keys', () => {
+          const result = JSONLinter.autoRepair('{name: "Alice"}');
+          expect(result.repaired).toContain('"name"');
+        });
+      });
+
+      describe('JSONLinter - Format', () => {
+        it('should format JSON', () => {
+          const result = JSONLinter.format('{"name":"Alice","age":30}');
+          expect(result.success).toBe(true);
+          expect(result.formatted).toContain('\n');
+        });
+
+        it('should minify JSON', () => {
+          const result = JSONLinter.minify('{\n  "name": "Alice"\n}');
+          expect(result.success).toBe(true);
+          expect(result.minified).toBe('{"name":"Alice"}');
+        });
+      });
+    }
+
+    function runFlattenerTests() {
+      describe('JSONFlattener - Flatten', () => {
+        it('should flatten simple object', () => {
+          const flat = JSONFlattener.flatten({ a: 1, b: 2 });
+          expect(flat.a).toBe(1);
+          expect(flat.b).toBe(2);
+        });
+
+        it('should flatten nested object', () => {
+          const flat = JSONFlattener.flatten({ user: { name: 'Alice', age: 30 } });
+          expect(flat['user.name']).toBe('Alice');
+          expect(flat['user.age']).toBe(30);
+        });
+
+        it('should flatten arrays', () => {
+          const flat = JSONFlattener.flatten({ tags: ['a', 'b', 'c'] });
+          expect(flat['tags[0]']).toBe('a');
+          expect(flat['tags[1]']).toBe('b');
+        });
+
+        it('should handle empty objects', () => {
+          const flat = JSONFlattener.flatten({ empty: {} });
+          expect(flat['empty']).toEqual({});
+        });
+      });
+
+      describe('JSONFlattener - Unflatten', () => {
+        it('should unflatten simple object', () => {
+          const nested = JSONFlattener.unflatten({ 'user.name': 'Alice', 'user.age': 30 });
+          expect(nested.user.name).toBe('Alice');
+          expect(nested.user.age).toBe(30);
+        });
+
+        it('should unflatten arrays', () => {
+          const nested = JSONFlattener.unflatten({ 'tags[0]': 'a', 'tags[1]': 'b' });
+          expect(nested.tags).toEqual(['a', 'b']);
+        });
+      });
+
+      describe('JSONFlattener - Round Trip', () => {
+        it('should round-trip simple object', () => {
+          const obj = { a: 1, b: { c: 2 } };
+          const result = JSONFlattener.roundTrip(obj);
+          expect(result.success).toBe(true);
+        });
+
+        it('should round-trip with arrays', () => {
+          const obj = { users: [{ name: 'Alice' }, { name: 'Bob' }] };
+          const result = JSONFlattener.roundTrip(obj);
+          expect(result.success).toBe(true);
+        });
+      });
+    }
+
+    function runTableTests() {
+      describe('JSONToTable - Markdown', () => {
+        it('should convert array to markdown table', () => {
+          const data = [{ name: 'Alice', age: 30 }, { name: 'Bob', age: 25 }];
+          const result = JSONToTable.toMarkdownTable(data);
+          expect(result.markdown).toContain('| name |');
+          expect(result.markdown).toContain('| Alice |');
+        });
+
+        it('should handle nested objects', () => {
+          const data = [{ user: { name: 'Alice' } }];
+          const result = JSONToTable.toMarkdownTable(data, { flatten: true });
+          expect(result.markdown).toContain('user.name');
+        });
+      });
+
+      describe('JSONToTable - HTML', () => {
+        it('should convert array to HTML table', () => {
+          const data = [{ name: 'Alice' }];
+          const result = JSONToTable.toHTMLTable(data);
+          expect(result.html).toContain('<table');
+          expect(result.html).toContain('<th');
+          expect(result.html).toContain('Alice');
+        });
+
+        it('should generate expandable HTML', () => {
+          const data = [{ user: { name: 'Alice' } }];
+          const result = JSONToTable.toExpandableHTMLTable(data);
+          expect(result.html).toContain('<details');
+        });
+      });
+
+      describe('JSONToTable - Auto Convert', () => {
+        it('should auto-detect array of objects', () => {
+          const result = JSONToTable.autoConvert([{ a: 1 }, { a: 2 }]);
+          expect(result.type).toBe('array-of-objects');
+        });
+
+        it('should auto-detect single object', () => {
+          const result = JSONToTable.autoConvert({ name: 'Alice' });
+          expect(result.type).toBe('object');
+        });
+      });
+    }
+
+    function runFuzzerTests() {
+      describe('JSONFuzzer - Basic Generation', () => {
+        it('should generate string', () => {
+          const str = JSONFuzzer.generateString({ mode: 'normal' });
+          expect(typeof str).toBe('string');
+        });
+
+        it('should generate number', () => {
+          const num = JSONFuzzer.generateNumber({ mode: 'normal' });
+          expect(typeof num).toBe('number');
+        });
+
+        it('should generate boolean', () => {
+          const bool = JSONFuzzer.generateBoolean({ mode: 'normal' });
+          expect(typeof bool).toBe('boolean');
+        });
+      });
+
+      describe('JSONFuzzer - From Schema', () => {
+        it('should generate from simple schema', () => {
+          const schema = { type: 'object', properties: { name: { type: 'string' } } };
+          const result = JSONFuzzer.generateFromSchema(schema);
+          expect(typeof result.name).toBe('string');
+        });
+
+        it('should generate email format', () => {
+          const result = JSONFuzzer.generateFormattedString('email', {});
+          expect(result).toContain('@');
+        });
+
+        it('should generate UUID format', () => {
+          const result = JSONFuzzer.generateFormattedString('uuid', {});
+          expect(result.length).toBe(36);
+        });
+      });
+
+      describe('JSONFuzzer - From Sample', () => {
+        it('should generate similar structure', () => {
+          const sample = { name: 'Alice', age: 30 };
+          const result = JSONFuzzer.generateFromSample(sample);
+          expect(result).toHaveProperty('name');
+          expect(result).toHaveProperty('age');
+        });
+      });
+
+      describe('JSONFuzzer - Multiple Generation', () => {
+        it('should generate multiple samples', () => {
+          const schema = { type: 'object', properties: { id: { type: 'integer' } } };
+          const results = JSONFuzzer.generateMultiple(schema, { count: 5 });
+          expect(results.length).toBe(5);
+        });
+
+        it('should be reproducible with seed', () => {
+          const schema = { type: 'string' };
+          const result1 = JSONFuzzer.generateMultiple(schema, { count: 1, seed: 12345 });
+          const result2 = JSONFuzzer.generateMultiple(schema, { count: 1, seed: 12345 });
+          expect(result1[0]).toBe(result2[0]);
+        });
+      });
+    }
+
+    function runIntegrationTests() {
+      describe('Integration - Schema to Fuzzer', () => {
+        it('should generate valid data from inferred schema', () => {
+          const sample = { name: 'Alice', age: 30, email: 'alice@example.com' };
+          const schema = SchemaGenerator.inferSchema(sample);
+          const generated = JSONFuzzer.generateFromSchema(schema);
+          
+          expect(generated).toHaveProperty('name');
+          expect(generated).toHaveProperty('age');
+          expect(generated).toHaveProperty('email');
+        });
+      });
+
+      describe('Integration - Flatten to Table', () => {
+        it('should flatten and convert to table', () => {
+          const data = [{ user: { name: 'Alice', address: { city: 'NYC' } } }];
+          const result = JSONToTable.toMarkdownTable(data, { flatten: true });
+          expect(result.headers).toContain('user.name');
+          expect(result.headers).toContain('user.address.city');
+        });
+      });
+
+      describe('Integration - Lint and Format', () => {
+        it('should repair and format invalid JSON', () => {
+          const invalid = '{name: "Alice", age: 30,}';
+          const lintResult = JSONLinter.lint(invalid, { autoRepair: true });
+          
+          if (lintResult.repaired) {
+            const formatResult = JSONLinter.format(lintResult.repaired);
+            expect(formatResult.success).toBe(true);
+          }
+        });
+      });
+    }
+
+    // Run all tests
+    function runAllTests() {
+      TestRunner.reset();
+      
+      TestRunner.log('Starting tests...\n');
+      
+      runCoreTests();
+      runSchemaTests();
+      runShaperTests();
+      runLinterTests();
+      runFlattenerTests();
+      runTableTests();
+      runFuzzerTests();
+      runIntegrationTests();
+      
+      TestRunner.render();
+      TestRunner.log('\nTests completed!');
+    }
+
+    function clearResults() {
+      TestRunner.reset();
+    }
+
+    // Auto-run on load
+    window.onload = runAllTests;
+  </script>
+</body>
+</html>

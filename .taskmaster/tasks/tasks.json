@@ -7,7 +7,7 @@
         "description": "Set up the utils-json project directory structure with folders for css, utils, and tests. Create initial placeholder files.",
         "details": "Create the following structure:\nutils-json/\n├── index.html (main app entry)\n├── css/\n│   ├── app.css (core styles)\n│   └── ccsiteV6.css (branding - copy from v6)\n├── utils/\n│   ├── utils_core.js (shared utilities)\n│   ├── schema_generator.js\n│   ├── json_shaper.js\n│   ├── json_linter.js\n│   ├── json_flattener.js\n│   ├── json_to_table.js\n│   └── json_fuzzer.js\n└── tests/\n    └── test_runner.html",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": []
@@ -18,7 +18,7 @@
         "description": "Create the main index.html with CodeMirror 6 integration, tab navigation for all tools, and shared workspace layout matching v6 quality.",
         "details": "Features:\n- Tab navigation: Schema, Shape, Lint, CSV, Table, Flatten, Fuzz\n- Shared input editor (CodeMirror 6 with JSON syntax)\n- Output panel area (changes per tool)\n- Tool options panel\n- Header with branding, settings dropdown, export/import buttons\n- Footer with version info\n- Use same ES Module Import Map pattern as v6/index.html\n- Include all CDN scripts: pako, jszip, diff_match_patch",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           1
         ],
@@ -31,7 +31,7 @@
         "description": "Implement utils_core.js with shared utility functions for type detection, deep cloning, path manipulation, and format inference.",
         "details": "Functions to implement:\n- inferType(value): Returns 'string'|'number'|'integer'|'boolean'|'null'|'array'|'object'\n- isObject(val), isArray(val), isString(val), isNumber(val), isBoolean(val), isNull(val)\n- deepClone(obj): Safe deep copy\n- getValueAtPath(obj, path): Get value using dot notation\n- setValueAtPath(obj, path, value): Set value using dot notation\n- detectFormat(str): Detect email, uri, date-time, uuid, ipv4, ipv6 patterns\n- getAllPaths(obj): Get all leaf paths in an object\n- mergeDeep(target, source): Deep merge objects\nExport all to window.JSONToolsCore",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           1
         ],
@@ -44,7 +44,7 @@
         "description": "Implement JSON Schema Generator that creates Draft 2020-12 compliant schemas from sample JSON data.",
         "details": "Features:\n- inferSchema(sample, options): Generate schema from single sample\n- mergeSchemas(schemas[]): Merge multiple schemas, detect optional fields\n- Infer types: string, integer, number, boolean, null, array, object\n- Detect formats: email, uri, date-time, uuid, ipv4, hostname\n- Handle nested objects recursively\n- Handle arrays with item type inference (homogeneous/heterogeneous)\n- Options: addTitles, addDescriptions, markRequired, uniqueItems for arrays\n- Output includes $schema, $id, title, type, properties, required, items\n- Handle edge cases: empty objects, null values, mixed arrays\nExport to window.SchemaGenerator",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           3
         ],
@@ -57,7 +57,7 @@
         "description": "Implement JSON Shaper that generates structure outlines showing types without values.",
         "details": "Features:\n- getStructure(json, options): Returns structure representation\n- Modes:\n  - 'verbose': Full JSON structure with type names as values\n  - 'compact': Single-line { id, name, address { city, zip } }\n  - 'compact-typed': { id:number, name:string, address { city:string } }\n- Handle nested objects and arrays\n- Array representation: [ { item:type, price:type } ]\n- Options: showTypes, compactMode, maxDepth\n- Return both string and object representations\n- Support collapsible tree data structure for UI\nExport to window.JSONShaper",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           3
         ],
@@ -70,7 +70,7 @@
         "description": "Implement JSON Linter with validation, error reporting, and auto-repair capabilities.",
         "details": "Features:\n- lint(text): Returns { valid: boolean, errors: [], repaired?: string }\n- Error types to detect:\n  - Missing commas between properties\n  - Trailing commas\n  - Unquoted keys\n  - Mismatched brackets/braces\n  - Invalid escape sequences\n  - Single quotes instead of double\n- Error location: { line, column, message, severity }\n- autoRepair(text): Attempt to fix common issues\n- Repair strategies:\n  - Add missing commas\n  - Remove trailing commas\n  - Quote unquoted keys\n  - Fix bracket matching\n  - Convert single to double quotes\n- Integration with parseFlexibleJSON for Python syntax support\n- Show before/after diff of repairs\nExport to window.JSONLinter",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           3
         ],
@@ -83,7 +83,7 @@
         "description": "Implement JSON Flattener and Unflattener with dot notation support.",
         "details": "Features:\n- flatten(obj, options): Convert nested object to flat key-value pairs\n  - Dot notation: user.address.city\n  - Array notation: tags[0], tags[1] or tags.0, tags.1\n  - Options: delimiter (default '.'), arrayNotation ('bracket'|'dot'), maxDepth\n- unflatten(obj, options): Restore nested structure from flat\n  - Auto-detect array notation\n  - Preserve original types\n- Round-trip guarantee: unflatten(flatten(obj)) === obj\n- Handle edge cases:\n  - Empty arrays/objects\n  - Null values\n  - Keys with dots in names (escape handling)\n  - Deep nesting (100+ levels)\n  - Mixed array/object structures\nExport to window.JSONFlattener",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           3
         ],
@@ -96,7 +96,7 @@
         "description": "Implement JSON to Table converter with Markdown and HTML output support.",
         "details": "Features:\n- toMarkdownTable(data, options): Generate markdown table\n  - Flatten nested objects to dot notation columns\n  - Array handling: comma-separated or indexed columns\n  - Auto-align columns\n  - Handle missing values gracefully\n- toHTMLTable(data, options): Generate HTML table\n  - Mode 1: Simple flat table\n  - Mode 2: Expandable sections using <details>/<summary>\n  - Mode 3: Rowspan/colspan for nested structures\n  - Inline styles for standalone use\n  - Nested arrays become sub-tables\n- Options:\n  - flatten: true/false\n  - arrayMode: 'index'|'named'|'expand'\n  - expandNested: true/false\n  - includeEmpty: true/false\n  - format: 'markdown'|'html'\n- Auto-detect input structure (array vs single object)\nExport to window.JSONToTable",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           7
         ],
@@ -109,7 +109,7 @@
         "description": "Implement JSON Fuzzer/Randomizer that generates random valid JSON from schemas or samples.",
         "details": "Features:\n- generateFromSchema(schema, options): Create random data matching schema\n  - Type-specific generation: string, number, integer, boolean, null\n  - Format-aware: email, uri, date-time, uuid, ipv4\n  - Respect constraints: minLength, maxLength, minimum, maximum, enum\n  - Array generation with minItems, maxItems\n  - Nested object generation\n- generateFromSample(sample, options): Infer structure and generate similar\n  - Preserve structure, randomize values\n  - Type-appropriate random values\n- Options:\n  - mode: 'normal'|'edge'|'stress'\n  - Edge mode: empty strings, max values, special chars, unicode\n  - Stress mode: very long strings, deep nesting, large arrays\n  - seed: for reproducible randomness\n- Random data generators:\n  - Names, emails, addresses (realistic)\n  - Numbers within ranges\n  - Dates within ranges\n  - UUIDs, IPs, URLs\nExport to window.JSONFuzzer",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           4
         ],
@@ -122,7 +122,7 @@
         "description": "Create CSS styles for the JSON Toolbox matching v6 quality and design patterns.",
         "details": "Style requirements:\n- Copy and adapt v6/css/app.css patterns\n- Copy v6/css/ccsiteV6.css for branding\n- Add new styles:\n  - Tab navigation (.tool-tabs, .tool-tab, .tool-tab.active)\n  - Split pane layout (.pane-input, .pane-output)\n  - Tool options panel (.tool-options)\n  - Output preview areas (.output-markdown, .output-html, .output-json)\n  - Error highlighting (.lint-error, .lint-warning)\n  - Collapsible sections for structure view\n  - Table preview styles\n- Dark/light theme support using CSS variables\n- Responsive design for smaller screens\n- Consistent button, input, dropdown styles with v6",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           1
         ],
@@ -232,7 +232,7 @@
         "description": "Create comprehensive unit test suite for all JSON utility functions.",
         "details": "Test files to create:\n1. tests/test_core.js - utils_core.js tests\n2. tests/test_schema.js - schema_generator.js tests\n3. tests/test_shaper.js - json_shaper.js tests\n4. tests/test_linter.js - json_linter.js tests\n5. tests/test_flattener.js - json_flattener.js tests\n6. tests/test_table.js - json_to_table.js tests\n7. tests/test_fuzzer.js - json_fuzzer.js tests\n\nTest coverage:\n- Happy path for each function\n- Edge cases (empty, null, deep nesting)\n- Error handling\n- Round-trip tests where applicable\n- Performance tests for large inputs\n\nUse simple assertion framework (no external deps)\nCreate test_runner.html for browser execution",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           3,
           4,
@@ -354,7 +354,7 @@
     "metadata": {
       "created": "2025-12-30T10:31:51.801Z",
       "description": "Default tasks context",
-      "updated": "2025-12-30T10:45:03.559Z"
+      "updated": "2025-12-30T10:58:08.499Z"
     }
   }
 }
