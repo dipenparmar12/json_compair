@@ -10,6 +10,7 @@
  *   name: string,       // Display name (e.g., "API v1")
  *   content: string,    // JSON content
  *   timestamp: number,  // Last modified timestamp
+ *   locked: boolean,    // Whether branch is locked (prevents edits)
  *   metadata: {
  *     source: string,   // "manual", "import", "paste", "drop"
  *     notes: string     // Optional user notes
@@ -249,12 +250,18 @@
     async saveBranch(id, content, options = {}) {
       const index = loadBranchIndex();
       const existing = index[id];
-      
+
+      // Check if branch is locked
+      if (existing && existing.locked) {
+        throw new Error(`Branch '${existing.name || id}' is locked and cannot be modified`);
+      }
+
       const branch = {
         id: id,
         name: options.name || (existing ? existing.name : id),
         content: content,
         timestamp: Date.now(),
+        locked: options.locked !== undefined ? options.locked : (existing ? existing.locked : false),
         metadata: {
           source: options.source || (existing ? existing.metadata?.source : 'manual'),
           notes: options.notes !== undefined ? options.notes : (existing ? existing.metadata?.notes : '')
@@ -269,6 +276,7 @@
         id: branch.id,
         name: branch.name,
         timestamp: branch.timestamp,
+        locked: branch.locked,
         metadata: branch.metadata
       };
       saveBranchIndex(index);
@@ -451,6 +459,50 @@
     count() {
       const index = loadBranchIndex();
       return Object.keys(index).length;
+    },
+
+    /**
+     * Toggle branch lock status
+     * @param {string} id - Branch ID
+     * @returns {Promise<Object|null>} - Updated branch or null
+     */
+    async toggleLock(id) {
+      if (id === 'main') {
+        console.warn('Cannot lock the main branch');
+        return null;
+      }
+
+      const branch = await this.getBranch(id);
+      if (!branch) {
+        console.warn(`Branch '${id}' not found`);
+        return null;
+      }
+
+      branch.locked = !branch.locked;
+      branch.timestamp = Date.now();
+
+      // Save updated branch
+      await saveBranchToIDB(branch);
+
+      // Update index
+      const index = loadBranchIndex();
+      if (index[id]) {
+        index[id].locked = branch.locked;
+        index[id].timestamp = branch.timestamp;
+        saveBranchIndex(index);
+      }
+
+      return branch;
+    },
+
+    /**
+     * Check if branch is locked
+     * @param {string} id - Branch ID
+     * @returns {boolean} - True if locked
+     */
+    isLocked(id) {
+      const index = loadBranchIndex();
+      return index[id]?.locked || false;
     }
   };
 

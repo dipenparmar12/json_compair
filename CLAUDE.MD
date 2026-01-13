@@ -554,6 +554,59 @@ Potential improvements (check `todo.md` for current priorities):
 - WebWorker for diff calculations
 - More JSON Toolbox utilities
 
+## Recent Improvements (2026-01-13)
+
+### Branching Feature UX Enhancements ⭐ NEW
+
+**Status**: Implementation ready - see `/docs/BRANCHING_UI_IMPLEMENTATION_GUIDE.md`
+
+#### What's New:
+1. **Separate Save Button** (1-click save instead of 3)
+   - Visible only when changes exist
+   - Pulsing orange animation
+   - States: normal → saving → saved
+   - Keyboard: `Ctrl+S` / `Cmd+S`
+
+2. **Branch Locking** 🔒
+   - Lock branches to prevent accidental edits
+   - Lock/unlock via context menu
+   - Visual lock indicator
+   - API: `BranchManager.toggleLock(id)`
+
+3. **Enhanced Dropdown**
+   - Timestamps: "2h ago", "Just now"
+   - Context menu (⋯) for actions
+   - Search box (when >5 branches)
+   - Cleaner layout
+
+4. **Keyboard Shortcuts**
+   - `Ctrl+S`: Save
+   - `Ctrl+B`: Toggle dropdown
+   - `Ctrl+Shift+N`: New branch
+   - `Ctrl+Shift+S`: Save as new
+
+5. **Toast Notifications**
+   - Slide-in success/error messages
+   - Auto-dismiss after 2s
+   - Shows branch names
+
+6. **Context Menu**
+   - Rename, Duplicate, Lock, Notes, Delete
+   - Right-click or click (⋯) button
+
+#### Files Modified:
+- ✅ `/v6/utils/utils_branch.js` - Lock support
+- ✅ `/v6/css/app.css` - New styles
+- ✅ `/v6/utils/branch_ui_improvements.js` - NEW helper library
+- ⏳ `/v6/index.html` - Needs manual integration
+
+#### Documentation:
+- `/docs/BRANCHING_IMPROVEMENTS_SUMMARY.md` - Overview
+- `/docs/BRANCHING_UX_IMPROVEMENTS.md` - Full UX spec
+- `/docs/BRANCHING_UI_IMPLEMENTATION_GUIDE.md` - Step-by-step guide
+
+---
+
 ## Getting Help
 
 - **GitHub Issues**: https://github.com/dipenparmar12/json_compair/issues
@@ -573,3 +626,4 @@ Potential improvements (check `todo.md` for current priorities):
 **Last Updated**: 2026-01-13
 **Current Version**: v6 (CodeMirror 6) is primary, v5 (CodeMirror 5) is legacy
 **Status**: Active development on `feature/json-tool-box` branch
+**Latest Feature**: Branching UX improvements (ready for integration)

@@ -965,6 +965,101 @@ select.toggle-button {
     50% { opacity: 1; }
 }
 
+/* Save button - separate from dropdown */
+.branch-save-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    margin-right: 4px;
+    background: #ff9800;
+    color: white;
+    border: 1px solid #f57c00;
+    border-radius: 4px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    animation: pulse-save 1.5s ease-in-out infinite;
+    min-width: 32px;
+    height: 28px;
+}
+
+.branch-save-btn.show {
+    display: inline-flex;
+}
+
+@keyframes pulse-save {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.85;
+        transform: scale(1.05);
+    }
+}
+
+.branch-save-btn:hover {
+    background: #f57c00;
+    transform: scale(1.08);
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.4);
+}
+
+.branch-save-btn:active {
+    transform: scale(0.95);
+}
+
+.branch-save-btn.saving {
+    background: #9e9e9e;
+    border-color: #757575;
+    animation: none;
+    cursor: wait;
+}
+
+.branch-save-btn.saved {
+    background: #4caf50;
+    border-color: #388e3c;
+    animation: none;
+}
+
+/* Toast notification */
+.save-toast {
+    position: fixed;
+    top: 60px;
+    right: 20px;
+    background: #4caf50;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    font-size: 13px;
+    z-index: 10000;
+    animation: slide-in 0.3s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.save-toast.fade-out {
+    animation: fade-out 0.3s ease-out forwards;
+}
+
+@keyframes slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fade-out {
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
 .branch-selector-btn {
     display: inline-flex;
     align-items: center;
@@ -1084,6 +1179,153 @@ select.toggle-button {
 
 .branch-action-icon.branch-action-delete:hover {
     color: #e74c3c;
+}
+
+/* Branch search box */
+.branch-search-container {
+    padding: 8px;
+    border-bottom: 1px solid #e0e0e0;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 2;
+}
+
+.branch-search-input {
+    width: 100%;
+    padding: 6px 28px 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+    outline: none;
+    font-family: inherit;
+}
+
+.branch-search-input:focus {
+    border-color: #08c988;
+    box-shadow: 0 0 0 2px rgba(8, 201, 136, 0.1);
+}
+
+.branch-search-clear {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+}
+
+.branch-search-clear:hover {
+    color: #333;
+}
+
+/* Branch dropdown header */
+.branch-dropdown-header {
+    padding: 8px 12px 6px;
+    font-weight: 600;
+    font-size: 10px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: #fafafa;
+    border-bottom: 1px solid #e8e8e8;
+}
+
+/* Branch item with timestamp */
+.branch-item-main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.branch-item-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.branch-item-timestamp {
+    font-size: 10px;
+    color: #999;
+    white-space: nowrap;
+    margin-left: auto;
+    padding-left: 8px;
+}
+
+.branch-item-lock {
+    font-size: 10px;
+    opacity: 0.6;
+    color: #f57c00;
+}
+
+/* Context menu button */
+.branch-context-btn {
+    padding: 2px 6px;
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.branch-dropdown-item:hover .branch-context-btn {
+    opacity: 1;
+}
+
+.branch-context-btn:hover {
+    color: #333;
+    background: rgba(0,0,0,0.05);
+    border-radius: 3px;
+}
+
+/* Context menu */
+.branch-context-menu {
+    position: absolute;
+    right: 100%;
+    top: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    min-width: 120px;
+    z-index: 1002;
+    margin-right: 4px;
+}
+
+.branch-context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.branch-context-menu-item:last-child {
+    border-bottom: none;
+}
+
+.branch-context-menu-item:hover {
+    background: #f5f5f5;
+}
+
+.branch-context-menu-item.danger {
+    color: #e74c3c;
+}
+
+.branch-context-menu-item.danger:hover {
+    background: #fff5f5;
 }
     border-bottom: 1px solid #f0f0f0;
 }
