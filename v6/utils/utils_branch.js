@@ -203,6 +203,15 @@
           source: 'system',
           notes: 'Default branch'
         });
+      } else {
+        // Ensure main branch exists if it's missing
+        if (!index['main']) {
+          await this.saveBranch('main', '', {
+            name: 'Main',
+            source: 'system',
+            notes: 'Default branch'
+          });
+        }
       }
     },
 

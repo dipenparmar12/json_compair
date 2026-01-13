@@ -1348,8 +1348,14 @@
             nameSpan.innerHTML = `<span class="branch-item-icon">🌿</span> ${branch.name}`;
             nameSpan.onclick = async (e) => {
               e.stopPropagation();
-              await switchBranch(side, branch.id);
-              dropdown.style.display = 'none';
+              try {
+                console.log(`Switching ${side} panel to branch: ${branch.id}`);
+                await switchBranch(side, branch.id);
+                dropdown.style.display = 'none';
+              } catch (error) {
+                console.error(`Failed to switch branch: ${error}`);
+                updateStatus(`Error switching branch: ${error.message}`);
+              }
             };
             item.appendChild(nameSpan);
             
@@ -1415,6 +1421,17 @@
           };
           dropdown.appendChild(saveItem);
           
+          // Add branch count info
+          const infoItem = document.createElement('div');
+          infoItem.className = 'branch-dropdown-item branch-info';
+          infoItem.style.fontSize = '10px';
+          infoItem.style.color = '#666';
+          infoItem.style.padding = '4px 12px';
+          infoItem.style.borderTop = '1px solid #eee';
+          infoItem.style.marginTop = '4px';
+          infoItem.textContent = `${branches.length} branch${branches.length !== 1 ? 'es' : ''} total`;
+          dropdown.appendChild(infoItem);
+          
           // Reset all branches option (only show if there are branches other than main)
           if (branches.length > 1) {
             const divider2 = document.createElement('div');
@@ -1444,13 +1461,21 @@
           if (!isVisible) {
             await populateDropdown();
             dropdown.style.display = 'block';
+            
+            // Add event listener specifically for this dropdown
+            const closeDropdown = (event) => {
+              if (!container.contains(event.target)) {
+                dropdown.style.display = 'none';
+                document.removeEventListener('click', closeDropdown);
+              }
+            };
+            
+            // Use setTimeout to allow the click event to complete
+            setTimeout(() => {
+              document.addEventListener('click', closeDropdown);
+            }, 0);
           }
         };
-        
-        // Close dropdown on outside click
-        document.addEventListener('click', () => {
-          dropdown.style.display = 'none';
-        });
         
         container.appendChild(modifiedIndicator);
         container.appendChild(branchBtn);
@@ -1474,39 +1499,48 @@
         const editor = side === 'left' ? mergeView.a : mergeView.b;
         const currentContent = editor.state.doc.toString();
         
-        // Auto-save current content to current branch before switching
-        if (currentContent.trim()) {
-          await window.BranchManager.saveBranch(currentBranchId, currentContent, {
-            source: 'auto-save'
+        // Show loading state
+        updateStatus(`Switching to branch: ${newBranchId}...`);
+        
+        try {
+          // Auto-save current content to current branch before switching
+          if (currentContent.trim()) {
+            await window.BranchManager.saveBranch(currentBranchId, currentContent, {
+              source: 'auto-save'
+            });
+          }
+          
+          // Load new branch
+          const newBranch = await window.BranchManager.getBranch(newBranchId);
+          const newContent = newBranch ? newBranch.content : '';
+          
+          // Update editor content
+          editor.dispatch({
+            changes: { from: 0, to: editor.state.doc.length, insert: newContent }
           });
+          
+          // Update active branch
+          activeBranches[side] = newBranchId;
+          SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', newBranchId);
+          
+          // Update panel name from branch name
+          if (newBranch) {
+            SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', newBranch.name);
+          }
+          
+          // Reset modified state
+          branchModified[side] = false;
+          updateBranchModifiedIndicator(side);
+          
+          // Update UI
+          updateBranchSelectors();
+          updateDiffStatus();
+          updateStatus(`✓ Switched to branch: ${newBranch ? newBranch.name : newBranchId}`);
+          
+        } catch (error) {
+          console.error(`Failed to switch branch: ${error}`);
+          updateStatus(`✗ Error switching branch: ${error.message}`);
         }
-        
-        // Load new branch
-        const newBranch = await window.BranchManager.getBranch(newBranchId);
-        const newContent = newBranch ? newBranch.content : '';
-        
-        // Update editor content
-        editor.dispatch({
-          changes: { from: 0, to: editor.state.doc.length, insert: newContent }
-        });
-        
-        // Update active branch
-        activeBranches[side] = newBranchId;
-        SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', newBranchId);
-        
-        // Update panel name from branch name
-        if (newBranch) {
-          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', newBranch.name);
-        }
-        
-        // Reset modified state
-        branchModified[side] = false;
-        updateBranchModifiedIndicator(side);
-        
-        // Update UI
-        updateBranchSelectors();
-        updateDiffStatus();
-        updateStatus(`Switched to branch: ${newBranch ? newBranch.name : newBranchId}`);
       }
       
       // Create a new branch

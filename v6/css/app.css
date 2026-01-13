@@ -1017,6 +1017,9 @@ select.toggle-button {
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
     z-index: 1001;
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
 .branch-dropdown-item {
@@ -1028,6 +1031,60 @@ select.toggle-button {
     color: #333;
     cursor: pointer;
     transition: background 0.15s;
+    position: relative;
+}
+
+.branch-dropdown-item:hover {
+    background-color: #f5f5f5;
+}
+
+.branch-dropdown-item.active {
+    background-color: #e8f5e9;
+    font-weight: 500;
+}
+
+.branch-dropdown-item.active::before {
+    content: '✓';
+    color: #08c988;
+    font-weight: bold;
+    margin-right: 4px;
+}
+
+.branch-dropdown-item.branch-info {
+    cursor: default;
+    font-size: 11px;
+    color: #666;
+    padding: 6px 12px 4px;
+}
+
+.branch-dropdown-item.branch-info:hover {
+    background-color: transparent;
+}
+
+.branch-item-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.branch-item-row:hover .branch-item-actions {
+    opacity: 1;
+}
+
+.branch-action-icon {
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.branch-action-icon:hover {
+    opacity: 0.8;
+}
+
+.branch-action-icon.branch-action-delete:hover {
+    color: #e74c3c;
+}
     border-bottom: 1px solid #f0f0f0;
 }
 
