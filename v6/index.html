@@ -1254,6 +1254,19 @@
               console.warn('Failed to save cleared branch:', err);
             }
           }
+
+          // If both panels are now empty, refresh the MergeView to remove stale collapsed widgets
+          try {
+            const leftText = mergeView.a.state.doc.toString().trim();
+            const rightText = mergeView.b.state.doc.toString().trim();
+            if (!leftText && !rightText) {
+              const currentMergeSettings = loadMergeSettings();
+              recreateMergeView(currentMergeSettings, wordWrapEnabled);
+              updateClearButtonVisibility();
+            }
+          } catch (err) {
+            console.warn('Failed to refresh MergeView after per-pane clear:', err);
+          }
           
           updateDiffStatus();
           updatePaneButtonVisibility();
@@ -2799,6 +2812,19 @@
         }
 
         updateStatus("Content cleared");
+
+        // Recreate merge view to ensure collapsed widgets/placeholders are recalculated
+        // This fixes stale "X unchanged lines" placeholders after clearing both panels
+        try {
+          const currentMergeSettings = loadMergeSettings();
+          recreateMergeView(currentMergeSettings, wordWrapEnabled);
+        } catch (err) {
+          console.warn('Failed to refresh MergeView after clearAll:', err);
+        }
+
+        // Hide/refresh Clear All button visibility
+        updateClearButtonVisibility();
+
         updateDiffStatus();
       }
 
