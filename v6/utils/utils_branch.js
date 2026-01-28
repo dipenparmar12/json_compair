@@ -190,41 +190,73 @@
 
   const BranchManager = {
     /**
-     * Initialize branch system with default 'main' branch if none exist
+     * Initialize branch system with default 'main-left' and 'main-right' branches if none exist
      * @returns {Promise<void>}
      */
     async init() {
       const index = loadBranchIndex();
       
-      // Create default 'main' branch if no branches exist
-      if (Object.keys(index).length === 0) {
-        await this.saveBranch('main', '', {
-          name: 'Main',
-          source: 'system',
-          notes: 'Default branch'
-        });
-      } else {
-        // Ensure main branch exists if it's missing
-        if (!index['main']) {
-          await this.saveBranch('main', '', {
-            name: 'Main',
+      // Migration: if old 'main' branch exists, rename it to 'main-left'
+      if (index['main'] && !index['main-left']) {
+        const mainBranch = await this.getBranch('main');
+        if (mainBranch) {
+          await this.saveBranch('main-left', mainBranch.content || '', {
+            name: 'Main Left',
             source: 'system',
-            notes: 'Default branch'
+            notes: 'Default left panel branch',
+            panel: 'left'
           });
         }
+        // Delete old main branch
+        await deleteBranchFromIDB('main');
+        delete index['main'];
+        saveBranchIndex(index);
+      }
+      
+      // Create default branches for each panel if they don't exist
+      if (!index['main-left']) {
+        await this.saveBranch('main-left', '', {
+          name: 'Main Left',
+          source: 'system',
+          notes: 'Default left panel branch',
+          panel: 'left'
+        });
+      }
+      
+      if (!index['main-right']) {
+        await this.saveBranch('main-right', '', {
+          name: 'Main Right',
+          source: 'system',
+          notes: 'Default right panel branch',
+          panel: 'right'
+        });
       }
     },
 
     /**
      * List all branches with metadata (without full content)
+     * @param {string} [panel] - Optional panel filter ('left' or 'right') - strict filtering
      * @returns {Array<{id, name, timestamp, metadata}>}
      */
-    listBranches() {
+    listBranches(panel = null) {
       const index = loadBranchIndex();
-      return Object.values(index).sort((a, b) => {
-        // Sort 'main' first, then by timestamp descending
-        if (a.id === 'main') return -1;
-        if (b.id === 'main') return 1;
+      let branches = Object.values(index);
+      
+      // Strict filter by panel - only show branches belonging to this panel
+      if (panel) {
+        branches = branches.filter(b => {
+          // Only show branches explicitly assigned to this panel
+          return b.metadata?.panel === panel;
+        });
+      }
+      
+      return branches.sort((a, b) => {
+        // Sort main branches first (main-left before main-right)
+        const aIsMain = a.id.startsWith('main-');
+        const bIsMain = b.id.startsWith('main-');
+        if (aIsMain && !bIsMain) return -1;
+        if (!aIsMain && bIsMain) return 1;
+        if (aIsMain && bIsMain) return a.id.localeCompare(b.id);
         return (b.timestamp || 0) - (a.timestamp || 0);
       });
     },
@@ -257,7 +289,8 @@
         timestamp: Date.now(),
         metadata: {
           source: options.source || (existing ? existing.metadata?.source : 'manual'),
-          notes: options.notes !== undefined ? options.notes : (existing ? existing.metadata?.notes : '')
+          notes: options.notes !== undefined ? options.notes : (existing ? existing.metadata?.notes : ''),
+          panel: options.panel || (existing ? existing.metadata?.panel : null)  // Preserve panel affiliation
         }
       };
 
@@ -280,7 +313,7 @@
      * Create a new branch with auto-generated unique ID
      * @param {string} name - Display name for the branch
      * @param {string} content - Initial content
-     * @param {Object} metadata - { source?, notes? }
+     * @param {Object} metadata - { source?, notes?, panel? }
      * @returns {Promise<Object>} - Created branch object
      */
     async createBranch(name, content = '', metadata = {}) {
@@ -296,7 +329,8 @@
       return await this.saveBranch(id, content, {
         name: name,
         source: metadata.source || 'manual',
-        notes: metadata.notes || ''
+        notes: metadata.notes || '',
+        panel: metadata.panel || null  // Pass panel affiliation to saveBranch
       });
     },
 
@@ -306,8 +340,8 @@
      * @returns {Promise<boolean>} - Success status
      */
     async deleteBranch(id) {
-      if (id === 'main') {
-        console.warn('Cannot delete the main branch');
+      if (id === 'main-left' || id === 'main-right') {
+        console.warn('Cannot delete the main branches');
         return false;
       }
 
@@ -351,6 +385,45 @@
       const index = loadBranchIndex();
       if (index[id]) {
         index[id].name = newName;
+        index[id].timestamp = branch.timestamp;
+        saveBranchIndex(index);
+      }
+
+      return branch;
+    },
+
+    /**
+     * Move a branch to a different panel
+     * @param {string} id - Branch ID
+     * @param {string} newPanel - Target panel ('left' or 'right')
+     * @returns {Promise<Object|null>} - Updated branch or null
+     */
+    async moveBranchToPanel(id, newPanel) {
+      // Cannot move main branches
+      if (id === 'main-left' || id === 'main-right') {
+        console.warn('Cannot move main branches');
+        return null;
+      }
+      
+      const branch = await this.getBranch(id);
+      if (!branch) {
+        console.warn(`Branch '${id}' not found`);
+        return null;
+      }
+
+      // Update panel affiliation
+      branch.metadata = branch.metadata || {};
+      branch.metadata.panel = newPanel;
+      branch.timestamp = Date.now();
+
+      // Save updated branch
+      await saveBranchToIDB(branch);
+
+      // Update index
+      const index = loadBranchIndex();
+      if (index[id]) {
+        index[id].metadata = index[id].metadata || {};
+        index[id].metadata.panel = newPanel;
         index[id].timestamp = branch.timestamp;
         saveBranchIndex(index);
       }

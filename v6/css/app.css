@@ -942,15 +942,46 @@ select.toggle-button {
     display: flex;
     align-items: center;
     gap: 4px;
-    opacity: 0;
+    opacity: 0.7;  /* Always visible by default */
     transition: opacity 0.2s;
-    pointer-events: none;
+    pointer-events: auto;  /* Always clickable */
 }
 
-/* Show branch selector only on panel hover */
+/* Brighten on panel hover */
 .cm-mergeViewEditor:hover .branch-selector-container {
-    opacity: 0.85;
-    pointer-events: auto;
+    opacity: 1;
+}
+
+/* Both panels keep branch selector on the RIGHT side */
+.branch-selector-left,
+.branch-selector-right {
+    right: 10px;
+    left: auto;
+}
+
+/* Save button (positioned to the left of dropdown button, hidden by default) */
+.branch-save-btn {
+    display: none;  /* Hidden until changes detected */
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    font-size: 14px;
+    background: rgba(248, 249, 250, 0.95);
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.branch-save-btn:hover {
+    background: #e8f5e9;
+    border-color: #08c988;
+    transform: scale(1.05);
+}
+
+.branch-save-btn:active {
+    transform: scale(0.98);
 }
 
 .branch-modified-indicator {
@@ -978,12 +1009,10 @@ select.toggle-button {
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s ease;
-    opacity: 0.7;
     white-space: nowrap;
 }
 
 .branch-selector-btn:hover {
-    opacity: 1;
     background: rgba(255, 255, 255, 0.98);
     border-color: #08c988;
     color: #333;
@@ -1008,9 +1037,9 @@ select.toggle-button {
     bottom: 100%;
     right: 0;
     margin-bottom: 4px;
-    min-width: 180px;
-    max-width: 250px;
-    max-height: 300px;
+    min-width: 200px;
+    max-width: 280px;
+    max-height: 350px;
     overflow-y: auto;
     background: #fff;
     border: 1px solid #ddd;
@@ -1020,6 +1049,13 @@ select.toggle-button {
     opacity: 1;
     pointer-events: auto;
     transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+/* Both dropdowns open upward from the right */
+.branch-dropdown-left,
+.branch-dropdown-right {
+    right: 0;
+    left: auto;
 }
 
 .branch-dropdown-item {
@@ -1174,6 +1210,53 @@ select.toggle-button {
 .branch-action-icon:hover {
     opacity: 1;
     background: rgba(0, 0, 0, 0.1);
+}
+
+/* Section headers in dropdown */
+.branch-dropdown-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #08c988;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: linear-gradient(to right, #f8fdf9, transparent);
+    border-bottom: 1px solid #e8f5e9;
+}
+
+.branch-dropdown-section-header.branch-section-other {
+    color: #999;
+    background: linear-gradient(to right, #fafafa, transparent);
+    border-bottom: 1px solid #eee;
+}
+
+.branch-dropdown-section-header .section-icon {
+    font-size: 12px;
+}
+
+/* Branches from other panel */
+.branch-dropdown-item.branch-from-other {
+    opacity: 0.75;
+    font-style: italic;
+}
+
+.branch-dropdown-item.branch-from-other:hover {
+    opacity: 1;
+    background: #f8f9fa;
+}
+
+/* Branch info footer */
+.branch-dropdown-item.branch-info {
+    cursor: default;
+    font-size: 10px;
+    color: #888;
+    padding: 6px 12px;
+    border-top: 1px solid #eee;
+    margin-top: 4px;
+    background: #fafafa;
 }
 
 .branch-action-icon.rename-icon:hover {

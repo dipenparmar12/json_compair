@@ -570,9 +570,9 @@
       
       // Initialize branch system and load saved branches
       async function initializeBranches() {
-        // Load active branch IDs from settings
-        const leftBranchId = SettingsManager.get('leftBranch') || 'main';
-        const rightBranchId = SettingsManager.get('rightBranch') || 'main';
+        // Load active branch IDs from settings (use panel-specific defaults)
+        const leftBranchId = SettingsManager.get('leftBranch') || 'main-left';
+        const rightBranchId = SettingsManager.get('rightBranch') || 'main-right';
         
         // Update active branches tracker
         activeBranches.left = leftBranchId;
@@ -1298,8 +1298,8 @@
       
       // Track active branches per side
       let activeBranches = {
-        left: SettingsManager.get('leftBranch') || 'main',
-        right: SettingsManager.get('rightBranch') || 'main'
+        left: SettingsManager.get('leftBranch') || 'main-left',
+        right: SettingsManager.get('rightBranch') || 'main-right'
       };
       
       // Track if content is modified from saved branch
@@ -1308,7 +1308,7 @@
         right: false
       };
       
-      // Add branch selector dropdown at bottom-right of each pane
+      // Add branch selector dropdown at bottom of each pane (left side for left panel, right side for right panel)
       function addBranchSelector(paneElement, side) {
         const container = document.createElement('div');
         container.className = `branch-selector-container branch-selector-${side}`;
@@ -1326,11 +1326,11 @@
         const branchBtn = document.createElement('button');
         branchBtn.className = 'branch-selector-btn';
         branchBtn.id = `branch-btn-${side}`;
-        branchBtn.title = 'Switch branch';
+        branchBtn.title = `Switch branch (${side} panel)`;
         
         // Dropdown menu
         const dropdown = document.createElement('div');
-        dropdown.className = 'branch-dropdown';
+        dropdown.className = `branch-dropdown branch-dropdown-${side}`;
         dropdown.id = `branch-dropdown-${side}`;
         dropdown.style.display = 'none';
         
@@ -1345,77 +1345,40 @@
         // Populate dropdown
         const populateDropdown = async () => {
           dropdown.innerHTML = '';
-          const branches = window.BranchManager.listBranches();
           
-          // Branch list with inline action icons
-          branches.forEach(branch => {
-            const item = document.createElement('div');
-            item.className = 'branch-dropdown-item branch-item-row';
-            if (branch.id === activeBranches[side]) {
-              item.classList.add('active');
-            }
-            
-            // Branch name (clickable for switch)
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'branch-item-name';
-            nameSpan.innerHTML = `<span class="branch-item-icon">🌿</span> ${branch.name}`;
-            nameSpan.onclick = async (e) => {
-              e.stopPropagation();
-              try {
-                console.log(`Switching ${side} panel to branch: ${branch.id}`);
-                await switchBranch(side, branch.id);
-                dropdown.style.display = 'none';
-              } catch (error) {
-                console.error(`Failed to switch branch: ${error}`);
-                updateStatus(`Error switching branch: ${error.message}`);
-              }
-            };
-            item.appendChild(nameSpan);
-            
-            // Action icons container (only for non-main branches)
-            if (branch.id !== 'main') {
-              const actionsSpan = document.createElement('span');
-              actionsSpan.className = 'branch-item-actions';
-              
-              // Rename icon
-              const renameIcon = document.createElement('span');
-              renameIcon.className = 'branch-action-icon';
-              renameIcon.innerHTML = '✏️';
-              renameIcon.title = 'Rename branch';
-              renameIcon.onclick = async (e) => {
-                e.stopPropagation();
-                dropdown.style.display = 'none';
-                await renameBranchById(branch.id);
-              };
-              actionsSpan.appendChild(renameIcon);
-              
-              // Delete icon
-              const deleteIcon = document.createElement('span');
-              deleteIcon.className = 'branch-action-icon branch-action-delete';
-              deleteIcon.innerHTML = '🗑️';
-              deleteIcon.title = 'Delete branch';
-              deleteIcon.onclick = async (e) => {
-                e.stopPropagation();
-                dropdown.style.display = 'none';
-                await deleteBranchById(branch.id, side);
-              };
-              actionsSpan.appendChild(deleteIcon);
-              
-              item.appendChild(actionsSpan);
-            }
-            
-            dropdown.appendChild(item);
-          });
+          // Get branches strictly filtered by this panel only
+          const panelBranches = window.BranchManager.listBranches(side);
+          const otherSide = side === 'left' ? 'right' : 'left';
           
-          // Divider
-          const divider = document.createElement('div');
-          divider.className = 'branch-dropdown-divider';
-          dropdown.appendChild(divider);
+          // Section header: This panel's branches
+          const sectionHeader = document.createElement('div');
+          sectionHeader.className = 'branch-dropdown-section-header';
+          sectionHeader.innerHTML = `<span class="section-icon">📌</span> ${side.charAt(0).toUpperCase() + side.slice(1)} Panel Branches`;
+          dropdown.appendChild(sectionHeader);
           
-          // New Branch option
+          // List branches for this panel only
+          if (panelBranches.length > 0) {
+            panelBranches.forEach(branch => {
+              const item = createBranchItem(branch, side, otherSide);
+              dropdown.appendChild(item);
+            });
+          } else {
+            const emptyMsg = document.createElement('div');
+            emptyMsg.className = 'branch-dropdown-item branch-info';
+            emptyMsg.textContent = 'No branches yet';
+            dropdown.appendChild(emptyMsg);
+          }
+          
+          // Actions section divider
+          const actionsDivider = document.createElement('div');
+          actionsDivider.className = 'branch-dropdown-divider';
+          dropdown.appendChild(actionsDivider);
+          
+          // New Branch option (starts empty)
           const newBranchItem = document.createElement('div');
           newBranchItem.className = 'branch-dropdown-item branch-action';
-          newBranchItem.innerHTML = '<span class="branch-item-icon">➕</span> New Branch';
+          newBranchItem.innerHTML = '<span class="branch-item-icon">➕</span> New Empty Branch';
+          newBranchItem.title = 'Create a new branch with empty content';
           newBranchItem.onclick = async (e) => {
             e.stopPropagation();
             dropdown.style.display = 'none';
@@ -1423,45 +1386,97 @@
           };
           dropdown.appendChild(newBranchItem);
           
-          // Save current option
-          const saveItem = document.createElement('div');
-          saveItem.className = 'branch-dropdown-item branch-action';
-          saveItem.innerHTML = '<span class="branch-item-icon">💾</span> Save to Branch';
-          saveItem.onclick = async (e) => {
+          // Reset All Branches option
+          const resetItem = document.createElement('div');
+          resetItem.className = 'branch-dropdown-item branch-action branch-delete';
+          resetItem.innerHTML = '<span class="branch-item-icon">🔄</span> Reset All Branches';
+          resetItem.title = 'Delete all branches and restore fresh state';
+          resetItem.onclick = async (e) => {
             e.stopPropagation();
             dropdown.style.display = 'none';
-            await saveCurrentToBranch(side);
+            await resetAllBranches(side);
           };
-          dropdown.appendChild(saveItem);
+          dropdown.appendChild(resetItem);
           
-          // Add branch count info
+          // Branch count info
+          const allBranches = window.BranchManager.listBranches();
           const infoItem = document.createElement('div');
           infoItem.className = 'branch-dropdown-item branch-info';
-          infoItem.style.fontSize = '10px';
-          infoItem.style.color = '#666';
-          infoItem.style.padding = '4px 12px';
-          infoItem.style.borderTop = '1px solid #eee';
-          infoItem.style.marginTop = '4px';
-          infoItem.textContent = `${branches.length} branch${branches.length !== 1 ? 'es' : ''} total`;
+          infoItem.textContent = `${allBranches.length} branch${allBranches.length !== 1 ? 'es' : ''} total`;
           dropdown.appendChild(infoItem);
+        };
+        
+        // Helper function to create a branch item
+        function createBranchItem(branch, side, otherSide) {
+          const item = document.createElement('div');
+          item.className = 'branch-dropdown-item branch-item-row';
+          if (branch.id === activeBranches[side]) {
+            item.classList.add('active');
+          }
           
-          // Reset all branches option (only show if there are branches other than main)
-          if (branches.length > 1) {
-            const divider2 = document.createElement('div');
-            divider2.className = 'branch-dropdown-divider';
-            dropdown.appendChild(divider2);
+          // Branch name (clickable for switch)
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'branch-item-name';
+          nameSpan.innerHTML = `<span class="branch-item-icon">🌿</span> ${branch.name}`;
+          nameSpan.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+              await switchBranch(side, branch.id);
+              dropdown.style.display = 'none';
+            } catch (error) {
+              console.error(`Failed to switch branch: ${error}`);
+              updateStatus(`Error switching branch: ${error.message}`);
+            }
+          };
+          item.appendChild(nameSpan);
+          
+          // Action icons (only for non-main branches)
+          const isMainBranch = branch.id === 'main-left' || branch.id === 'main-right';
+          if (!isMainBranch) {
+            const actionsSpan = document.createElement('span');
+            actionsSpan.className = 'branch-item-actions';
             
-            const resetItem = document.createElement('div');
-            resetItem.className = 'branch-dropdown-item branch-action branch-delete';
-            resetItem.innerHTML = '<span class="branch-item-icon">🔄</span> Reset All Branches';
-            resetItem.onclick = async (e) => {
+            // Move to other panel icon
+            const moveIcon = document.createElement('span');
+            moveIcon.className = 'branch-action-icon';
+            moveIcon.innerHTML = otherSide === 'right' ? '➡️' : '⬅️';
+            moveIcon.title = `Move to ${otherSide} panel`;
+            moveIcon.onclick = async (e) => {
               e.stopPropagation();
               dropdown.style.display = 'none';
-              await resetAllBranches(side);
+              await moveBranchToPanel(branch.id, otherSide, side);
             };
-            dropdown.appendChild(resetItem);
+            actionsSpan.appendChild(moveIcon);
+            
+            // Rename icon
+            const renameIcon = document.createElement('span');
+            renameIcon.className = 'branch-action-icon';
+            renameIcon.innerHTML = '✏️';
+            renameIcon.title = 'Rename branch';
+            renameIcon.onclick = async (e) => {
+              e.stopPropagation();
+              dropdown.style.display = 'none';
+              await renameBranchById(branch.id);
+            };
+            actionsSpan.appendChild(renameIcon);
+            
+            // Delete icon
+            const deleteIcon = document.createElement('span');
+            deleteIcon.className = 'branch-action-icon branch-action-delete';
+            deleteIcon.innerHTML = '🗑️';
+            deleteIcon.title = 'Delete branch';
+            deleteIcon.onclick = async (e) => {
+              e.stopPropagation();
+              dropdown.style.display = 'none';
+              await deleteBranchById(branch.id, side);
+            };
+            actionsSpan.appendChild(deleteIcon);
+            
+            item.appendChild(actionsSpan);
           }
-        };
+          
+          return item;
+        }
         
         // Toggle dropdown
         branchBtn.onclick = async (e) => {
@@ -1490,6 +1505,19 @@
           }
         };
         
+        // Save button (separate from dropdown, positioned to the left)
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'branch-save-btn';
+        saveBtn.id = `branch-save-${side}`;
+        saveBtn.innerHTML = '💾';
+        saveBtn.title = 'Save current content to branch';
+        saveBtn.onclick = async (e) => {
+          e.stopPropagation();
+          await saveCurrentToBranch(side);
+        };
+        
+        // Assemble container: [Save Button] [Modified Indicator] [Branch Dropdown Button]
+        container.appendChild(saveBtn);
         container.appendChild(modifiedIndicator);
         container.appendChild(branchBtn);
         container.appendChild(dropdown);
@@ -1556,17 +1584,35 @@
         }
       }
       
-      // Create a new branch
+      // Create a new branch (starts empty)
       async function createNewBranch(side) {
         const name = prompt('Enter new branch name:', '');
         if (!name || !name.trim()) return;
         
+        // Get current content and save to current branch before creating new one
         const editor = side === 'left' ? mergeView.a : mergeView.b;
-        const content = editor.state.doc.toString();
+        const currentBranchId = activeBranches[side];
+        const currentContent = editor.state.doc.toString();
+        
+        // Save current content to current branch first
+        if (currentContent.trim()) {
+          await window.BranchManager.saveBranch(currentBranchId, currentContent, {
+            source: 'auto-save'
+          });
+        }
+        
+        // New branches start with empty content
+        const content = '';
         
         try {
           const branch = await window.BranchManager.createBranch(name.trim(), content, {
-            source: 'manual'
+            source: 'manual',
+            panel: side  // Track which panel this branch belongs to
+          });
+          
+          // Clear editor content for new empty branch
+          editor.dispatch({
+            changes: { from: 0, to: editor.state.doc.length, insert: '' }
           });
           
           // Switch to new branch
@@ -1577,7 +1623,8 @@
           branchModified[side] = false;
           updateBranchModifiedIndicator(side);
           updateBranchSelectors();
-          updateStatus(`Created branch: ${branch.name}`);
+          updateDiffStatus();
+          updateStatus(`✓ Created empty branch: ${branch.name}`);
         } catch (err) {
           showErrorMessage('Failed to create branch: ' + err.message);
         }
@@ -1615,8 +1662,9 @@
         try {
           await window.BranchManager.deleteBranch(currentId);
           
-          // Switch to main branch
-          await switchBranch(side, 'main');
+          // Switch to the panel's main branch
+          const mainBranchId = side === 'left' ? 'main-left' : 'main-right';
+          await switchBranch(side, mainBranchId);
           updateStatus(`Deleted branch: ${current ? current.name : currentId}`);
         } catch (err) {
           showErrorMessage('Failed to delete branch: ' + err.message);
@@ -1668,6 +1716,27 @@
         }
       }
       
+      // Move a branch to another panel
+      async function moveBranchToPanel(branchId, targetPanel, currentPanel) {
+        const branches = window.BranchManager.listBranches();
+        const branch = branches.find(b => b.id === branchId);
+        
+        try {
+          await window.BranchManager.moveBranchToPanel(branchId, targetPanel);
+          
+          // If this branch was active on the current panel, switch to main branch
+          if (activeBranches[currentPanel] === branchId) {
+            const mainBranchId = currentPanel === 'left' ? 'main-left' : 'main-right';
+            await switchBranch(currentPanel, mainBranchId);
+          }
+          
+          updateBranchSelectors();
+          updateStatus(`✓ Moved "${branch ? branch.name : branchId}" to ${targetPanel} panel`);
+        } catch (err) {
+          showErrorMessage('Failed to move branch: ' + err.message);
+        }
+      }
+      
       // Delete a branch by ID (for inline icon)
       async function deleteBranchById(branchId, side) {
         const branches = window.BranchManager.listBranches();
@@ -1680,13 +1749,13 @@
         try {
           await window.BranchManager.deleteBranch(branchId);
           
-          // If deleted branch was active on left side, switch to main
+          // If deleted branch was active on left side, switch to main-left
           if (activeBranches.left === branchId) {
-            await switchBranch('left', 'main');
+            await switchBranch('left', 'main-left');
           }
-          // If deleted branch was active on right side, switch to main
+          // If deleted branch was active on right side, switch to main-right
           if (activeBranches.right === branchId) {
-            await switchBranch('right', 'main');
+            await switchBranch('right', 'main-right');
           }
           
           updateBranchSelectors();
@@ -1696,10 +1765,10 @@
         }
       }
       
-      // Reset all branches - delete all except main
+      // Reset all branches - delete all except main-left and main-right
       async function resetAllBranches(side) {
         const branches = window.BranchManager.listBranches();
-        const nonMainBranches = branches.filter(b => b.id !== 'main');
+        const nonMainBranches = branches.filter(b => b.id !== 'main-left' && b.id !== 'main-right');
         
         if (nonMainBranches.length === 0) {
           updateStatus('No branches to reset');
@@ -1716,12 +1785,12 @@
             await window.BranchManager.deleteBranch(branch.id);
           }
           
-          // Switch both sides to main if needed
-          if (activeBranches.left !== 'main') {
-            await switchBranch('left', 'main');
+          // Switch both sides to their main branches if needed
+          if (activeBranches.left !== 'main-left') {
+            await switchBranch('left', 'main-left');
           }
-          if (activeBranches.right !== 'main') {
-            await switchBranch('right', 'main');
+          if (activeBranches.right !== 'main-right') {
+            await switchBranch('right', 'main-right');
           }
           
           updateBranchSelectors();
@@ -1736,6 +1805,12 @@
         const indicator = document.getElementById(`branch-modified-${side}`);
         if (indicator) {
           indicator.style.display = branchModified[side] ? 'inline' : 'none';
+        }
+        
+        // Also update save button visibility
+        const saveBtn = document.getElementById(`branch-save-${side}`);
+        if (saveBtn) {
+          saveBtn.style.display = branchModified[side] ? 'inline-flex' : 'none';
         }
       }
       
