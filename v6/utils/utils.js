@@ -230,6 +230,7 @@
       // Performance settings
       performanceMode: false,   // Enable optimized settings for large files
       viewportDiff: false,      // Only compute diffs for visible area
+      backgroundProcessing: true, // Process large files in Web Worker (prevents UI freeze)
       // Panel names for UX (deprecated, replaced by branches)
       leftPanelName: "",    // Name/ID for left panel
       rightPanelName: "",   // Name/ID for right panel

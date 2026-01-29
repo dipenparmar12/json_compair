@@ -42,6 +42,7 @@
     <script src="./utils/utils_zip.js"></script>
     <script src="./utils/utils_branch.js"></script>
     <script src="./utils/viewport_diff.js"></script>
+    <script src="./utils/large-data-handler.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -205,8 +206,20 @@
                 </div>
               </label>
               
+              <label style="display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.15s; background: #e8f5e9;" onmouseover="this.style.background='#c8e6c9'" onmouseout="this.style.background='#e8f5e9'">
+                <input type="checkbox" id="setting-background-processing" checked style="margin-top: 2px; cursor: pointer;" />
+                <div style="margin-left: 10px;">
+                  <div style="font-weight: 400; color: #2e7d32;">🔄 Background Processing</div>
+                  <div style="color: #388e3c; font-size: 11px; margin-top: 2px; font-family: 'Segoe UI', system-ui, sans-serif;">Process large files in Web Worker (prevents UI freeze)</div>
+                </div>
+              </label>
+              
               <div id="performance-status" style="display: none; padding: 8px; background: #d4edda; border-radius: 4px; font-size: 11px; color: #155724; margin-bottom: 10px;">
                 <strong>📊 Performance active:</strong> <span id="performance-status-text"></span>
+              </div>
+              
+              <div id="large-file-warning" style="display: none; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 11px; color: #856404; margin-bottom: 10px;">
+                <strong>📁 Large file detected:</strong> <span id="large-file-warning-text"></span>
               </div>
             </div>
           </div>
@@ -330,17 +343,29 @@
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
         if (update.docChanged) {
+          // Get content size for adaptive debouncing
+          const contentSize = update.state.doc.length;
+          
+          // Adaptive debounce: longer delay for larger content
+          const debounceTime = contentSize > 1000000 ? 1000 : // >1MB: 1s
+                               contentSize > 100000 ? 500 :   // >100KB: 500ms
+                               300;                            // default: 300ms
+          
           // Debounce saves to avoid excessive localStorage writes
           clearTimeout(window.autoSaveTimer);
           window.autoSaveTimer = setTimeout(() => {
             saveContent();
-          }, 300);
+          }, debounceTime);
           
           // Debounce merge view refresh for diff recalculation
-          clearTimeout(window.diffRefreshTimer);
-          window.diffRefreshTimer = setTimeout(() => {
-            refreshMergeViewIfNeeded();
-          }, 500);
+          // Skip refresh for very large content to maintain responsiveness
+          const skipRefresh = contentSize > 5000000; // >5MB
+          if (!skipRefresh) {
+            clearTimeout(window.diffRefreshTimer);
+            window.diffRefreshTimer = setTimeout(() => {
+              refreshMergeViewIfNeeded();
+            }, contentSize > 500000 ? 1000 : 500);
+          }
           
           // Debounce CSV button updates
           clearTimeout(window.csvButtonTimer);
@@ -707,10 +732,12 @@
         // Load saved settings
         const perfModeEnabled = SettingsManager.get('performanceMode');
         const viewportDiffEnabled = SettingsManager.get('viewportDiff');
+        const backgroundProcessing = SettingsManager.get('backgroundProcessing');
         
         // Set UI state
         const perfModeCheckbox = document.getElementById('setting-performance-mode');
         const viewportDiffCheckbox = document.getElementById('setting-viewport-diff');
+        const backgroundCheckbox = document.getElementById('setting-background-processing');
         
         if (perfModeCheckbox) {
           perfModeCheckbox.checked = perfModeEnabled;
@@ -720,6 +747,19 @@
         if (viewportDiffCheckbox) {
           viewportDiffCheckbox.checked = viewportDiffEnabled;
           viewportDiffCheckbox.addEventListener('change', applyViewportDiffMode);
+        }
+        
+        if (backgroundCheckbox) {
+          // Default to true if not set
+          backgroundCheckbox.checked = backgroundProcessing !== false;
+          backgroundCheckbox.addEventListener('change', (e) => {
+            SettingsManager.set('backgroundProcessing', e.target.checked);
+            if (e.target.checked) {
+              PerformanceToast.show('Background processing enabled - large files won\'t freeze UI', 'success');
+            } else {
+              PerformanceToast.show('Background processing disabled - may cause UI freeze with large files', 'warning');
+            }
+          });
         }
         
         // Initialize viewport diff manager
@@ -758,6 +798,12 @@
         
         // Update status display
         updatePerformanceStatus();
+        
+        // Log LargeDataHandler status
+        if (window.LargeDataHandler) {
+          console.log('[Performance] LargeDataHandler initialized, worker available:', 
+            window.LargeDataHandler.workerManager?.isAvailable());
+        }
       }
       
       // Apply performance mode toggle
@@ -827,16 +873,46 @@
       function updatePerformanceStatus() {
         const statusDiv = document.getElementById('performance-status');
         const statusText = document.getElementById('performance-status-text');
+        const warningDiv = document.getElementById('large-file-warning');
+        const warningText = document.getElementById('large-file-warning-text');
         
         if (!statusDiv || !statusText) return;
         
         const perfEnabled = SettingsManager.get('performanceMode');
         const viewportEnabled = SettingsManager.get('viewportDiff');
+        const backgroundEnabled = SettingsManager.get('backgroundProcessing') !== false;
+        
+        // Check current content size
+        let contentSize = 0;
+        if (mergeView) {
+          const leftSize = mergeView.a.state.doc.length;
+          const rightSize = mergeView.b.state.doc.length;
+          contentSize = leftSize + rightSize;
+        }
+        
+        // Update warning for large files
+        if (warningDiv && warningText && contentSize > 0) {
+          if (window.LargeDataHandler) {
+            const category = window.LargeDataHandler.getSizeCategory(contentSize);
+            if (category === 'extreme' || category === 'critical' || category === 'large') {
+              const sizeStr = window.LargeDataHandler.formatSize(contentSize);
+              warningText.textContent = `${sizeStr} loaded`;
+              warningDiv.style.display = 'block';
+            } else {
+              warningDiv.style.display = 'none';
+            }
+          } else {
+            warningDiv.style.display = 'none';
+          }
+        }
         
         if (perfEnabled || viewportEnabled) {
           const modes = [];
           if (perfEnabled) modes.push('Performance Mode');
           if (viewportEnabled) modes.push('Viewport Diff');
+          if (backgroundEnabled && window.LargeDataHandler?.workerManager?.isAvailable()) {
+            modes.push('Background Processing');
+          }
           
           statusText.textContent = modes.join(' + ');
           statusDiv.style.display = 'block';
@@ -847,10 +923,57 @@
       
       // Check content size and suggest optimizations
       function checkContentSizeAndSuggest() {
-        if (!largeFileDetector || !mergeView) return;
+        if (!mergeView) return;
         
         const leftContent = mergeView.a.state.doc.toString();
         const rightContent = mergeView.b.state.doc.toString();
+        const totalSize = leftContent.length + rightContent.length;
+        
+        // Use LargeDataHandler for analysis if available
+        if (window.LargeDataHandler) {
+          const category = window.LargeDataHandler.getSizeCategory(totalSize);
+          const recommended = window.LargeDataHandler.getRecommendedSettings(totalSize);
+          
+          if (category === 'extreme') {
+            PerformanceToast.show(
+              `Very large content detected (${window.LargeDataHandler.formatSize(totalSize)}). Auto-applying performance optimizations.`,
+              'critical',
+              6000
+            );
+            
+            // Force apply all optimizations for extreme sizes
+            if (recommended) {
+              applyRecommendedPerformanceSettings(recommended);
+            }
+          } else if (category === 'critical') {
+            PerformanceToast.show(
+              `Large content detected (${window.LargeDataHandler.formatSize(totalSize)}). Performance Mode recommended.`,
+              'warning',
+              5000
+            );
+            
+            // Auto-enable performance mode for critical sizes
+            const perfCheckbox = document.getElementById('setting-performance-mode');
+            if (perfCheckbox && !perfCheckbox.checked) {
+              perfCheckbox.checked = true;
+              applyPerformanceMode();
+            }
+          } else if (category === 'large') {
+            // Suggest but don't auto-enable
+            const viewportCheckbox = document.getElementById('setting-viewport-diff');
+            if (viewportCheckbox && !viewportCheckbox.checked && !SettingsManager.get('performanceMode')) {
+              PerformanceToast.show(
+                `Content size: ${window.LargeDataHandler.formatSize(totalSize)}. Consider enabling Viewport Diff Mode.`,
+                'info',
+                4000
+              );
+            }
+          }
+          return;
+        }
+        
+        // Fallback to legacy detector
+        if (!largeFileDetector) return;
         
         const analysis = largeFileDetector.analyze(leftContent, rightContent);
         
@@ -1185,6 +1308,51 @@
             const autoSort = document.getElementById('auto-sort-keys')?.checked;
 
             let content = text;
+            const dataSize = text.length;
+            
+            // Use large data handler for big content
+            const useLargeDataHandler = window.LargeDataHandler && 
+              window.LargeDataHandler.needsSpecialHandling(dataSize);
+            
+            if (useLargeDataHandler) {
+              // Apply recommended settings for large data
+              const recommended = window.LargeDataHandler.getRecommendedSettings(dataSize);
+              if (recommended) {
+                applyRecommendedPerformanceSettings(recommended);
+              }
+              
+              // Check if CSV first
+              const isCSV = autoCSV && window.CSVUtils && window.CSVUtils.isCSV(text);
+              
+              if (isCSV) {
+                const jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
+                if (autoSort) {
+                  const sorted = await window.LargeDataHandler.sortJSONKeys(jsonData);
+                  content = JSON.stringify(sorted, null, 3);
+                } else {
+                  content = JSON.stringify(jsonData, null, 3);
+                }
+                showConversionMessage("CSV converted to JSON (processed in background)");
+              } else if (autoFormat || autoSort) {
+                content = await window.LargeDataHandler.processContent(text, {
+                  sort: autoSort,
+                  indent: 3
+                });
+              }
+              
+              editor.dispatch({
+                changes: { from: 0, to: editor.state.doc.length, insert: content }
+              });
+              
+              // Deferred UI updates
+              setTimeout(() => {
+                updateDiffStatus();
+                updatePaneButtonVisibility();
+              }, 200);
+              return;
+            }
+            
+            // Standard processing for smaller data
             let isJSON = false;
             
             // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
@@ -1226,6 +1394,7 @@
               updateDiffStatus();
               updatePlaceholders();
               updatePaneButtonVisibility();
+              checkContentSizeAndSuggest();
             }, 100);
           } catch (err) {
             updateStatus('Failed to paste: ' + err.message);
@@ -2659,8 +2828,112 @@
         }
         
         try {
-          const text = await file.text();
           const editor = side === 'left' ? mergeView.a : mergeView.b;
+          const fileSize = file.size;
+          
+          // Check if this is a large file that needs special handling
+          const useLargeDataHandler = window.LargeDataHandler && 
+            window.LargeDataHandler.needsSpecialHandling(fileSize);
+          
+          if (useLargeDataHandler) {
+            // Show progress for large files
+            const operationId = `file-${Date.now()}`;
+            const progressManager = window.LargeDataHandler.progressManager;
+            
+            progressManager.show(operationId, {
+              title: 'Loading Large File',
+              status: `Reading ${file.name} (${window.LargeDataHandler.formatSize(fileSize)})...`,
+              size: fileSize,
+              progress: 0
+            });
+            
+            try {
+              // Apply recommended settings before loading
+              const recommended = window.LargeDataHandler.getRecommendedSettings(fileSize);
+              if (recommended) {
+                applyRecommendedPerformanceSettings(recommended);
+              }
+              
+              progressManager.update(operationId, {
+                status: 'Reading file...',
+                progress: 20
+              });
+              
+              // Read file in chunks for very large files
+              const text = await readFileWithProgress(file, (progress) => {
+                progressManager.update(operationId, {
+                  status: 'Reading file...',
+                  progress: 20 + (progress * 30)
+                });
+              });
+              
+              progressManager.update(operationId, {
+                status: 'Processing content...',
+                progress: 50
+              });
+              
+              const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
+              const autoFormat = document.getElementById('auto-format-json')?.checked;
+              const autoSort = document.getElementById('auto-sort-keys')?.checked;
+              
+              let content = text;
+              
+              // Check if CSV
+              const isCSV = autoCSV && window.CSVUtils && window.CSVUtils.isCSV(text);
+              
+              if (isCSV) {
+                progressManager.update(operationId, {
+                  status: 'Converting CSV to JSON...',
+                  progress: 60
+                });
+                
+                const jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
+                if (autoSort) {
+                  const sorted = await window.LargeDataHandler.sortJSONKeys(jsonData);
+                  content = JSON.stringify(sorted, null, 3);
+                } else {
+                  content = JSON.stringify(jsonData, null, 3);
+                }
+                showConversionMessage("CSV converted to JSON");
+              } else if (autoFormat || autoSort) {
+                progressManager.update(operationId, {
+                  status: 'Formatting JSON...',
+                  progress: 60
+                });
+                
+                content = await window.LargeDataHandler.processContent(text, {
+                  sort: autoSort,
+                  indent: 3
+                });
+              }
+              
+              progressManager.update(operationId, {
+                status: 'Inserting content...',
+                progress: 90
+              });
+              
+              // Insert content
+              editor.dispatch({
+                changes: { from: 0, to: editor.state.doc.length, insert: content }
+              });
+              
+              progressManager.complete(operationId);
+              
+              // Deferred UI updates
+              setTimeout(() => {
+                updateDiffStatus();
+                updatePaneButtonVisibility();
+              }, 200);
+              
+            } catch (err) {
+              progressManager.complete(operationId);
+              showErrorMessage("Failed to process file: " + err.message);
+            }
+            return;
+          }
+          
+          // Standard processing for smaller files
+          const text = await file.text();
 
           const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
           const autoFormat = document.getElementById('auto-format-json')?.checked;
@@ -2705,12 +2978,29 @@
             updateDiffStatus();
             updatePlaceholders();
             updatePaneButtonVisibility();
-            // Check for large content and suggest optimizations
             checkContentSizeAndSuggest();
           }, 100);
         } catch (err) {
           showErrorMessage("Failed to read file: " + err.message);
         }
+      }
+      
+      // Read file with progress callback for large files
+      async function readFileWithProgress(file, onProgress) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          
+          reader.onprogress = (e) => {
+            if (e.lengthComputable && onProgress) {
+              onProgress(e.loaded / e.total);
+            }
+          };
+          
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          
+          reader.readAsText(file);
+        });
       }
 
       // Setup paste handlers
@@ -2730,17 +3020,80 @@
         const autoFormat = document.getElementById('auto-format-json')?.checked;
         const autoSort = document.getElementById('auto-sort-keys')?.checked;
 
+        // Resolve the target editor and current selection for this side
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const mainSelection = editor.state.selection?.main;
+        const from = mainSelection ? mainSelection.from : 0;
+        const to = mainSelection ? mainSelection.to : editor.state.doc.length;
+        
+        // Check data size and use appropriate processing strategy
+        const dataSize = text.length;
+        const useLargeDataHandler = window.LargeDataHandler && 
+          window.LargeDataHandler.needsSpecialHandling(dataSize);
+        
+        // For large data (>50KB), use background processing
+        if (useLargeDataHandler) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          try {
+            // Apply recommended settings for large data
+            const recommended = window.LargeDataHandler.getRecommendedSettings(dataSize);
+            if (recommended) {
+              applyRecommendedPerformanceSettings(recommended);
+            }
+            
+            let content = text;
+            let processed = false;
+            
+            // Check if CSV first (before JSON processing)
+            const isCSV = autoCSV && window.CSVUtils && window.CSVUtils.isCSV(text);
+            
+            if (isCSV) {
+              // Use large data handler for CSV
+              const jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
+              if (autoSort && window.LargeDataHandler) {
+                const sorted = await window.LargeDataHandler.sortJSONKeys(jsonData);
+                content = JSON.stringify(sorted, null, 3);
+              } else {
+                content = JSON.stringify(jsonData, null, 3);
+              }
+              processed = true;
+              showConversionMessage("CSV converted to JSON (large file processed in background)");
+            } else if (autoFormat || autoSort) {
+              // Process JSON in background
+              content = await window.LargeDataHandler.processContent(text, {
+                sort: autoSort,
+                indent: 3
+              });
+              processed = true;
+            }
+            
+            // Insert content - for very large data, use chunked insertion
+            if (content.length > 10 * 1024 * 1024) { // >10MB
+              await insertLargeContent(editor, from, to, content);
+            } else {
+              editor.dispatch({
+                changes: { from, to, insert: content }
+              });
+            }
+            
+            // Deferred UI updates for large content
+            setTimeout(() => {
+              updateDiffStatus();
+              updatePaneButtonVisibility();
+              checkContentSizeAndSuggest();
+            }, 200);
+            
+          } catch (err) {
+            showErrorMessage("Processing failed: " + err.message);
+          }
+          return;
+        }
+        
+        // Standard processing for smaller data
         let content = text;
         let isJSON = false;
-
-  // Resolve the target editor and current selection for this side so that
-  // any auto-processed paste only affects the selection/caret, not the
-  // entire document. This preserves normal editor experience when
-  // pasting into the middle of existing content.
-  const editor = side === 'left' ? mergeView.a : mergeView.b;
-  const mainSelection = editor.state.selection?.main;
-  const from = mainSelection ? mainSelection.from : 0;
-  const to = mainSelection ? mainSelection.to : editor.state.doc.length;
         
         // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
         if (autoCSV || autoFormat || autoSort) {
@@ -2777,7 +3130,6 @@
                 updateDiffStatus();
                 updatePlaceholders();
                 updatePaneButtonVisibility();
-                // Check for large content and suggest optimizations
                 checkContentSizeAndSuggest();
               }, 100);
             } catch (err) {
@@ -2802,8 +3154,86 @@
             updateDiffStatus();
             updatePlaceholders();
             updatePaneButtonVisibility();
-            // Check for large content and suggest optimizations
             checkContentSizeAndSuggest();
+          }, 100);
+        }
+      }
+      
+      // Insert large content in a way that doesn't freeze the UI
+      async function insertLargeContent(editor, from, to, content) {
+        // For extremely large content, we insert directly but defer other operations
+        editor.dispatch({
+          changes: { from, to, insert: content }
+        });
+        
+        // Yield to UI
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      
+      // Apply recommended performance settings for large data
+      function applyRecommendedPerformanceSettings(recommended) {
+        if (!recommended) return;
+        
+        let settingsChanged = false;
+        
+        // Apply performance mode if recommended
+        if (recommended.performanceMode && !SettingsManager.get('performanceMode')) {
+          const perfCheckbox = document.getElementById('setting-performance-mode');
+          if (perfCheckbox) {
+            perfCheckbox.checked = true;
+            SettingsManager.set('performanceMode', true);
+            settingsChanged = true;
+          }
+        }
+        
+        // Apply viewport diff if recommended
+        if (recommended.viewportDiff && !SettingsManager.get('viewportDiff')) {
+          const viewportCheckbox = document.getElementById('setting-viewport-diff');
+          if (viewportCheckbox) {
+            viewportCheckbox.checked = true;
+            SettingsManager.set('viewportDiff', true);
+            if (viewportDiffManager) {
+              viewportDiffManager.enable();
+            }
+            settingsChanged = true;
+          }
+        }
+        
+        // Apply collapse unchanged if recommended
+        if (recommended.collapseUnchanged && !SettingsManager.get('collapseUnchanged')) {
+          const collapseCheckbox = document.getElementById('setting-collapse-unchanged');
+          const quickCollapse = document.getElementById('quick-collapse-unchanged');
+          if (collapseCheckbox) {
+            collapseCheckbox.checked = true;
+            SettingsManager.set('collapseUnchanged', true);
+          }
+          if (quickCollapse) quickCollapse.checked = true;
+          settingsChanged = true;
+        }
+        
+        // Adjust scan limit if needed
+        if (recommended.scanLimit) {
+          const scanLimitInput = document.getElementById('setting-scan-limit');
+          const currentLimit = parseInt(scanLimitInput?.value || '6000', 10);
+          if (currentLimit > recommended.scanLimit) {
+            if (scanLimitInput) scanLimitInput.value = recommended.scanLimit;
+            SettingsManager.set('scanLimit', recommended.scanLimit);
+            settingsChanged = true;
+          }
+        }
+        
+        if (settingsChanged) {
+          // Notify user
+          PerformanceToast.show(
+            'Performance settings auto-adjusted for large data',
+            'info',
+            3000
+          );
+          
+          // Apply merge settings after a short delay
+          setTimeout(() => {
+            applyMergeSettings();
+            updatePerformanceStatus();
           }, 100);
         }
       }
@@ -2955,42 +3385,74 @@
           }
         }
         
-        // Check if we should use web worker for large content
+        // Check content size and choose appropriate diff strategy
         const totalSize = leftContent.length + rightContent.length;
-        const useLargeFileThreshold = 100000; // 100KB
         
-        if (totalSize > useLargeFileThreshold && diffWorker) {
-          // Use web worker for large content
-          if (summaryDiv) summaryDiv.textContent = "Calculating diff...";
-          
-          const requestId = Date.now().toString();
-          
-          const handler = function(e) {
-            if (e.data.id === requestId) {
-              diffWorker.removeEventListener('message', handler);
-              
-              if (e.data.ok && e.data.result) {
-                const diffCount = e.data.result.diffCount;
-                const duration = Math.round(e.data.result.duration);
-                if (summaryDiv) {
-                  summaryDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''} (${duration}ms)`;
-                }
-              } else {
-                if (summaryDiv) summaryDiv.textContent = "Differences detected";
-              }
-            }
-          };
-          
-          diffWorker.addEventListener('message', handler);
-          diffWorker.postMessage({
-            id: requestId,
-            action: 'countDiffs',
-            payload: { leftText: leftContent, rightText: rightContent }
-          });
+        // For very large content (>5MB), show a simple message instead of calculating
+        if (totalSize > 5 * 1024 * 1024) {
+          if (summaryDiv) {
+            const sizeStr = window.LargeDataHandler 
+              ? window.LargeDataHandler.formatSize(totalSize)
+              : `${Math.round(totalSize / (1024 * 1024))} MB`;
+            summaryDiv.textContent = `Differences detected (${sizeStr} - enable Viewport Diff for details)`;
+          }
           return;
         }
+        
+        // For large content (>100KB), use web worker
+        const useLargeFileThreshold = 100000; // 100KB
+        
+        if (totalSize > useLargeFileThreshold) {
+          if (summaryDiv) summaryDiv.textContent = "Calculating diff...";
+          
+          // Use LargeDataHandler if available (has its own worker)
+          if (window.LargeDataHandler && window.LargeDataHandler.workerManager?.isAvailable()) {
+            window.LargeDataHandler.countDiffs(leftContent, rightContent)
+              .then(result => {
+                if (result && summaryDiv) {
+                  const diffCount = result.diffCount;
+                  const duration = Math.round(result.duration || 0);
+                  summaryDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''} (${duration}ms)`;
+                }
+              })
+              .catch(err => {
+                console.warn('Diff calculation failed:', err);
+                if (summaryDiv) summaryDiv.textContent = "Differences detected";
+              });
+            return;
+          }
+          
+          // Fallback to existing diff worker
+          if (diffWorker) {
+            const requestId = Date.now().toString();
+            
+            const handler = function(e) {
+              if (e.data.id === requestId) {
+                diffWorker.removeEventListener('message', handler);
+                
+                if (e.data.ok && e.data.result) {
+                  const diffCount = e.data.result.diffCount;
+                  const duration = Math.round(e.data.result.duration);
+                  if (summaryDiv) {
+                    summaryDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''} (${duration}ms)`;
+                  }
+                } else {
+                  if (summaryDiv) summaryDiv.textContent = "Differences detected";
+                }
+              }
+            };
+            
+            diffWorker.addEventListener('message', handler);
+            diffWorker.postMessage({
+              id: requestId,
+              action: 'countDiffs',
+              payload: { leftText: leftContent, rightText: rightContent }
+            });
+            return;
+          }
+        }
 
-        // Calculate actual differences using diff_match_patch if available
+        // Calculate actual differences using diff_match_patch for smaller content
         if (typeof diff_match_patch !== 'undefined') {
           try {
             const dmp = new diff_match_patch();
