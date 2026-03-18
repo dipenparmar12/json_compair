@@ -238,6 +238,35 @@
               <button id="btn-share" class="dropdown-item">📤 Export / Share</button>
               <button id="btn-import" class="dropdown-item">📥 Import Snapshot</button>
               <input type="file" id="file-import" accept=".zip,.gz,.gzip,application/zip,application/gzip,application/octet-stream,.json" style="display: none" />
+              
+              <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee;">
+                <div style="font-size: 12px; color: #555; margin-bottom: 6px;">🎲 Generate Test Data</div>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                  <select id="random-data-type" style="flex: 1; font-size: 11px; padding: 4px; border: 1px solid #ccc; border-radius: 4px;">
+                    <option value="users">Users</option>
+                    <option value="products">Products</option>
+                    <option value="orders">Orders</option>
+                    <option value="events">Events</option>
+                    <option value="nested">Nested Objects</option>
+                  </select>
+                  <select id="random-data-count" style="width: 70px; font-size: 11px; padding: 4px; border: 1px solid #ccc; border-radius: 4px;">
+                    <option value="10">10</option>
+                    <option value="100">100</option>
+                    <option value="500">500</option>
+                    <option value="1000">1K</option>
+                    <option value="5000">5K</option>
+                    <option value="10000">10K</option>
+                    <option value="50000">50K</option>
+                  </select>
+                </div>
+                <div style="display: flex; gap: 4px; margin-top: 6px;">
+                  <button id="btn-random-left" class="dropdown-item" style="flex: 1; font-size: 11px; padding: 4px;">← Left</button>
+                  <button id="btn-random-both" class="dropdown-item" style="flex: 1; font-size: 11px; padding: 4px;">Both</button>
+                  <button id="btn-random-right" class="dropdown-item" style="flex: 1; font-size: 11px; padding: 4px;">Right →</button>
+                </div>
+                <div style="font-size: 10px; color: #888; margin-top: 4px;">Generates similar data with ~10% differences</div>
+              </div>
+              
               <div style="margin-top: 8px; font-size: 12px; color: #555;">Examples</div>
               <select id="select-templates" style="width: 100%; margin-top: 4px; font-size: 12px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; background: white;">
                 <option value="">Choose example...</option>
@@ -1042,6 +1071,284 @@
           if (!panel.contains(e.target) && e.target !== btn) {
             panel.style.display = 'none';
           }
+        });
+        
+        // Initialize random data generation buttons
+        initializeRandomDataGeneration();
+      }
+      
+      // Random data generation for testing/DX
+      function initializeRandomDataGeneration() {
+        const btnLeft = document.getElementById('btn-random-left');
+        const btnBoth = document.getElementById('btn-random-both');
+        const btnRight = document.getElementById('btn-random-right');
+        
+        if (btnLeft) btnLeft.onclick = () => generateRandomData('left');
+        if (btnBoth) btnBoth.onclick = () => generateRandomData('both');
+        if (btnRight) btnRight.onclick = () => generateRandomData('right');
+      }
+      
+      // Generate random test data
+      async function generateRandomData(target) {
+        const typeSelect = document.getElementById('random-data-type');
+        const countSelect = document.getElementById('random-data-count');
+        
+        const type = typeSelect?.value || 'users';
+        const count = parseInt(countSelect?.value || '100', 10);
+        
+        // Show progress for large counts
+        const showProgress = count >= 1000;
+        let operationId;
+        
+        if (showProgress && window.LargeDataHandler) {
+          operationId = `random-${Date.now()}`;
+          window.LargeDataHandler.progressManager.show(operationId, {
+            title: 'Generating Test Data',
+            status: `Creating ${count.toLocaleString()} ${type}...`,
+            progress: -1
+          });
+        }
+        
+        try {
+          // Generate base data
+          const baseData = generateFakeData(type, count);
+          
+          // Generate variant with ~10% differences
+          const variantData = generateVariantData(baseData, type, 0.1);
+          
+          const leftJson = JSON.stringify(baseData, null, 3);
+          const rightJson = JSON.stringify(variantData, null, 3);
+          
+          // Apply recommended settings for large data
+          const totalSize = leftJson.length + rightJson.length;
+          if (window.LargeDataHandler && window.LargeDataHandler.needsSpecialHandling(totalSize)) {
+            const recommended = window.LargeDataHandler.getRecommendedSettings(totalSize);
+            if (recommended) {
+              applyRecommendedPerformanceSettings(recommended);
+            }
+          }
+          
+          // Insert data based on target
+          if (target === 'left' || target === 'both') {
+            mergeView.a.dispatch({
+              changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftJson }
+            });
+          }
+          
+          if (target === 'right' || target === 'both') {
+            mergeView.b.dispatch({
+              changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightJson }
+            });
+          }
+          
+          if (operationId) {
+            window.LargeDataHandler.progressManager.complete(operationId);
+          }
+          
+          // Close dropdown
+          const panel = document.getElementById('extra-settings-panel');
+          if (panel) panel.style.display = 'none';
+          
+          const sizeStr = window.LargeDataHandler 
+            ? window.LargeDataHandler.formatSize(totalSize)
+            : `${Math.round(totalSize / 1024)} KB`;
+          
+          updateStatus(`Generated ${count.toLocaleString()} ${type} (${sizeStr})`);
+          
+          setTimeout(() => {
+            updateDiffStatus();
+            updatePaneButtonVisibility();
+            checkContentSizeAndSuggest();
+          }, 100);
+          
+        } catch (err) {
+          if (operationId) {
+            window.LargeDataHandler.progressManager.complete(operationId);
+          }
+          showErrorMessage('Failed to generate data: ' + err.message);
+        }
+      }
+      
+      // Fake data generators
+      function generateFakeData(type, count) {
+        const generators = {
+          users: generateUsers,
+          products: generateProducts,
+          orders: generateOrders,
+          events: generateEvents,
+          nested: generateNestedObjects
+        };
+        
+        const generator = generators[type] || generators.users;
+        return generator(count);
+      }
+      
+      function generateUsers(count) {
+        const firstNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Henry', 'Ivy', 'Jack', 'Kate', 'Leo', 'Maya', 'Noah', 'Olivia', 'Peter', 'Quinn', 'Rose', 'Sam', 'Tina'];
+        const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Martinez', 'Anderson', 'Taylor', 'Thomas', 'Moore', 'Jackson', 'Martin'];
+        const cities = ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio', 'San Diego', 'Dallas', 'San Jose', 'Austin', 'Jacksonville', 'Fort Worth', 'Columbus', 'Charlotte'];
+        const departments = ['Engineering', 'Sales', 'Marketing', 'HR', 'Finance', 'Support', 'Product', 'Design', 'Operations', 'Legal'];
+        
+        return Array.from({ length: count }, (_, i) => ({
+          id: i + 1,
+          firstName: firstNames[Math.floor(Math.random() * firstNames.length)],
+          lastName: lastNames[Math.floor(Math.random() * lastNames.length)],
+          email: `user${i + 1}@example.com`,
+          age: Math.floor(Math.random() * 50) + 20,
+          city: cities[Math.floor(Math.random() * cities.length)],
+          department: departments[Math.floor(Math.random() * departments.length)],
+          salary: Math.floor(Math.random() * 100000) + 40000,
+          active: Math.random() > 0.2,
+          joinDate: randomDate(2015, 2024),
+          skills: randomSubset(['JavaScript', 'Python', 'Java', 'Go', 'Rust', 'TypeScript', 'SQL', 'React', 'Node.js', 'AWS'], 3)
+        }));
+      }
+      
+      function generateProducts(count) {
+        const categories = ['Electronics', 'Clothing', 'Home', 'Books', 'Sports', 'Toys', 'Food', 'Beauty', 'Health', 'Garden'];
+        const adjectives = ['Premium', 'Basic', 'Pro', 'Ultra', 'Mini', 'Max', 'Super', 'Eco', 'Smart', 'Classic'];
+        const nouns = ['Widget', 'Gadget', 'Device', 'Tool', 'Item', 'Product', 'Thing', 'Object', 'Unit', 'Part'];
+        
+        return Array.from({ length: count }, (_, i) => ({
+          id: `PROD-${String(i + 1).padStart(6, '0')}`,
+          name: `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]} ${i + 1}`,
+          category: categories[Math.floor(Math.random() * categories.length)],
+          price: Math.round((Math.random() * 500 + 10) * 100) / 100,
+          stock: Math.floor(Math.random() * 1000),
+          rating: Math.round((Math.random() * 2 + 3) * 10) / 10,
+          reviews: Math.floor(Math.random() * 500),
+          inStock: Math.random() > 0.1,
+          tags: randomSubset(['bestseller', 'new', 'sale', 'featured', 'limited', 'exclusive'], 2),
+          createdAt: randomDate(2020, 2024)
+        }));
+      }
+      
+      function generateOrders(count) {
+        const statuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+        const paymentMethods = ['credit_card', 'debit_card', 'paypal', 'bank_transfer', 'crypto'];
+        
+        return Array.from({ length: count }, (_, i) => ({
+          orderId: `ORD-${String(i + 1).padStart(8, '0')}`,
+          customerId: Math.floor(Math.random() * 10000) + 1,
+          status: statuses[Math.floor(Math.random() * statuses.length)],
+          items: Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, j) => ({
+            productId: `PROD-${String(Math.floor(Math.random() * 10000)).padStart(6, '0')}`,
+            quantity: Math.floor(Math.random() * 5) + 1,
+            price: Math.round((Math.random() * 200 + 10) * 100) / 100
+          })),
+          total: Math.round((Math.random() * 1000 + 50) * 100) / 100,
+          paymentMethod: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
+          shippingAddress: {
+            street: `${Math.floor(Math.random() * 9999) + 1} Main St`,
+            city: ['New York', 'LA', 'Chicago', 'Houston'][Math.floor(Math.random() * 4)],
+            zip: String(Math.floor(Math.random() * 90000) + 10000)
+          },
+          createdAt: randomDate(2023, 2024),
+          updatedAt: randomDate(2024, 2024)
+        }));
+      }
+      
+      function generateEvents(count) {
+        const eventTypes = ['click', 'view', 'purchase', 'signup', 'login', 'logout', 'error', 'search', 'share', 'download'];
+        const sources = ['web', 'mobile', 'api', 'desktop', 'tablet'];
+        const browsers = ['Chrome', 'Firefox', 'Safari', 'Edge', 'Opera'];
+        
+        return Array.from({ length: count }, (_, i) => ({
+          eventId: `EVT-${Date.now()}-${i}`,
+          type: eventTypes[Math.floor(Math.random() * eventTypes.length)],
+          userId: Math.random() > 0.3 ? Math.floor(Math.random() * 10000) + 1 : null,
+          sessionId: `sess_${Math.random().toString(36).substr(2, 12)}`,
+          timestamp: new Date(Date.now() - Math.floor(Math.random() * 86400000 * 30)).toISOString(),
+          source: sources[Math.floor(Math.random() * sources.length)],
+          metadata: {
+            browser: browsers[Math.floor(Math.random() * browsers.length)],
+            country: ['US', 'UK', 'CA', 'DE', 'FR', 'JP', 'AU'][Math.floor(Math.random() * 7)],
+            duration: Math.floor(Math.random() * 300),
+            page: `/page/${Math.floor(Math.random() * 100)}`
+          }
+        }));
+      }
+      
+      function generateNestedObjects(count) {
+        return Array.from({ length: count }, (_, i) => ({
+          id: i + 1,
+          level1: {
+            name: `Object ${i + 1}`,
+            level2: {
+              value: Math.random() * 1000,
+              level3: {
+                items: Array.from({ length: Math.floor(Math.random() * 5) + 1 }, (_, j) => ({
+                  id: j + 1,
+                  data: Math.random().toString(36).substr(2, 8)
+                })),
+                metadata: {
+                  created: randomDate(2020, 2024),
+                  tags: randomSubset(['alpha', 'beta', 'gamma', 'delta', 'epsilon'], 2)
+                }
+              }
+            }
+          }
+        }));
+      }
+      
+      // Helper functions for data generation
+      function randomDate(startYear, endYear) {
+        const start = new Date(startYear, 0, 1);
+        const end = new Date(endYear, 11, 31);
+        return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime())).toISOString().split('T')[0];
+      }
+      
+      function randomSubset(arr, maxCount) {
+        const shuffled = arr.slice().sort(() => Math.random() - 0.5);
+        return shuffled.slice(0, Math.floor(Math.random() * maxCount) + 1);
+      }
+      
+      // Generate variant data with specified difference percentage
+      function generateVariantData(data, type, diffPercent) {
+        if (!Array.isArray(data)) return data;
+        
+        return data.map((item, index) => {
+          // Randomly decide if this item should be different
+          if (Math.random() > diffPercent) {
+            return JSON.parse(JSON.stringify(item)); // Clone unchanged
+          }
+          
+          // Create a modified copy
+          const modified = JSON.parse(JSON.stringify(item));
+          
+          // Apply type-specific modifications
+          switch (type) {
+            case 'users':
+              if (Math.random() > 0.5) modified.age = (modified.age || 30) + Math.floor(Math.random() * 5) - 2;
+              if (Math.random() > 0.5) modified.active = !modified.active;
+              if (Math.random() > 0.5) modified.salary = (modified.salary || 50000) + Math.floor(Math.random() * 10000) - 5000;
+              break;
+            case 'products':
+              if (Math.random() > 0.5) modified.price = Math.round((modified.price || 100) * (0.9 + Math.random() * 0.2) * 100) / 100;
+              if (Math.random() > 0.5) modified.stock = Math.max(0, (modified.stock || 100) + Math.floor(Math.random() * 50) - 25);
+              if (Math.random() > 0.5) modified.rating = Math.round(Math.min(5, Math.max(1, (modified.rating || 4) + (Math.random() - 0.5))) * 10) / 10;
+              break;
+            case 'orders':
+              if (Math.random() > 0.5) {
+                const statuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+                modified.status = statuses[Math.floor(Math.random() * statuses.length)];
+              }
+              if (Math.random() > 0.5) modified.total = Math.round((modified.total || 100) * (0.9 + Math.random() * 0.2) * 100) / 100;
+              break;
+            case 'events':
+              if (Math.random() > 0.5) {
+                const types = ['click', 'view', 'purchase', 'signup', 'error'];
+                modified.type = types[Math.floor(Math.random() * types.length)];
+              }
+              break;
+            case 'nested':
+              if (modified.level1?.level2) {
+                modified.level1.level2.value = (modified.level1.level2.value || 500) * (0.9 + Math.random() * 0.2);
+              }
+              break;
+          }
+          
+          return modified;
         });
       }
 
