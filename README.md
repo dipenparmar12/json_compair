@@ -55,6 +55,29 @@ python3 -m http.server 8000
 # Open http://localhost:8000 in your browser
 ```
 
+## Development Tests
+
+Large dataset regressions can be tested without opening the browser.
+
+Run the large dataset suite:
+
+```bash
+npm run test:large
+```
+
+Run all Node-based regression tests:
+
+```bash
+npm test
+```
+
+Current automated coverage includes:
+
+- Wide CSV conversion with 1800 columns
+- Large identical dataset comparison
+- Large completely different dataset comparison
+- Wide-object JSON stringification regression coverage
+
 ## Recent Updates
 
 See [docs/LIBRARY_UPDATES_OCT_2025.md](docs/LIBRARY_UPDATES_OCT_2025.md) for details on the latest library updates.

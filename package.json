@@ -1,0 +1,8 @@
+{
+  "name": "json_compair",
+  "private": true,
+  "scripts": {
+    "test": "node tests/large-dataset.test.js",
+    "test:large": "node tests/large-dataset.test.js"
+  }
+}
