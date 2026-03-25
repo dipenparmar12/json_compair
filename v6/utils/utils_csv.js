@@ -173,7 +173,7 @@
 
     // If Papa is available and input is large, use it with worker:true
     const size = csvText.length;
-    const USE_PAPA_THRESHOLD = 100 * 1024; // 100KB
+    const USE_PAPA_THRESHOLD = 50 * 1024; // 50KB - use PapaParse worker earlier for better responsiveness
     if (window.Papa && size > USE_PAPA_THRESHOLD) {
       return new Promise((resolve, reject) => {
         try {

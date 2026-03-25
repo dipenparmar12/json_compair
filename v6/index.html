@@ -327,28 +327,79 @@
       // Import Compartment for dynamic configuration
       import { Compartment } from "@codemirror/state";
 
+      // --- Performance: Content string cache to avoid repeated doc.toString() ---
+      // Call getContentCache() instead of doc.toString() in hot paths.
+      const _contentCache = { left: null, right: null, tick: 0 };
+      function getContentCache() {
+        const tick = performance.now();
+        // Cache is valid for 50ms (same JS task / microtask batch)
+        if (_contentCache.left !== null && tick - _contentCache.tick < 50) {
+          return { left: _contentCache.left, right: _contentCache.right };
+        }
+        _contentCache.left = mergeView.a.state.doc.toString();
+        _contentCache.right = mergeView.b.state.doc.toString();
+        _contentCache.tick = tick;
+        return { left: _contentCache.left, right: _contentCache.right };
+      }
+      function invalidateContentCache() {
+        _contentCache.left = null;
+        _contentCache.right = null;
+        _contentCache.tick = 0;
+      }
+
+      // --- Performance: Bulk loading flag ---
+      // Set to true during large paste/drop to suppress cascading expensive operations.
+      let _bulkLoading = false;
+
+      // --- Performance: Adaptive debounce based on content size ---
+      function getAdaptiveDelay(baseMs) {
+        if (!mergeView) return baseMs;
+        const totalLen = mergeView.a.state.doc.length + mergeView.b.state.doc.length;
+        if (totalLen > 2000000) return baseMs * 6;  // >2MB
+        if (totalLen > 500000) return baseMs * 3;   // >500KB
+        if (totalLen > 100000) return baseMs * 2;   // >100KB
+        return baseMs;
+      }
+
+      // --- Performance: Batched UI update scheduler ---
+      let _uiUpdateScheduled = false;
+      function scheduleUIUpdate() {
+        if (_uiUpdateScheduled || _bulkLoading) return;
+        _uiUpdateScheduled = true;
+        const delay = getAdaptiveDelay(200);
+        setTimeout(() => {
+          _uiUpdateScheduled = false;
+          if (_bulkLoading) return;
+          invalidateContentCache();
+          updateDiffStatus();
+          updatePaneButtonVisibility();
+          updateClearButtonVisibility();
+          updatePlaceholders();
+        }, delay);
+      }
+
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
         if (update.docChanged) {
-          // Debounce saves to avoid excessive localStorage writes
+          if (_bulkLoading) return; // Skip all processing during bulk load
+          invalidateContentCache();
+
+          // Debounce saves with adaptive delay
           clearTimeout(window.autoSaveTimer);
           window.autoSaveTimer = setTimeout(() => {
             saveContent();
-          }, 300);
+          }, getAdaptiveDelay(300));
           
-          // Debounce merge view refresh for diff recalculation
-          clearTimeout(window.diffRefreshTimer);
-          window.diffRefreshTimer = setTimeout(() => {
-            refreshMergeViewIfNeeded();
-          }, 500);
+          // Schedule batched UI updates (diff, buttons, placeholders)
+          scheduleUIUpdate();
           
-          // Debounce CSV button updates
+          // Debounce CSV button updates with longer delay for large content
           clearTimeout(window.csvButtonTimer);
           window.csvButtonTimer = setTimeout(() => {
             if (typeof updateCSVConversionButtons === 'function') {
               updateCSVConversionButtons();
             }
-          }, 300);
+          }, getAdaptiveDelay(500));
         }
       });
 
@@ -849,8 +900,7 @@
       function checkContentSizeAndSuggest() {
         if (!largeFileDetector || !mergeView) return;
         
-        const leftContent = mergeView.a.state.doc.toString();
-        const rightContent = mergeView.b.state.doc.toString();
+        const { left: leftContent, right: rightContent } = getContentCache();
         
         const analysis = largeFileDetector.analyze(leftContent, rightContent);
         
@@ -1043,16 +1093,17 @@
 
       // Refresh merge view only if collapse unchanged is enabled
       function refreshMergeViewIfNeeded() {
+        if (_bulkLoading) return; // Don't rebuild during bulk content loading
+        
         const collapseUnchanged = document.getElementById('setting-collapse-unchanged')?.checked;
         const highlightChanges = document.getElementById('setting-highlight-changes')?.checked;
         
-        // Only refresh if collapse unchanged is enabled or highlight changes setting might need reapplication
+        // Only refresh if collapse unchanged is enabled
         if (collapseUnchanged) {
-          const leftContent = mergeView.a.state.doc.toString().trim();
-          const rightContent = mergeView.b.state.doc.toString().trim();
+          const { left, right } = getContentCache();
           
           // Only refresh if both panels have content
-          if (leftContent && rightContent) {
+          if (left.trim() && right.trim()) {
             const currentSettings = {
               highlightChanges: highlightChanges ?? true,
               gutter: document.getElementById('setting-gutter')?.checked ?? true,
@@ -1826,8 +1877,9 @@
       
       // Check if content is modified from saved branch (called on content change)
       async function checkBranchModified(side) {
-        const editor = side === 'left' ? mergeView.a : mergeView.b;
-        const content = editor.state.doc.toString();
+        if (_bulkLoading) return; // Skip during bulk loading
+        const { left, right } = getContentCache();
+        const content = side === 'left' ? left : right;
         const branchId = activeBranches[side];
         
         branchModified[side] = await window.BranchManager.isModified(branchId, content);
@@ -1850,20 +1902,28 @@
             const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
             const content = buildJSONString(jsonData, { autoSort });
             
+            const isLarge = content.length > 100000;
+            if (isLarge) _bulkLoading = true;
+
             editor.dispatch({
               changes: { from: 0, to: editor.state.doc.length, insert: content }
             });
             
             showConversionMessage("CSV converted to JSON successfully");
             
-            // Force immediate diff refresh and button update
-            setTimeout(() => {
-              refreshMergeViewIfNeeded();
-              updateDiffStatus();
-              updatePaneButtonVisibility();
-              updateCSVConversionButtons();
-            }, 100);
+            if (isLarge) {
+              setTimeout(() => {
+                _bulkLoading = false;
+                invalidateContentCache();
+                checkContentSizeAndSuggest();
+                scheduleUIUpdate();
+              }, getAdaptiveDelay(500));
+            } else {
+              invalidateContentCache();
+              scheduleUIUpdate();
+            }
           } catch (err) {
+            _bulkLoading = false;
             showErrorMessage("CSV conversion failed: " + err.message);
           }
         };
@@ -2033,8 +2093,9 @@
       
       // Update all conversion button visibility based on content
       function updateConversionButtons() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
+        const { left, right } = getContentCache();
+        const leftContent = left.trim();
+        const rightContent = right.trim();
         
         // CSV→JSON buttons
         const leftCsvBtn = document.querySelector('.csv-convert-left');
@@ -2048,11 +2109,13 @@
         const leftExportBtn = document.querySelector('.export-dropdown-left');
         const rightExportBtn = document.querySelector('.export-dropdown-right');
         
-        // Check content types
+        // Performance: Skip expensive JSON.parse for large content (>500KB)
+        // isConvertibleToCSV() calls JSON.parse on the ENTIRE string
+        const CONVERSION_CHECK_LIMIT = 500000;
         const leftIsCSV = leftContent && window.CSVUtils && window.CSVUtils.isCSV(leftContent);
         const rightIsCSV = rightContent && window.CSVUtils && window.CSVUtils.isCSV(rightContent);
-        const leftIsConvertibleJSON = leftContent && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(leftContent);
-        const rightIsConvertibleJSON = rightContent && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(rightContent);
+        const leftIsConvertibleJSON = leftContent.length < CONVERSION_CHECK_LIMIT && leftContent && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(leftContent);
+        const rightIsConvertibleJSON = rightContent.length < CONVERSION_CHECK_LIMIT && rightContent && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(rightContent);
         
         // CSV→JSON: show only if content is CSV (and NOT convertible JSON)
         if (leftCsvBtn) {
@@ -2093,8 +2156,9 @@
 
       // Update visibility of copy/clear buttons based on content
       function updatePaneButtonVisibility() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
+        const { left, right } = getContentCache();
+        const leftContent = left.trim();
+        const rightContent = right.trim();
         
         // Find all pane controls
         const paneControls = document.querySelectorAll('.pane-controls');
@@ -2231,6 +2295,9 @@
           const leftFormatted = JSON.stringify(leftParsed, null, 3);
           const rightFormatted = JSON.stringify(rightParsed, null, 3);
 
+          const isLarge = (leftFormatted.length + rightFormatted.length) > 200000;
+          if (isLarge) _bulkLoading = true;
+
           mergeView.a.dispatch({
             changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftFormatted }
           });
@@ -2240,8 +2307,18 @@
           });
 
           updateStatus("Formatted successfully");
-          updateDiffStatus();
+          if (isLarge) {
+            setTimeout(() => {
+              _bulkLoading = false;
+              invalidateContentCache();
+              scheduleUIUpdate();
+            }, getAdaptiveDelay(500));
+          } else {
+            invalidateContentCache();
+            scheduleUIUpdate();
+          }
         } catch (e) {
+          _bulkLoading = false;
           updateStatus("Error formatting: " + e.message);
         }
       }
@@ -2266,6 +2343,9 @@
           const leftFormatted = JSON.stringify(leftSorted, null, 3);
           const rightFormatted = JSON.stringify(rightSorted, null, 3);
 
+          const isLarge = (leftFormatted.length + rightFormatted.length) > 200000;
+          if (isLarge) _bulkLoading = true;
+
           mergeView.a.dispatch({
             changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftFormatted }
           });
@@ -2275,8 +2355,18 @@
           });
 
           updateStatus("Sorted successfully");
-          updateDiffStatus();
+          if (isLarge) {
+            setTimeout(() => {
+              _bulkLoading = false;
+              invalidateContentCache();
+              scheduleUIUpdate();
+            }, getAdaptiveDelay(500));
+          } else {
+            invalidateContentCache();
+            scheduleUIUpdate();
+          }
         } catch (e) {
+          _bulkLoading = false;
           updateStatus("Error sorting: " + e.message);
         }
       }
@@ -2289,6 +2379,10 @@
           } catch (err) {
             console.warn('Auto sort failed:', err);
           }
+        }
+        // For very large arrays, use reduced indentation to limit output size
+        if (Array.isArray(content) && content.length > 5000) {
+          return JSON.stringify(content, null, 2); // 2-space indent for large arrays
         }
         return JSON.stringify(content, null, 3);
       }
@@ -2695,20 +2789,32 @@
             }
           }
 
+          // Performance: Suppress cascading operations during large content insertion
+          const isLargeContent = content.length > 100000;
+          if (isLargeContent) {
+            _bulkLoading = true;
+            updateStatus('Loading large content...');
+          }
+
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: content }
           });
 
-          // Force immediate diff refresh
-          setTimeout(() => {
-            refreshMergeViewIfNeeded();
-            updateDiffStatus();
-            updatePlaceholders();
-            updatePaneButtonVisibility();
-            // Check for large content and suggest optimizations
-            checkContentSizeAndSuggest();
-          }, 100);
+          if (isLargeContent) {
+            // Re-enable after a delay to let the editor settle
+            setTimeout(() => {
+              _bulkLoading = false;
+              invalidateContentCache();
+              checkContentSizeAndSuggest();
+              scheduleUIUpdate();
+            }, getAdaptiveDelay(500));
+          } else {
+            // For small content, schedule a light UI update
+            invalidateContentCache();
+            scheduleUIUpdate();
+          }
         } catch (err) {
+          _bulkLoading = false;
           showErrorMessage("Failed to read file: " + err.message);
         }
       }
@@ -2733,14 +2839,11 @@
         let content = text;
         let isJSON = false;
 
-  // Resolve the target editor and current selection for this side so that
-  // any auto-processed paste only affects the selection/caret, not the
-  // entire document. This preserves normal editor experience when
-  // pasting into the middle of existing content.
-  const editor = side === 'left' ? mergeView.a : mergeView.b;
-  const mainSelection = editor.state.selection?.main;
-  const from = mainSelection ? mainSelection.from : 0;
-  const to = mainSelection ? mainSelection.to : editor.state.doc.length;
+        // Resolve the target editor and current selection for this side
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const mainSelection = editor.state.selection?.main;
+        const from = mainSelection ? mainSelection.from : 0;
+        const to = mainSelection ? mainSelection.to : editor.state.doc.length;
         
         // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
         if (autoCSV || autoFormat || autoSort) {
@@ -2751,6 +2854,30 @@
           } catch (err) {
             // Not valid JSON/Python, continue to CSV check
             console.log('JSON parsing failed, checking for CSV:', err);
+          }
+        }
+
+        // Helper to dispatch content and schedule deferred UI updates
+        function dispatchAndScheduleUpdate(contentToInsert, statusMsg) {
+          const isLarge = contentToInsert.length > 100000;
+          if (isLarge) _bulkLoading = true;
+
+          editor.dispatch({
+            changes: { from, to, insert: contentToInsert }
+          });
+
+          if (statusMsg) showConversionMessage(statusMsg);
+
+          if (isLarge) {
+            setTimeout(() => {
+              _bulkLoading = false;
+              invalidateContentCache();
+              checkContentSizeAndSuggest();
+              scheduleUIUpdate();
+            }, getAdaptiveDelay(500));
+          } else {
+            invalidateContentCache();
+            scheduleUIUpdate();
           }
         }
         
@@ -2764,23 +2891,9 @@
             try {
               const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
               content = buildJSONString(jsonData, { autoSort });
-
-              editor.dispatch({
-                changes: { from, to, insert: content }
-              });
-
-              showConversionMessage("CSV converted to JSON");
-              
-              // Force immediate diff refresh
-              setTimeout(() => {
-                refreshMergeViewIfNeeded();
-                updateDiffStatus();
-                updatePlaceholders();
-                updatePaneButtonVisibility();
-                // Check for large content and suggest optimizations
-                checkContentSizeAndSuggest();
-              }, 100);
+              dispatchAndScheduleUpdate(content, "CSV converted to JSON");
             } catch (err) {
+              _bulkLoading = false;
               showErrorMessage("CSV conversion failed: " + err.message);
             }
             return;
@@ -2791,20 +2904,7 @@
         if (isJSON && (autoFormat || autoSort || autoCSV)) {
           e.preventDefault();
           e.stopPropagation();
-
-          editor.dispatch({
-            changes: { from, to, insert: content }
-          });
-
-          // Force immediate diff refresh
-          setTimeout(() => {
-            refreshMergeViewIfNeeded();
-            updateDiffStatus();
-            updatePlaceholders();
-            updatePaneButtonVisibility();
-            // Check for large content and suggest optimizations
-            checkContentSizeAndSuggest();
-          }, 100);
+          dispatchAndScheduleUpdate(content);
         }
       }
 
@@ -2905,8 +3005,7 @@
 
       // Save content to storage (called by auto-save extension)
       function saveContent() {
-        const leftContent = mergeView.a.state.doc.toString();
-        const rightContent = mergeView.b.state.doc.toString();
+        const { left: leftContent, right: rightContent } = getContentCache();
 
         try {
           StorageManager.saveToStorage(leftContent, rightContent);
@@ -2919,20 +3018,20 @@
           }
         }
         
-        // Mark branches as modified (check in background)
-        checkBranchModified('left');
-        checkBranchModified('right');
-
-        updateClearButtonVisibility();
-        updateDiffStatus();
-        updatePlaceholders();
-        updatePaneButtonVisibility();
+        // Mark branches as modified (check in background, debounced)
+        clearTimeout(window._branchCheckTimer);
+        window._branchCheckTimer = setTimeout(() => {
+          checkBranchModified('left');
+          checkBranchModified('right');
+        }, getAdaptiveDelay(1000));
+        // Note: UI updates (diff, buttons, placeholders) are handled by scheduleUIUpdate()
       }
 
       // Update diff status
       function updateDiffStatus() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
+        const { left, right } = getContentCache();
+        const leftContent = left.trim();
+        const rightContent = right.trim();
         const summaryDiv = document.getElementById("diff-summary");
         
         if (!leftContent || !rightContent) {
@@ -2957,7 +3056,13 @@
         
         // Check if we should use web worker for large content
         const totalSize = leftContent.length + rightContent.length;
-        const useLargeFileThreshold = 100000; // 100KB
+        const useLargeFileThreshold = 50000; // 50KB - offload to worker earlier
+        
+        // For extremely large content (>5MB), skip detailed diff count entirely
+        if (totalSize > 5000000) {
+          if (summaryDiv) summaryDiv.textContent = "Large content - differences detected (diff count skipped for performance)";
+          return;
+        }
         
         if (totalSize > useLargeFileThreshold && diffWorker) {
           // Use web worker for large content
@@ -3034,8 +3139,9 @@
         const btnClearAll = document.getElementById("btn-clear-all");
         if (!btnClearAll) return;
 
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
+        const { left, right } = getContentCache();
+        const leftContent = left.trim();
+        const rightContent = right.trim();
 
         btnClearAll.style.display = (leftContent || rightContent) ? "inline-block" : "none";
       }
