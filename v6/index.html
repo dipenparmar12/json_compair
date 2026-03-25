@@ -29,6 +29,12 @@
       crossorigin="anonymous"
     ></script>
 
+    <!-- PapaParse for async CSV parsing with Web Workers -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"
+      crossorigin="anonymous"
+    ></script>
+
     <!-- diff_match_patch for accurate diff counting -->
     <script
       src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.min.js"
@@ -372,10 +378,15 @@
           _uiUpdateScheduled = false;
           if (_bulkLoading) return;
           invalidateContentCache();
+          // Priority 1: diff status (most important feedback)
           updateDiffStatus();
-          updatePaneButtonVisibility();
-          updateClearButtonVisibility();
-          updatePlaceholders();
+          // Priority 2: stagger secondary UI updates to avoid cascading main-thread work
+          setTimeout(() => {
+            if (_bulkLoading) return;
+            updatePaneButtonVisibility();
+            updateClearButtonVisibility();
+            updatePlaceholders();
+          }, 100);
         }, delay);
       }
 
@@ -548,6 +559,13 @@
         // Create merge view container
         const container = document.getElementById("view-container");
 
+        // Auto-reduce scanLimit for large initial content
+        const initialTotalSize = (initialContent.left?.length || 0) + (initialContent.right?.length || 0);
+        let initialScanLimit = mergeSettings.scanLimit;
+        if (initialTotalSize > 5000000) initialScanLimit = Math.min(initialScanLimit, 100);
+        else if (initialTotalSize > 2000000) initialScanLimit = Math.min(initialScanLimit, 250);
+        else if (initialTotalSize > 1000000) initialScanLimit = Math.min(initialScanLimit, 500);
+
         // Create merge view with CodeMirror 6 using saved settings
         mergeView = new MergeView({
           a: {
@@ -582,7 +600,7 @@
           allowEditingOriginals: true,
           revertControls: mergeSettings.revertControls === "none" ? undefined : mergeSettings.revertControls,
           collapseUnchanged: mergeSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
-          diffConfig: { scanLimit: mergeSettings.scanLimit },
+          diffConfig: { scanLimit: initialScanLimit },
         });
 
         // Add per-pane control buttons
@@ -1103,6 +1121,14 @@
         if (collapseUnchanged) {
           const { left, right } = getContentCache();
           
+          // Skip expensive MergeView reconstruction for very large content
+          // recreateMergeView() destroys and rebuilds the entire editor + re-diffs
+          const totalSize = left.length + right.length;
+          if (totalSize > 1000000) { // >1MB: too expensive to rebuild
+            console.log('[perf] Skipping MergeView recreation for large content:', (totalSize / 1024 / 1024).toFixed(1) + 'MB');
+            return;
+          }
+          
           // Only refresh if both panels have content
           if (left.trim() && right.trim()) {
             const currentSettings = {
@@ -1124,6 +1150,13 @@
         // Get current content
         const leftContent = mergeView.a.state.doc.toString();
         const rightContent = mergeView.b.state.doc.toString();
+        
+        // Auto-reduce scanLimit for large content to prevent freeze during diff
+        const totalSize = leftContent.length + rightContent.length;
+        let effectiveScanLimit = newSettings.scanLimit;
+        if (totalSize > 5000000) effectiveScanLimit = Math.min(effectiveScanLimit, 100);  // >5MB
+        else if (totalSize > 2000000) effectiveScanLimit = Math.min(effectiveScanLimit, 250);  // >2MB
+        else if (totalSize > 1000000) effectiveScanLimit = Math.min(effectiveScanLimit, 500);  // >1MB
         
         // Destroy existing merge view
         const container = document.getElementById("view-container");
@@ -1162,7 +1195,7 @@
           allowEditingOriginals: true,
           revertControls: newSettings.revertControls === "none" ? undefined : newSettings.revertControls,
           collapseUnchanged: newSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
-          diffConfig: { scanLimit: newSettings.scanLimit },
+          diffConfig: { scanLimit: effectiveScanLimit },
         });
         
         // Re-add pane controls
@@ -1900,7 +1933,13 @@
           const autoSort = document.getElementById('auto-sort-keys')?.checked;
           
           try {
-            const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+            // Use LargeDataHandler for large CSV files (worker-based with progress UI)
+            let jsonData;
+            if (window.LargeDataHandler && text.length > 100000) {
+              jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
+            } else {
+              jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+            }
             const content = buildJSONString(jsonData, { autoSort });
             
             const isLarge = content.length > 100000;
@@ -2280,7 +2319,7 @@
       }
 
       // Format JSON in both editors
-      function formatJSON() {
+      async function formatJSON() {
         const leftContent = mergeView.a.state.doc.toString().trim();
         const rightContent = mergeView.b.state.doc.toString().trim();
 
@@ -2290,11 +2329,25 @@
         }
 
         try {
-          const leftParsed = window.parseFlexibleJSON(leftContent);
-          const rightParsed = window.parseFlexibleJSON(rightContent);
+          const totalSize = leftContent.length + rightContent.length;
+          let leftFormatted, rightFormatted;
 
-          const leftFormatted = JSON.stringify(leftParsed, null, 3);
-          const rightFormatted = JSON.stringify(rightParsed, null, 3);
+          // For large content (>2MB), use LargeDataHandler worker to avoid blocking main thread
+          if (totalSize > 2000000 && window.LargeDataHandler) {
+            _bulkLoading = true;
+            updateStatus('Formatting large content...');
+            const [leftResult, rightResult] = await Promise.all([
+              window.LargeDataHandler.formatJSON(leftContent),
+              window.LargeDataHandler.formatJSON(rightContent)
+            ]);
+            leftFormatted = leftResult;
+            rightFormatted = rightResult;
+          } else {
+            const leftParsed = window.parseFlexibleJSON(leftContent);
+            const rightParsed = window.parseFlexibleJSON(rightContent);
+            leftFormatted = JSON.stringify(leftParsed, null, 3);
+            rightFormatted = JSON.stringify(rightParsed, null, 3);
+          }
 
           const isLarge = (leftFormatted.length + rightFormatted.length) > 200000;
           if (isLarge) _bulkLoading = true;
@@ -2325,7 +2378,7 @@
       }
 
       // Sort JSON keys
-      function sortJSON() {
+      async function sortJSON() {
         const leftContent = mergeView.a.state.doc.toString().trim();
         const rightContent = mergeView.b.state.doc.toString().trim();
 
@@ -2335,6 +2388,32 @@
         }
 
         try {
+          // For large content (>2MB), use LargeDataHandler worker
+          const totalSize = leftContent.length + rightContent.length;
+          if (totalSize > 2000000 && window.LargeDataHandler) {
+            _bulkLoading = true;
+            updateStatus('Sorting large content...');
+            const [leftResult, rightResult] = await Promise.all([
+              window.LargeDataHandler.sortJSONKeys(leftContent),
+              window.LargeDataHandler.sortJSONKeys(rightContent)
+            ]);
+            
+            mergeView.a.dispatch({
+              changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftResult }
+            });
+            mergeView.b.dispatch({
+              changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightResult }
+            });
+
+            updateStatus("Sorted successfully");
+            setTimeout(() => {
+              _bulkLoading = false;
+              invalidateContentCache();
+              scheduleUIUpdate();
+            }, getAdaptiveDelay(500));
+            return;
+          }
+
           const leftParsed = window.parseFlexibleJSON(leftContent);
           const rightParsed = window.parseFlexibleJSON(rightContent);
 
