@@ -2846,7 +2846,8 @@
           // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
           if (autoCSV || autoFormat || autoSort) {
             try {
-              const parsed = window.parseFlexibleJSON(content);
+              // For large content (>2MB), skip regex-heavy parseFlexibleJSON — use native JSON.parse
+              const parsed = content.length > 2000000 ? JSON.parse(content) : window.parseFlexibleJSON(content);
               content = buildJSONString(parsed, { autoSort });
               isJSON = true;
             } catch (err) {
@@ -2934,7 +2935,8 @@
         // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
         if (autoCSV || autoFormat || autoSort) {
           try {
-            const parsed = window.parseFlexibleJSON(content);
+            // For large content (>2MB), skip regex-heavy parseFlexibleJSON — use native JSON.parse
+            const parsed = content.length > 2000000 ? JSON.parse(content) : window.parseFlexibleJSON(content);
             content = buildJSONString(parsed, { autoSort });
             isJSON = true;
           } catch (err) {
