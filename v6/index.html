@@ -42,6 +42,7 @@
     <script src="./utils/utils_zip.js"></script>
     <script src="./utils/utils_branch.js"></script>
     <script src="./utils/viewport_diff.js"></script>
+    <script src="./utils/large-data-handler.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -2780,7 +2781,13 @@
             const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
             if (isCSV) {
               try {
-                const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+                // Use LargeDataHandler for large CSV files (worker-based with progress UI)
+                let jsonData;
+                if (window.LargeDataHandler && text.length > 100000) {
+                  jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
+                } else {
+                  jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+                }
                 content = buildJSONString(jsonData, { autoSort });
                 showConversionMessage("CSV converted to JSON");
               } catch (err) {
@@ -2889,7 +2896,13 @@
             e.stopPropagation();
 
             try {
-              const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+              // Use LargeDataHandler for large CSV (worker-based with progress UI)
+              let jsonData;
+              if (window.LargeDataHandler && text.length > 100000) {
+                jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
+              } else {
+                jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
+              }
               content = buildJSONString(jsonData, { autoSort });
               dispatchAndScheduleUpdate(content, "CSV converted to JSON");
             } catch (err) {
@@ -3061,6 +3074,21 @@
         // For extremely large content (>5MB), skip detailed diff count entirely
         if (totalSize > 5000000) {
           if (summaryDiv) summaryDiv.textContent = "Large content - differences detected (diff count skipped for performance)";
+          return;
+        }
+        
+        // Try LargeDataHandler worker first (has its own robust worker pool)
+        if (totalSize > useLargeFileThreshold && window.LargeDataHandler) {
+          if (summaryDiv) summaryDiv.textContent = "Calculating diff...";
+          window.LargeDataHandler.countDiffs(leftContent, rightContent).then(result => {
+            if (result && summaryDiv) {
+              const diffCount = result.diffCount;
+              const duration = Math.round(result.duration || 0);
+              summaryDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''}${duration ? ` (${duration}ms)` : ''}`;
+            }
+          }).catch(() => {
+            if (summaryDiv) summaryDiv.textContent = "Differences detected";
+          });
           return;
         }
         
