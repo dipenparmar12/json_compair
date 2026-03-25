@@ -358,6 +358,123 @@
       // Set to true during large paste/drop to suppress cascading expensive operations.
       let _bulkLoading = false;
 
+      // --- Performance: Show/hide processing overlay for large content operations ---
+      function showProcessingOverlay(message) {
+        // Use LargeDataHandler's progress UI if available
+        if (window.LargeDataHandler?.progressManager) {
+          const opId = 'content-insert-' + Date.now();
+          window.LargeDataHandler.progressManager.show(opId, {
+            title: 'Processing Content',
+            status: message || 'Loading...',
+            progress: -1
+          });
+          return opId;
+        }
+        updateStatus(message || 'Processing...');
+        return null;
+      }
+      function updateProcessingOverlay(opId, message, progress) {
+        if (opId && window.LargeDataHandler?.progressManager) {
+          window.LargeDataHandler.progressManager.update(opId, {
+            status: message,
+            ...(progress !== undefined ? { progress } : {})
+          });
+        } else {
+          updateStatus(message);
+        }
+      }
+      function hideProcessingOverlay(opId) {
+        if (opId && window.LargeDataHandler?.progressManager) {
+          window.LargeDataHandler.progressManager.complete(opId);
+        }
+      }
+
+      /**
+       * Insert large content into one side of the MergeView without freezing.
+       * Strategy: Recreate MergeView with minimal diff settings, insert content,
+       * then gradually re-enable features.
+       */
+      function insertLargeContent(side, content) {
+        return new Promise((resolve) => {
+          const otherSide = side === 'left' ? 'right' : 'left';
+          const otherContent = (otherSide === 'left' ? mergeView.a : mergeView.b).state.doc.toString();
+
+          const totalSize = content.length + otherContent.length;
+          // Determine safe scanLimit based on total content size
+          let safeScanLimit = 500;
+          if (totalSize > 5000000) safeScanLimit = 50;
+          else if (totalSize > 2000000) safeScanLimit = 100;
+          else if (totalSize > 1000000) safeScanLimit = 200;
+
+          const leftContent = side === 'left' ? content : otherContent;
+          const rightContent = side === 'right' ? content : otherContent;
+
+          // Current visual settings
+          const currentSettings = loadMergeSettings();
+
+          // For very large, completely different content: temporarily disable expensive features
+          const useMinimalMode = totalSize > 1000000;
+          const insertSettings = {
+            ...currentSettings,
+            scanLimit: safeScanLimit,
+            // Keep collapseUnchanged off during insert — will be restored after content settles
+            collapseUnchanged: useMinimalMode ? false : currentSettings.collapseUnchanged,
+            // Keep highlights on but with reduced scanLimit to prevent freeze
+            highlightChanges: currentSettings.highlightChanges,
+          };
+
+          // Destroy and recreate with new content directly (avoids dispatch-triggered diff on old scanLimit)
+          const container = document.getElementById('view-container');
+          container.innerHTML = '';
+
+          mergeView = new MergeView({
+            a: {
+              doc: leftContent,
+              extensions: [
+                basicSetup,
+                json(),
+                wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
+                themeCompartment.of(getThemeExtension(currentTheme)),
+                autoSaveExtension,
+                placeholder(leftPlaceholderText)
+              ],
+            },
+            b: {
+              doc: rightContent,
+              extensions: [
+                basicSetup,
+                json(),
+                wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
+                themeCompartment.of(getThemeExtension(currentTheme)),
+                autoSaveExtension,
+                placeholder(rightPlaceholderText)
+              ],
+            },
+            parent: container,
+            orientation: insertSettings.orientation,
+            connect: 'align',
+            collapseIdentical: false,
+            highlightChanges: insertSettings.highlightChanges,
+            gutter: insertSettings.gutter,
+            allowEditingOriginals: true,
+            revertControls: insertSettings.revertControls === 'none' ? undefined : insertSettings.revertControls,
+            collapseUnchanged: insertSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
+            diffConfig: { scanLimit: safeScanLimit },
+          });
+
+          // Re-setup event handlers
+          addPaneControls();
+          setupSynchronizedScrolling();
+          setupDragDrop();
+          setupPasteHandlers();
+
+          // Let the browser paint, then resolve
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      }
+
       // --- Performance: Adaptive debounce based on content size ---
       function getAdaptiveDelay(baseMs) {
         if (!mergeView) return baseMs;
@@ -1933,32 +2050,38 @@
           const autoSort = document.getElementById('auto-sort-keys')?.checked;
           
           try {
+            const opId = text.length > 100000 ? showProcessingOverlay('Converting CSV to JSON...') : null;
+
             // Use LargeDataHandler for large CSV files (worker-based with progress UI)
             let jsonData;
-            if (window.LargeDataHandler && text.length > 100000) {
+            if (window.LargeDataHandler && text.length > 50000) {
               jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
             } else {
               jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
             }
+
+            if (opId) updateProcessingOverlay(opId, 'Building JSON output...', 50);
             const content = buildJSONString(jsonData, { autoSort });
             
-            const isLarge = content.length > 100000;
-            if (isLarge) _bulkLoading = true;
-
-            editor.dispatch({
-              changes: { from: 0, to: editor.state.doc.length, insert: content }
-            });
-            
-            showConversionMessage("CSV converted to JSON successfully");
-            
+            const isLarge = content.length > 200000;
             if (isLarge) {
-              setTimeout(() => {
-                _bulkLoading = false;
-                invalidateContentCache();
-                checkContentSizeAndSuggest();
-                scheduleUIUpdate();
-              }, getAdaptiveDelay(500));
+              _bulkLoading = true;
+              if (opId) updateProcessingOverlay(opId, 'Inserting into editor...', 70);
+              await insertLargeContent(side, content);
+              showConversionMessage("CSV converted to JSON successfully");
+              if (opId) updateProcessingOverlay(opId, 'Computing differences...', 90);
+              invalidateContentCache();
+              saveContent();
+              checkContentSizeAndSuggest();
+              _bulkLoading = false;
+              scheduleUIUpdate();
+              hideProcessingOverlay(opId);
             } else {
+              editor.dispatch({
+                changes: { from: 0, to: editor.state.doc.length, insert: content }
+              });
+              showConversionMessage("CSV converted to JSON successfully");
+              hideProcessingOverlay(opId);
               invalidateContentCache();
               scheduleUIUpdate();
             }
@@ -2464,6 +2587,14 @@
         if (Array.isArray(content) && content.length > 5000) {
           return JSON.stringify(content, null, 2); // 2-space indent for large arrays
         }
+        // For arrays of wide objects (many keys per row, like CSV with 1000+ columns),
+        // use 2-space indent to reduce output size significantly
+        if (Array.isArray(content) && content.length > 0 && content[0] && typeof content[0] === 'object') {
+          const keyCount = Object.keys(content[0]).length;
+          if (keyCount > 500) {
+            return JSON.stringify(content, null, 2);
+          }
+        }
         return JSON.stringify(content, null, 3);
       }
 
@@ -2861,14 +2992,17 @@
             const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
             if (isCSV) {
               try {
+                const csvOpId = text.length > 100000 ? showProcessingOverlay('Converting CSV to JSON...') : null;
                 // Use LargeDataHandler for large CSV files (worker-based with progress UI)
                 let jsonData;
-                if (window.LargeDataHandler && text.length > 100000) {
+                if (window.LargeDataHandler && text.length > 50000) {
                   jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
                 } else {
                   jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
                 }
+                if (csvOpId) updateProcessingOverlay(csvOpId, 'Building JSON output...', 70);
                 content = buildJSONString(jsonData, { autoSort });
+                hideProcessingOverlay(csvOpId);
                 showConversionMessage("CSV converted to JSON");
               } catch (err) {
                 showErrorMessage("CSV conversion failed: " + err.message);
@@ -2876,26 +3010,41 @@
             }
           }
 
-          // Performance: Suppress cascading operations during large content insertion
-          const isLargeContent = content.length > 100000;
+          // Performance: Use insertLargeContent for large content to prevent MergeView diff freeze
+          const isLargeContent = content.length > 200000; // 200KB threshold for special handling
           if (isLargeContent) {
             _bulkLoading = true;
-            updateStatus('Loading large content...');
-          }
+            const opId = showProcessingOverlay('Loading large content... (building editor)');
 
-          editor.dispatch({
-            changes: { from: 0, to: editor.state.doc.length, insert: content }
-          });
+            try {
+              await insertLargeContent(side, content);
+              updateProcessingOverlay(opId, 'Content loaded — computing differences...', 60);
 
-          if (isLargeContent) {
-            // Re-enable after a delay to let the editor settle
-            setTimeout(() => {
-              _bulkLoading = false;
+              // Save content
               invalidateContentCache();
+              saveContent();
+
+              // Give browser a frame to paint
+              await new Promise(r => requestAnimationFrame(r));
+              updateProcessingOverlay(opId, 'Updating diff status...', 80);
+
+              // Check size and suggest performance mode
               checkContentSizeAndSuggest();
+
+              // Schedule diff computation (uses workers for large content)
+              _bulkLoading = false;
               scheduleUIUpdate();
-            }, getAdaptiveDelay(500));
+
+              hideProcessingOverlay(opId);
+            } catch (innerErr) {
+              _bulkLoading = false;
+              hideProcessingOverlay(opId);
+              console.error('Large content insertion failed:', innerErr);
+            }
           } else {
+            editor.dispatch({
+              changes: { from: 0, to: editor.state.doc.length, insert: content }
+            });
             // For small content, schedule a light UI update
             invalidateContentCache();
             scheduleUIUpdate();
@@ -2946,24 +3095,35 @@
         }
 
         // Helper to dispatch content and schedule deferred UI updates
-        function dispatchAndScheduleUpdate(contentToInsert, statusMsg) {
-          const isLarge = contentToInsert.length > 100000;
-          if (isLarge) _bulkLoading = true;
-
-          editor.dispatch({
-            changes: { from, to, insert: contentToInsert }
-          });
-
-          if (statusMsg) showConversionMessage(statusMsg);
-
+        async function dispatchAndScheduleUpdate(contentToInsert, statusMsg) {
+          const isLarge = contentToInsert.length > 200000;
           if (isLarge) {
-            setTimeout(() => {
-              _bulkLoading = false;
+            _bulkLoading = true;
+            const opId = showProcessingOverlay('Pasting large content...');
+
+            try {
+              await insertLargeContent(side, contentToInsert);
+              if (statusMsg) showConversionMessage(statusMsg);
+              updateProcessingOverlay(opId, 'Content loaded — computing differences...', 60);
+
               invalidateContentCache();
+              saveContent();
+
+              await new Promise(r => requestAnimationFrame(r));
               checkContentSizeAndSuggest();
+
+              _bulkLoading = false;
               scheduleUIUpdate();
-            }, getAdaptiveDelay(500));
+              hideProcessingOverlay(opId);
+            } catch (innerErr) {
+              _bulkLoading = false;
+              hideProcessingOverlay(opId);
+            }
           } else {
+            editor.dispatch({
+              changes: { from, to, insert: contentToInsert }
+            });
+            if (statusMsg) showConversionMessage(statusMsg);
             invalidateContentCache();
             scheduleUIUpdate();
           }
@@ -2977,14 +3137,17 @@
             e.stopPropagation();
 
             try {
+              const csvOpId = text.length > 100000 ? showProcessingOverlay('Converting CSV to JSON...') : null;
               // Use LargeDataHandler for large CSV (worker-based with progress UI)
               let jsonData;
-              if (window.LargeDataHandler && text.length > 100000) {
+              if (window.LargeDataHandler && text.length > 50000) {
                 jsonData = await window.LargeDataHandler.parseCSV(text, { coerceTypes: true });
               } else {
                 jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
               }
+              if (csvOpId) updateProcessingOverlay(csvOpId, 'Building JSON output...', 70);
               content = buildJSONString(jsonData, { autoSort });
+              hideProcessingOverlay(csvOpId);
               dispatchAndScheduleUpdate(content, "CSV converted to JSON");
             } catch (err) {
               _bulkLoading = false;
