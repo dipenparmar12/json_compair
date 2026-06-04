@@ -752,9 +752,9 @@
           performanceMode.enable();
         }
         
-        // Initialize diff worker
-        initializeDiffWorker();
-        
+        // Note: the diff count now comes from mergeView.chunks (see updateDiffStatus),
+        // so the diff_match_patch web worker is no longer started for counting.
+
         // Update status display
         updatePerformanceStatus();
       }
@@ -999,8 +999,29 @@
         updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
       }
 
-      // Apply merge settings and recreate merge view
+      // True when the live MergeView supports in-place reconfiguration
+      // (CodeMirror merge >= 6.7). Falls back to a full rebuild otherwise.
+      function canReconfigure() {
+        return mergeView && typeof mergeView.reconfigure === 'function';
+      }
+
+      // The subset of merge options that MergeView.reconfigure() accepts.
+      function buildReconfigureConfig(s) {
+        return {
+          orientation: s.orientation,
+          highlightChanges: s.highlightChanges,
+          gutter: s.gutter,
+          revertControls: s.revertControls === 'none' ? undefined : s.revertControls,
+          collapseUnchanged: s.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
+          diffConfig: { scanLimit: s.scanLimit },
+        };
+      }
+
+      // Apply merge settings — reconfigure the live view in place when possible,
+      // only rebuilding for an orientation flip (which can reorder the panes).
       function applyMergeSettings() {
+        // Capture orientation before saved settings are overwritten below.
+        const prevOrientation = SettingsManager.get('orientation');
         // Get current settings from UI
         const newWordWrap = document.getElementById('setting-word-wrap').checked;
         const newScrollLock = document.getElementById('setting-scroll-lock').checked;
@@ -1033,36 +1054,43 @@
         if (quickCollapse) quickCollapse.checked = newSettings.collapseUnchanged;
         if (quickHighlight) quickHighlight.checked = newSettings.highlightChanges;
         
-        // Recreate merge view
-        recreateMergeView(newSettings, newWordWrap);
-        
-        updateStatus('Settings applied successfully');
+        // Reconfigure in place unless orientation changed (which can reorder panes).
+        const orientationChanged = prevOrientation !== newSettings.orientation;
+        if (canReconfigure() && !orientationChanged) {
+          mergeView.reconfigure(buildReconfigureConfig(newSettings));
+        } else {
+          recreateMergeView(newSettings, newWordWrap);
+        }
+
+        updateStatus('Settings applied');
         updateDiffStatus();
       }
 
-      // Refresh merge view only if collapse unchanged is enabled
+      // Keep collapsed (unchanged) regions fresh while editing. This previously did
+      // a full teardown (innerHTML='' + new MergeView + re-bind every handler) on
+      // every debounced keystroke; it now reconfigures the live view in place
+      // (CM6 >= 6.7), which is dramatically cheaper on large documents.
       function refreshMergeViewIfNeeded() {
         const collapseUnchanged = document.getElementById('setting-collapse-unchanged')?.checked;
-        const highlightChanges = document.getElementById('setting-highlight-changes')?.checked;
-        
-        // Only refresh if collapse unchanged is enabled or highlight changes setting might need reapplication
-        if (collapseUnchanged) {
-          const leftContent = mergeView.a.state.doc.toString().trim();
-          const rightContent = mergeView.b.state.doc.toString().trim();
-          
-          // Only refresh if both panels have content
-          if (leftContent && rightContent) {
-            const currentSettings = {
-              highlightChanges: highlightChanges ?? true,
-              gutter: document.getElementById('setting-gutter')?.checked ?? true,
-              collapseUnchanged: collapseUnchanged,
-              orientation: document.getElementById('setting-orientation')?.value || 'a-b',
-              revertControls: document.getElementById('setting-revert-controls')?.value || 'none',
-              scanLimit: parseInt(document.getElementById('setting-scan-limit')?.value || '500', 10),
-            };
-            
-            recreateMergeView(currentSettings, wordWrapEnabled);
-          }
+        if (!collapseUnchanged) return;
+
+        const leftContent = mergeView.a.state.doc.toString().trim();
+        const rightContent = mergeView.b.state.doc.toString().trim();
+        if (!leftContent || !rightContent) return;
+
+        const currentSettings = {
+          highlightChanges: document.getElementById('setting-highlight-changes')?.checked ?? true,
+          gutter: document.getElementById('setting-gutter')?.checked ?? true,
+          collapseUnchanged: collapseUnchanged,
+          orientation: document.getElementById('setting-orientation')?.value || 'a-b',
+          revertControls: document.getElementById('setting-revert-controls')?.value || 'none',
+          scanLimit: parseInt(document.getElementById('setting-scan-limit')?.value || '6000', 10),
+        };
+
+        if (canReconfigure()) {
+          mergeView.reconfigure(buildReconfigureConfig(currentSettings));
+        } else {
+          recreateMergeView(currentSettings, wordWrapEnabled);
         }
       }
 
@@ -2928,104 +2956,66 @@
         updatePaneButtonVisibility();
       }
 
-      // Update diff status
+      // Set the toolbar diff-summary pill: state drives the color, text the label.
+      // state is one of: 'idle' | 'same' | 'diff' | 'busy'.
+      function setDiffSummary(state, text) {
+        const summaryDiv = document.getElementById("diff-summary");
+        if (!summaryDiv) return;
+        summaryDiv.dataset.state = state;
+        summaryDiv.textContent = text;
+      }
+
+      // Enable/disable the prev/next diff buttons based on the chunk count.
+      function updateDiffNavState() {
+        const count = mergeView?.chunks?.length || 0;
+        const prevBtn = document.getElementById('btn-diff-prev');
+        const nextBtn = document.getElementById('btn-diff-next');
+        if (prevBtn) prevBtn.disabled = count === 0;
+        if (nextBtn) nextBtn.disabled = count === 0;
+      }
+
+      // Update diff status. The count is taken straight from mergeView.chunks (the
+      // authoritative, already-computed line-chunk list that the view renders), so
+      // the number always matches the screen and we avoid a second full
+      // diff_match_patch pass (and the >100KB web-worker round-trip) on every edit.
       function updateDiffStatus() {
         const leftContent = mergeView.a.state.doc.toString().trim();
         const rightContent = mergeView.b.state.doc.toString().trim();
-        const summaryDiv = document.getElementById("diff-summary");
-        
+
         if (!leftContent || !rightContent) {
-          if (summaryDiv) summaryDiv.textContent = "Add content to both panels to compare";
+          setDiffSummary('idle', 'Add content to both panels to compare');
+          updateDiffNavState();
           return;
         }
 
         if (leftContent === rightContent) {
-          if (summaryDiv) summaryDiv.textContent = "No differences found";
+          setDiffSummary('same', 'No differences');
+          updateDiffNavState();
           return;
         }
-        
-        // If viewport diff mode is enabled, use that instead
+
+        // Optional viewport-diff mode computes its own (visible-area) count.
         if (viewportDiffManager?.enabled) {
           const result = viewportDiffManager.calculateViewportDiff();
           if (result) {
-            const statusMsg = viewportDiffManager.getDiffStatusMessage();
-            if (summaryDiv) summaryDiv.textContent = statusMsg || "Calculating...";
+            setDiffSummary('diff', viewportDiffManager.getDiffStatusMessage() || 'Calculating…');
+            updateDiffNavState();
             return;
           }
         }
-        
-        // Check if we should use web worker for large content
-        const totalSize = leftContent.length + rightContent.length;
-        const useLargeFileThreshold = 100000; // 100KB
-        
-        if (totalSize > useLargeFileThreshold && diffWorker) {
-          // Use web worker for large content
-          if (summaryDiv) summaryDiv.textContent = "Calculating diff...";
-          
-          const requestId = Date.now().toString();
-          
-          const handler = function(e) {
-            if (e.data.id === requestId) {
-              diffWorker.removeEventListener('message', handler);
-              
-              if (e.data.ok && e.data.result) {
-                const diffCount = e.data.result.diffCount;
-                const duration = Math.round(e.data.result.duration);
-                if (summaryDiv) {
-                  summaryDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''} (${duration}ms)`;
-                }
-              } else {
-                if (summaryDiv) summaryDiv.textContent = "Differences detected";
-              }
-            }
-          };
-          
-          diffWorker.addEventListener('message', handler);
-          diffWorker.postMessage({
-            id: requestId,
-            action: 'countDiffs',
-            payload: { leftText: leftContent, rightText: rightContent }
-          });
-          return;
-        }
 
-        // Calculate actual differences using diff_match_patch if available
-        if (typeof diff_match_patch !== 'undefined') {
-          try {
-            const dmp = new diff_match_patch();
-            const diffs = dmp.diff_main(leftContent, rightContent);
-            dmp.diff_cleanupSemantic(diffs);
-            
-            // Count number of diff chunks (contiguous blocks of changes)
-            let diffCount = 0;
-            let inDiffChunk = false;
-            
-            for (const [op, text] of diffs) {
-              if (op !== 0) { // DIFF_INSERT (-1) or DIFF_DELETE (1)
-                if (!inDiffChunk) {
-                  diffCount++;
-                  inDiffChunk = true;
-                }
-              } else { // DIFF_EQUAL (0)
-                inDiffChunk = false;
-              }
-            }
-            
-            if (summaryDiv) summaryDiv.textContent = `Found ${diffCount} difference${diffCount !== 1 ? 's' : ''}`;
-            return;
-          } catch (err) {
-            console.warn('Diff calculation failed:', err);
-          }
+        const chunkCount = mergeView?.chunks?.length || 0;
+        if (chunkCount === 0) {
+          setDiffSummary('same', 'No differences');
+        } else {
+          setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }
-
-        // Fallback if diff_match_patch not available
-        if (summaryDiv) summaryDiv.textContent = "Differences detected";
+        updateDiffNavState();
       }
 
-      // Update status message
+      // Update status message (transient, neutral styling).
       function updateStatus(message) {
-        const summaryDiv = document.getElementById("diff-summary");
-        if (summaryDiv) summaryDiv.textContent = message;
+        setDiffSummary('idle', message);
       }
 
       // Update clear button visibility
