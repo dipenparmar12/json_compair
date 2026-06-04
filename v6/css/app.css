@@ -1,3 +1,83 @@
+/* ====================================================================
+   DESIGN TOKENS — single source of truth for color, spacing, type.
+   Light values live on :root; dark values override under
+   [data-theme="dark"] (set on <html> from the theme selector).
+   ==================================================================== */
+:root {
+    /* Brand / accent */
+    --accent: #08c988;
+    --accent-hover: #06b377;
+    --accent-soft: #e8f5e9;
+    --accent-contrast: #ffffff;
+
+    /* Surfaces */
+    --bg: #ffffff;
+    --bg-elev: #ffffff;      /* dropdowns, settings panel, popovers */
+    --bg-muted: #f8f9fa;     /* toolbar, subtle fills */
+    --bg-hover: #f1f3f5;
+
+    /* Text */
+    --text: #1f2328;
+    --text-muted: #6c757d;
+    --text-faint: #9aa0a6;
+
+    /* Borders */
+    --border: #e2e4e8;
+    --border-strong: #c8ccd2;
+
+    /* Radii / shadows */
+    --radius-sm: 4px;
+    --radius: 6px;
+    --radius-lg: 10px;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+    /* Diff palette (GitHub-like) */
+    --diff-add-line: #e6ffec;
+    --diff-add-text: #abf2bc;
+    --diff-del-line: #ffebe9;
+    --diff-del-text: #ffc1ba;
+    --diff-gutter: #ffd33d;
+
+    /* Spacing scale */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+
+    /* Type */
+    --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+[data-theme="dark"] {
+    --accent: #08c988;
+    --accent-hover: #0adba0;
+    --accent-soft: #17372a;
+    --accent-contrast: #06231a;
+
+    --bg: #1e1e1e;
+    --bg-elev: #2a2a2c;
+    --bg-muted: #252526;
+    --bg-hover: #34343a;
+
+    --text: #e6e6e6;
+    --text-muted: #a0a4ab;
+    --text-faint: #777b82;
+
+    --border: #3a3a3e;
+    --border-strong: #4a4a50;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
+
+    --diff-add-line: #102a1b;
+    --diff-add-text: #1f5a36;
+    --diff-del-line: #3a1618;
+    --diff-del-text: #6e2b28;
+    --diff-gutter: #b9933a;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -190,7 +270,7 @@ button:disabled {
 
 /* Deleted lines (left side) - Red background */
 .cm-deletedLine {
-    background-color: #ffebe9 !important;
+    background-color: var(--diff-del-line) !important;
     display: inline-block !important;
     width: 100% !important;
     padding: 0 !important;
@@ -199,7 +279,7 @@ button:disabled {
 
 /* Inserted lines (right side) - Green background */
 .cm-insertedLine {
-    background-color: #e6ffec !important;
+    background-color: var(--diff-add-line) !important;
     display: inline-block !important;
     width: 100% !important;
     padding: 0 !important;
@@ -208,34 +288,34 @@ button:disabled {
 
 /* Changed text within deleted lines - Darker red highlight */
 .cm-deletedLine .cm-changedText {
-    background-color: #ffc1ba !important;
+    background-color: var(--diff-del-text) !important;
     font-weight: 500 !important;
 }
 
 /* Changed text within inserted lines - Darker green highlight */
 .cm-insertedLine .cm-changedText {
-    background-color: #acf2bd !important;
+    background-color: var(--diff-add-text) !important;
     font-weight: 500 !important;
 }
 
 /* Legacy chunk backgrounds (fallback for older code) */
 .cm-deletedChunk {
-    background-color: #ffebe9 !important;
+    background-color: var(--diff-del-line) !important;
 }
 
 .cm-insertedChunk {
-    background-color: #e6ffec !important;
+    background-color: var(--diff-add-line) !important;
 }
 
 /* Legacy text backgrounds (fallback) */
 .cm-deletedText {
-    background-color: #ffc1ba !important;
+    background-color: var(--diff-del-text) !important;
     text-decoration: none !important;
     font-weight: 500 !important;
 }
 
 .cm-insertedText {
-    background-color: #acf2bd !important;
+    background-color: var(--diff-add-text) !important;
     text-decoration: none !important;
     font-weight: 500 !important;
 }
@@ -260,7 +340,7 @@ ins {
 
 /* Gutter markers for changed lines */
 .cm-changedLineGutter {
-    background-color: #ffd33d !important;
+    background-color: var(--diff-gutter) !important;
     width: 3px !important;
     margin-left: 2px !important;
 }
@@ -1120,8 +1200,6 @@ select.toggle-button {
 
 .branch-action-icon.branch-action-delete:hover {
     color: #e74c3c;
-}
-    border-bottom: 1px solid #f0f0f0;
 }
 
 .branch-dropdown-item:last-child {
