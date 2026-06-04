@@ -30,7 +30,7 @@ A **client-side-only** web application for comparing, formatting, and merging JS
 json_compair/
 ├── index.html              # Version selector (redirects to v6 or v5)
 ├── v6/                     # 🔥 PRIMARY APP - CodeMirror 6
-│   ├── index.html          # ~2074 lines, embedded JS
+│   ├── index.html          # ~3050 lines, embedded JS (MergeView setup + all UI logic)
 │   ├── css/
 │   │   ├── app.css         # Application styles (SAFE to edit)
 │   │   └── ccsiteV6.css    # Branding/layout
@@ -39,7 +39,9 @@ json_compair/
 │       ├── json_utils.js   # Python syntax → JSON parser
 │       ├── utils_csv.js    # CSV auto-detection & conversion
 │       ├── utils_zip.js    # ZIP snapshot import/export
-│       └── utils_branch.js # Git-like branching for panels
+│       ├── utils_branch.js # Git-like branching for panels
+│       ├── viewport_diff.js # ViewportDiffManager, PerformanceMode, LargeFileDetector, PerformanceToast
+│       └── diff-worker.js  # Web Worker: inlined diff_match_patch for off-thread diff counting
 │
 ├── v5/                     # Legacy CodeMirror 5 version
 │   ├── index.html
@@ -69,16 +71,25 @@ json_compair/
 Loaded via ES Module Import Maps from unpkg.com:
 
 ```javascript
+// Import map (unpkg) — see <script type="importmap"> in v6/index.html
 {
-  "@codemirror/merge": "6.7.2",
   "@codemirror/state": "6.4.1",
-  "@codemirror/view": "6.27.0",
+  "@codemirror/view": "6.34.1",
+  "@codemirror/language": "6.10.3",
+  "@codemirror/commands": "6.7.1",
   "@codemirror/lang-json": "6.0.1",
-  "@codemirror/theme-one-dark": "6.1.2",
-  "pako": "2.1.0",              // gzip compression
-  "diff-match-patch": "latest"  // Google's diff algorithm
+  "@codemirror/merge": "6.7.2",
+  "@codemirror/search": "6.5.6",
+  "@codemirror/autocomplete": "6.18.1",
+  "@codemirror/lint": "6.8.2",
+  "@codemirror/theme-one-dark": "6.1.3"
 }
 ```
+
+Loaded separately via `<script>` (cdnjs), exposed as globals:
+- `pako` 2.1.0 — gzip compression for URL sharing
+- `JSZip` 3.10.1 — ZIP snapshot import/export
+- `diff_match_patch` 1.0.5 — used **only for the status-bar diff count**, not for rendering (rendering is CM6 MergeView's own diff)
 
 ### Dependencies (CodeMirror 5 - v5/)
 
@@ -223,7 +234,12 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/utils_csv.js"></script>
 <script src="./utils/utils_zip.js"></script>
 <script src="./utils/utils_branch.js"></script>
+<script src="./utils/viewport_diff.js"></script>  <!-- v6 only: performance managers -->
 ```
+
+> Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
+> at runtime (`new Worker('./utils/diff-worker.js')`) and has its own inlined copy of
+> `diff_match_patch` so it runs standalone off the main thread.
 
 ## CodeMirror 6 Integration (v6/)
 
@@ -362,16 +378,11 @@ node server.js
 
 ### Git Workflow
 
-**Current branch**: `feature/json-tool-box`
+**Current branch**: `main`
 **Main branch**: `main`
 **Deployment**: GitHub Pages (auto-publish on push to `main`)
 
-### Recent Commits
-- `47d90f9` Add link to JSON Toolbox in info dropdown menu
-- `d7c472e` feat: Add JSON Schema Generator and Core Utilities
-- `d5b539f` fix: Update Copilot instructions and .gitignore
-- `c634c2f` chore: Add .github/todo.md to .gitignore
-- `a2f3b63` docs: Update Copilot instructions
+> For up-to-date history use `git log` — do not rely on a hardcoded commit list here.
 
 ## Critical Patterns
 
@@ -523,18 +534,60 @@ The project uses a special terminal protocol for Copilot:
 3. **Post-completion**: Check `./todo.md` for new work
 4. **Strictness**: All outputs must be valid terminal `echo` commands
 
+## Diff Engine Architecture (v6) — IMPORTANT
+
+There are **two independent diff computations** in v6. Confusing them is the #1 source of
+bugs and wasted work, so understand the split before touching diff/perf code:
+
+### 1. Rendering diff — CodeMirror 6 `MergeView` (the real one)
+- Computes the **visible** line + character diff and draws the gutters/highlights.
+- Configured in `MergeView({...})` at `v6/index.html` (`initializeApp`, ~line 500) and
+  rebuilt in `recreateMergeView()` (~line 1071).
+- Key knobs: `highlightChanges`, `gutter`, `collapseUnchanged`, `revertControls`,
+  `orientation`, and `diffConfig.scanLimit` (UI default **6000**, set via the Scan Limit input).
+- Recomputes automatically on every `dispatch` — you do NOT need to recreate the view to
+  refresh the diff after a content change.
+- The authoritative chunk list lives at `mergeView.chunks`.
+
+### 2. Status-bar count diff — `diff_match_patch` (display only)
+- `updateDiffStatus()` (`v6/index.html` ~line 2933) runs a **separate full DMP diff** purely
+  to print "Found N differences". This is `diff_cleanupSemantic` + chunk counting.
+- For content > **100 KB** it offloads counting to the Web Worker (`diff-worker.js`).
+- ⚠️ This is a *second* diff over the same text and counts **character** chunks, while the
+  MergeView renders **line** chunks — so the displayed number can disagree with the screen.
+
+### 3. Performance managers (`viewport_diff.js`)
+- `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on
+  scroll (debounced). NOTE: it currently affects only the status text, NOT what MergeView renders.
+- `PerformanceMode` — bundles settings (auto-enables `collapseUnchanged`) for faster rendering.
+- `LargeFileDetector` — analyzes size and auto-suggests/enables perf modes
+  (thresholds: 300 KB large, 500 KB warning, 2 MB critical).
+- `PerformanceToast` — transient notifications.
+
+### Known inefficiencies / where to optimize
+- **Double diffing**: DMP recomputes a full diff just to count; the count could come from
+  `mergeView.chunks.length` instead (removes the duplicate pass and fixes count/render mismatch).
+- **Full teardown on edit**: `refreshMergeViewIfNeeded()` calls `recreateMergeView()` (full DOM
+  rebuild) every 500 ms while typing *when Collapse-Unchanged is on*. Prefer
+  `mergeView.reconfigure({...})` for options that support it (CM6 merge ≥ 6.7).
+- **Viewport mode is cosmetic** for rendering — MergeView still diffs the whole document.
+- **No memoization** — identical content re-diffs from scratch on every recreate.
+- The genuinely effective CM6 lever for large files is **`collapseUnchanged` + an adaptive
+  `scanLimit`**, not the viewport counter.
+
 ## Performance Considerations
 
-### Large JSON Files
-- Use streaming parser (Oboe.js) for files >10MB
-- IndexedDB fallback for localStorage quota
-- ZIP compression for snapshots
-- Virtualized rendering (not yet implemented)
+### Large content handling
+- IndexedDB fallback for localStorage quota (StorageManager)
+- ZIP compression for snapshots (JSZip)
+- Web Worker (`diff-worker.js`) keeps the >100 KB count off the main thread
+- `collapseUnchanged` reduces rendered DOM size dramatically
+- (NOTE: v6 does NOT use Oboe.js — that streaming parser is v5 only)
 
-### Diff Performance
-- `scanLimit` setting controls max lines to diff
-- Semantic cleanup reduces noise in diffs
-- Collapse unchanged sections reduces DOM size
+### Diff Performance levers
+- `scanLimit` (`diffConfig.scanLimit`) bounds the LCS scan for the rendering diff
+- `collapseUnchanged: { margin: 3, minSize: 4 }` folds identical regions
+- Performance Mode auto-enables collapse for very large inputs
 
 ## Known Limitations
 
@@ -546,13 +599,13 @@ The project uses a special terminal protocol for Copilot:
 ## Future Enhancements
 
 Potential improvements (check `todo.md` for current priorities):
+- Derive status count from `mergeView.chunks` (kill the duplicate DMP diff)
+- Make Viewport Diff actually limit rendering (not just the count)
+- Replace full `recreateMergeView()` with `mergeView.reconfigure()` on edits
+- Memoize diff results by content hash
+- Optional semantic JSON mode (canonicalize keys/whitespace before diffing)
 - Virtualized rendering for very large files
-- More CodeMirror 6 themes
-- Better mobile UI
-- Progressive Web App (PWA) support
-- Offline mode for v6
-- WebWorker for diff calculations
-- More JSON Toolbox utilities
+- More CodeMirror 6 themes / better mobile UI / PWA / offline v6
 
 ## Getting Help
 
@@ -570,6 +623,6 @@ Potential improvements (check `todo.md` for current priorities):
 
 ---
 
-**Last Updated**: 2026-01-13
+**Last Updated**: 2026-05-28
 **Current Version**: v6 (CodeMirror 6) is primary, v5 (CodeMirror 5) is legacy
-**Status**: Active development on `feature/json-tool-box` branch
+**Status**: Active development on `main` branch
