@@ -1543,10 +1543,22 @@
           await saveCurrentToBranch(side);
         };
         
-        // Assemble container: [Save Button] [Modified Indicator] [Branch Dropdown Button]
+        // Quick "New Empty Branch" button (one-click shortcut, no dropdown needed)
+        const newBranchQuickBtn = document.createElement('button');
+        newBranchQuickBtn.className = 'branch-new-quick-btn';
+        newBranchQuickBtn.innerHTML = '➕';
+        newBranchQuickBtn.title = 'New empty branch';
+        newBranchQuickBtn.onclick = async (e) => {
+          e.stopPropagation();
+          document.querySelectorAll('.branch-dropdown').forEach(d => d.style.display = 'none');
+          await createNewBranch(side);
+        };
+
+        // Assemble container: [Save Button] [Modified Indicator] [Branch Dropdown Button] [New Branch Button]
         container.appendChild(saveBtn);
         container.appendChild(modifiedIndicator);
         container.appendChild(branchBtn);
+        container.appendChild(newBranchQuickBtn);
         container.appendChild(dropdown);
         paneElement.appendChild(container);
         
