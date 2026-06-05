@@ -1072,7 +1072,7 @@ select.toggle-button {
 /* Both panels keep branch selector on the RIGHT side */
 .branch-selector-left,
 .branch-selector-right {
-    right: 10px;
+    right: 20px;
     left: auto;
 }
 
