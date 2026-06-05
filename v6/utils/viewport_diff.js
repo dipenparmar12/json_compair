@@ -549,6 +549,21 @@
         .toast-close:hover {
           opacity: 1;
         }
+        .toast-action {
+          background: rgba(0,0,0,0.18);
+          border: 1px solid rgba(0,0,0,0.25);
+          color: inherit;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 3px 8px;
+          margin-left: 4px;
+          border-radius: 5px;
+          white-space: nowrap;
+        }
+        .toast-action:hover {
+          background: rgba(0,0,0,0.30);
+        }
         @keyframes slideIn {
           from { transform: translateX(100%); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }

@@ -468,7 +468,11 @@
       async function initializeApp() {
         // Initialize BranchManager first
         await window.BranchManager.init();
-        
+
+        // Spin up the off-thread processing worker early so it is warm by the
+        // time the user pastes/drops large content.
+        initializeDiffWorker();
+
         // Load content from URL parameters first, then from storage, then use defaults
         const urlContent = URLManager.loadFromURL();
         const savedContent = StorageManager.loadFromStorage();
@@ -676,28 +680,57 @@
       let performanceMode = null;
       let largeFileDetector = null;
       let diffWorker = null;
-      
-      // Initialize Web Worker for diff calculations
+      const workerCallbacks = new Map();
+      let workerCallSeq = 0;
+
+      // Initialize Web Worker for off-thread CSV/JSON processing.
+      // Uses an id-based request/response protocol so multiple callers can be
+      // in flight at once (see callWorker).
       function initializeDiffWorker() {
         if (diffWorker) return diffWorker;
-        
+
         try {
           diffWorker = new Worker('./utils/diff-worker.js');
           diffWorker.onmessage = function(e) {
-            if (e.data.type === 'ready') {
-              console.log('[DiffWorker] Ready');
+            const data = e.data || {};
+            if (data.type === 'ready') { console.log('[DiffWorker] Ready'); return; }
+            if (data.id != null && workerCallbacks.has(data.id)) {
+              const cb = workerCallbacks.get(data.id);
+              workerCallbacks.delete(data.id);
+              if (data.ok) cb.resolve(data.result);
+              else cb.reject(new Error(data.error || 'Worker error'));
             }
           };
           diffWorker.onerror = function(err) {
             console.warn('[DiffWorker] Error:', err);
+            // Reject anything in flight so callers fall back to the main thread.
+            workerCallbacks.forEach((cb) => cb.reject(new Error('Worker crashed')));
+            workerCallbacks.clear();
             diffWorker = null;
           };
         } catch (err) {
           console.warn('[DiffWorker] Failed to initialize:', err);
           diffWorker = null;
         }
-        
+
         return diffWorker;
+      }
+
+      // Promise-based RPC to the diff worker. Rejects when the worker is
+      // unavailable so every caller can fall back to a main-thread path.
+      function callWorker(action, payload) {
+        const w = initializeDiffWorker();
+        if (!w) return Promise.reject(new Error('Worker unavailable'));
+        return new Promise((resolve, reject) => {
+          const id = ++workerCallSeq;
+          workerCallbacks.set(id, { resolve, reject });
+          try {
+            w.postMessage({ id, action, payload });
+          } catch (err) {
+            workerCallbacks.delete(id);
+            reject(err);
+          }
+        });
       }
       
       // Initialize performance-related settings
@@ -1219,55 +1252,8 @@
         pasteBtn.onclick = async () => {
           try {
             const text = await navigator.clipboard.readText();
-            const editor = side === 'left' ? mergeView.a : mergeView.b;
-            
-            const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
-            const autoFormat = document.getElementById('auto-format-json')?.checked;
-            const autoSort = document.getElementById('auto-sort-keys')?.checked;
-
-            let content = text;
-            let isJSON = false;
-            
-            // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
-            if (autoCSV || autoFormat || autoSort) {
-              try {
-                let parsed = window.parseFlexibleJSON(content);
-                if (autoSort) {
-                  parsed = window.sortJSONKeys(parsed);
-                }
-                content = JSON.stringify(parsed, null, 3);
-                isJSON = true;
-              } catch (err) {
-                // Not valid JSON/Python, continue to CSV check
-                console.log('JSON parsing failed, checking for CSV:', err);
-              }
-            }
-            
-            // Only attempt CSV conversion if JSON parsing failed and auto CSV is enabled
-            if (!isJSON && autoCSV) {
-              const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
-              if (isCSV) {
-                try {
-                  const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-                  content = JSON.stringify(jsonData, null, 3);
-                  showConversionMessage("CSV converted to JSON");
-                } catch (err) {
-                  showErrorMessage("CSV conversion failed: " + err.message);
-                }
-              }
-            }
-
-            editor.dispatch({
-              changes: { from: 0, to: editor.state.doc.length, insert: content }
-            });
-            
-            // Force immediate diff refresh
-            setTimeout(() => {
-              refreshMergeViewIfNeeded();
-              updateDiffStatus();
-              updatePlaceholders();
-              updatePaneButtonVisibility();
-            }, 100);
+            // Paste button replaces the whole panel via the shared pipeline.
+            await ingestContent(text, side, {});
           } catch (err) {
             updateStatus('Failed to paste: ' + err.message);
           }
@@ -1885,30 +1871,11 @@
         convertBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
           const text = editor.state.doc.toString();
-          const autoSort = document.getElementById('auto-sort-keys')?.checked;
-          
-          try {
-            const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-            const content = buildJSONString(jsonData, { autoSort });
-            
-            editor.dispatch({
-              changes: { from: 0, to: editor.state.doc.length, insert: content }
-            });
-            
-            showConversionMessage("CSV converted to JSON successfully");
-            
-            // Force immediate diff refresh and button update
-            setTimeout(() => {
-              refreshMergeViewIfNeeded();
-              updateDiffStatus();
-              updatePaneButtonVisibility();
-              updateCSVConversionButtons();
-            }, 100);
-          } catch (err) {
-            showErrorMessage("CSV conversion failed: " + err.message);
-          }
+          // Force CSV conversion of the current pane content through the
+          // shared off-thread, size-gated pipeline.
+          await ingestContent(text, side, { forceCsv: true });
         };
-        
+
         paneElement.appendChild(convertBtn);
       }
       
@@ -2074,27 +2041,36 @@
       
       // Update all conversion button visibility based on content
       function updateConversionButtons() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-        
+        // Use cheap doc lengths first; materialising a multi-MB doc to a string
+        // (and trimming it) on every change is exactly what we want to avoid.
+        const leftLen = mergeView.a.state.doc.length;
+        const rightLen = mergeView.b.state.doc.length;
+
         // CSV→JSON buttons
         const leftCsvBtn = document.querySelector('.csv-convert-left');
         const rightCsvBtn = document.querySelector('.csv-convert-right');
-        
+
         // JSON→CSV buttons
         const leftJsonBtn = document.querySelector('.json-convert-left');
         const rightJsonBtn = document.querySelector('.json-convert-right');
-        
+
         // Export dropdowns
         const leftExportBtn = document.querySelector('.export-dropdown-left');
         const rightExportBtn = document.querySelector('.export-dropdown-right');
-        
-        // Check content types
-        const leftIsCSV = leftContent && window.CSVUtils && window.CSVUtils.isCSV(leftContent);
-        const rightIsCSV = rightContent && window.CSVUtils && window.CSVUtils.isCSV(rightContent);
-        const leftIsConvertibleJSON = leftContent && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(leftContent);
-        const rightIsConvertibleJSON = rightContent && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(rightContent);
-        
+
+        // Exact detection (full isCSV split + isConvertibleToCSV JSON.parse) is
+        // only run on reasonably sized panels. Above the cap we skip it so we
+        // never re-parse megabytes on every keystroke/paste.
+        const leftDetectable = leftLen > 0 && leftLen <= DETECT_MAX_BYTES;
+        const rightDetectable = rightLen > 0 && rightLen <= DETECT_MAX_BYTES;
+        const leftContent = leftDetectable ? mergeView.a.state.doc.toString() : '';
+        const rightContent = rightDetectable ? mergeView.b.state.doc.toString() : '';
+
+        const leftIsCSV = leftDetectable && window.CSVUtils && window.CSVUtils.isCSV(leftContent);
+        const rightIsCSV = rightDetectable && window.CSVUtils && window.CSVUtils.isCSV(rightContent);
+        const leftIsConvertibleJSON = leftDetectable && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(leftContent);
+        const rightIsConvertibleJSON = rightDetectable && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(rightContent);
+
         // CSV→JSON: show only if content is CSV (and NOT convertible JSON)
         if (leftCsvBtn) {
           leftCsvBtn.classList.toggle('visible', leftIsCSV && !leftIsConvertibleJSON);
@@ -2102,7 +2078,7 @@
         if (rightCsvBtn) {
           rightCsvBtn.classList.toggle('visible', rightIsCSV && !rightIsConvertibleJSON);
         }
-        
+
         // JSON→CSV: show only if content is convertible JSON array
         if (leftJsonBtn) {
           leftJsonBtn.classList.toggle('visible', leftIsConvertibleJSON);
@@ -2110,13 +2086,13 @@
         if (rightJsonBtn) {
           rightJsonBtn.classList.toggle('visible', rightIsConvertibleJSON);
         }
-        
-        // Export dropdown: show if any content exists
+
+        // Export dropdown: show whenever the panel has any content.
         if (leftExportBtn) {
-          leftExportBtn.classList.toggle('visible', !!leftContent);
+          leftExportBtn.classList.toggle('visible', leftLen > 0);
         }
         if (rightExportBtn) {
-          rightExportBtn.classList.toggle('visible', !!rightContent);
+          rightExportBtn.classList.toggle('visible', rightLen > 0);
         }
       }
       
@@ -2708,54 +2684,9 @@
         
         try {
           const text = await file.text();
-          const editor = side === 'left' ? mergeView.a : mergeView.b;
-
-          const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
-          const autoFormat = document.getElementById('auto-format-json')?.checked;
-          const autoSort = document.getElementById('auto-sort-keys')?.checked;
-
-          let content = text;
-          let isJSON = false;
-          
-          // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
-          if (autoCSV || autoFormat || autoSort) {
-            try {
-              const parsed = window.parseFlexibleJSON(content);
-              content = buildJSONString(parsed, { autoSort });
-              isJSON = true;
-            } catch (err) {
-              // Not valid JSON/Python, continue to CSV check
-              console.log('JSON parsing failed, checking for CSV:', err);
-            }
-          }
-          
-          // Only attempt CSV conversion if JSON parsing failed and auto CSV is enabled
-          if (!isJSON && autoCSV) {
-            const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
-            if (isCSV) {
-              try {
-                const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-                content = buildJSONString(jsonData, { autoSort });
-                showConversionMessage("CSV converted to JSON");
-              } catch (err) {
-                showErrorMessage("CSV conversion failed: " + err.message);
-              }
-            }
-          }
-
-          editor.dispatch({
-            changes: { from: 0, to: editor.state.doc.length, insert: content }
-          });
-
-          // Force immediate diff refresh
-          setTimeout(() => {
-            refreshMergeViewIfNeeded();
-            updateDiffStatus();
-            updatePlaceholders();
-            updatePaneButtonVisibility();
-            // Check for large content and suggest optimizations
-            checkContentSizeAndSuggest();
-          }, 100);
+          // Dropping a file replaces the whole panel; ingestContent handles
+          // type detection, off-thread CSV conversion and sampling.
+          await ingestContent(text, side, {});
         } catch (err) {
           showErrorMessage("Failed to read file: " + err.message);
         }
@@ -2765,6 +2696,237 @@
       function setupPasteHandlers() {
         mergeView.a.dom.addEventListener('paste', (e) => handlePaste(e, 'left'), true);
         mergeView.b.dom.addEventListener('paste', (e) => handlePaste(e, 'right'), true);
+      }
+
+      // ============================================================
+      //  Unified content ingest pipeline
+      //
+      //  Every entry point that brings outside text into a panel — paste
+      //  event, Paste button, file drop, manual CSV→JSON — funnels through
+      //  ingestContent(). It transforms off the main thread, gates the cost
+      //  by size BEFORE the first render, samples very large inputs so the
+      //  tab stays alive, and coalesces the follow-up work into one pass.
+      // ============================================================
+
+      // Cap on rendered "cells" (~object keys × rows) per panel. Wide CSVs
+      // (many columns) sample fewer rows; narrow CSVs sample many. This keeps
+      // the MergeView responsive instead of trying to render millions of lines.
+      const MAX_RENDER_CELLS_PER_PANEL = 150000;
+      // Raw CSV larger than this is always parsed in the worker.
+      const OFFTHREAD_CSV_THRESHOLD = 100 * 1024;        // 100 KB
+      // Combined content above this turns on collapse-unchanged before render.
+      const PROACTIVE_COLLAPSE_BYTES = 300 * 1024;       // 300 KB
+      // Combined content above this is no longer auto-saved to localStorage
+      // (it cannot fit and the synchronous stringify just causes jank).
+      const AUTOSAVE_MAX_BYTES = 4 * 1024 * 1024;        // 4 MB
+      // Skip exact CSV/JSON detection (full parse/split) above this size.
+      const DETECT_MAX_BYTES = 512 * 1024;               // 512 KB
+
+      // Remember the last raw CSV per side so "Convert all anyway" can re-run.
+      const lastRawCsv = { left: null, right: null };
+      const ingestRowCapOverride = { left: false, right: false };
+
+      // Yield to the browser so a "Converting…" state can paint before the
+      // (potentially heavy) dispatch/render that follows. requestAnimationFrame
+      // is throttled (or never fires) in a hidden/background tab, so we race it
+      // against a short timeout to guarantee the pipeline always resumes.
+      function nextPaint() {
+        return new Promise((resolve) => {
+          let done = false;
+          const finish = () => { if (!done) { done = true; resolve(); } };
+          requestAnimationFrame(finish);
+          setTimeout(finish, 32);
+        });
+      }
+
+      // Cheap type sniffing that only inspects a small prefix, so we never
+      // split/regex a multi-MB blob just to decide what it is.
+      function looksLikeJSONStart(text) {
+        const m = text.slice(0, 1024).match(/\S/);
+        return !!m && (m[0] === '{' || m[0] === '[');
+      }
+      function cheapLooksLikeCSV(text) {
+        const head = text.slice(0, 65536);
+        const nl = head.indexOf('\n');
+        const firstLine = nl === -1 ? head : head.slice(0, nl);
+        if (!firstLine || /^\s*[{\[]/.test(firstLine)) return false;
+        return /[,;\t]/.test(firstLine);
+      }
+      function countColumns(text) {
+        const head = text.slice(0, 65536);
+        const nl = head.indexOf('\n');
+        const firstLine = nl === -1 ? head : head.slice(0, nl);
+        let sep = ',';
+        if (firstLine.indexOf('\t') > -1) sep = '\t';
+        else if (firstLine.indexOf(';') > -1) sep = ';';
+        return Math.max(1, firstLine.split(sep).length);
+      }
+
+      function setIngestBusy(message) {
+        setDiffSummary('busy', message || 'Processing…');
+      }
+
+      // One coalesced follow-up after content lands (replaces the scattered
+      // setTimeout(100) blocks each entry point used to run).
+      let _afterChangeTimer = null;
+      function afterContentChanged(opts = {}) {
+        clearTimeout(_afterChangeTimer);
+        _afterChangeTimer = setTimeout(() => {
+          updateDiffStatus();
+          updatePaneButtonVisibility();
+          updateClearButtonVisibility();
+          if (opts.checkSize) checkContentSizeAndSuggest();
+        }, 50);
+      }
+
+      // Convert CSV → pretty JSON string off the main thread, sampling rows
+      // for very large inputs. Returns { json, builtRows, approxTotalRows, truncated }.
+      async function csvToJsonStringOffThread(csvText, { autoSort = false, side } = {}) {
+        const columns = countColumns(csvText);
+        const override = side ? ingestRowCapOverride[side] : false;
+        const maxRows = override
+          ? undefined
+          : Math.max(1, Math.floor(MAX_RENDER_CELLS_PER_PANEL / columns));
+
+        if (csvText.length > OFFTHREAD_CSV_THRESHOLD) {
+          try {
+            return await callWorker('csvToJsonString', {
+              text: csvText,
+              options: { coerceTypes: true },
+              maxRows,
+              autoSort
+            });
+          } catch (err) {
+            console.warn('[ingest] worker CSV parse failed, using main thread:', err);
+          }
+        }
+
+        // Main-thread fallback (tiny inputs or worker unavailable).
+        let arr = window.CSVUtils.csvToJSON(csvText, { coerceTypes: true });
+        const approxTotalRows = arr.length;
+        let truncated = false;
+        if (maxRows && arr.length > maxRows) {
+          arr = arr.slice(0, maxRows);
+          truncated = true;
+        }
+        return {
+          json: buildJSONString(arr, { autoSort }),
+          builtRows: arr.length,
+          approxTotalRows,
+          truncated
+        };
+      }
+
+      // Persistent notice when a large CSV was sampled, with an escape hatch.
+      function showSampleNotice(side, builtRows, approxTotalRows) {
+        if (!window.PerformanceToast) return;
+        const label = side === 'left' ? 'Left' : 'Right';
+        PerformanceToast.show(
+          `${label}: large CSV — showing first ${builtRows.toLocaleString()} of ~${approxTotalRows.toLocaleString()} rows ` +
+          `to keep the browser responsive. ` +
+          `<button class="toast-action" onclick="window.__ingestConvertAll('${side}')">Convert all anyway</button>`,
+          'warning',
+          0 // persist until dismissed
+        );
+      }
+
+      // Re-ingest the full (un-sampled) CSV for a side after explicit opt-in.
+      window.__ingestConvertAll = async function (side) {
+        const raw = lastRawCsv[side];
+        if (!raw) return;
+        if (!confirm('Converting the entire dataset may freeze or crash the tab on very large files. Continue?')) return;
+        const existing = document.getElementById('performance-toast');
+        if (existing) existing.remove();
+        ingestRowCapOverride[side] = true;
+        try {
+          await ingestContent(raw, side, { forceCsv: true });
+        } finally {
+          ingestRowCapOverride[side] = false;
+        }
+      };
+
+      // Enable collapse-unchanged before a large first render so we never pay
+      // for rendering every line, then re-render collapsed.
+      async function applyProactivePosture(incomingContent, side) {
+        const otherLen = (side === 'left' ? mergeView.b : mergeView.a).state.doc.length;
+        const total = (incomingContent ? incomingContent.length : 0) + otherLen;
+        if (total <= PROACTIVE_COLLAPSE_BYTES) return;
+
+        const collapse = document.getElementById('setting-collapse-unchanged');
+        if (collapse && !collapse.checked) {
+          collapse.checked = true;
+          const quick = document.getElementById('quick-collapse-unchanged');
+          if (quick) quick.checked = true;
+          SettingsManager.set('collapseUnchanged', true);
+          if (canReconfigure()) {
+            mergeView.reconfigure(buildReconfigureConfig({
+              highlightChanges: document.getElementById('setting-highlight-changes')?.checked ?? true,
+              gutter: document.getElementById('setting-gutter')?.checked ?? true,
+              collapseUnchanged: true,
+              orientation: document.getElementById('setting-orientation')?.value || 'a-b',
+              revertControls: document.getElementById('setting-revert-controls')?.value || 'none',
+              scanLimit: parseInt(document.getElementById('setting-scan-limit')?.value || '6000', 10),
+            }));
+          }
+        }
+      }
+
+      // The single ingest entry point.
+      //   opts.forceCsv     – always treat input as CSV (manual convert button)
+      //   opts.range        – { from, to } to replace (defaults to whole doc)
+      async function ingestContent(rawText, side, opts = {}) {
+        if (rawText == null) return;
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+
+        const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
+        const autoFormat = document.getElementById('auto-format-json')?.checked;
+        const autoSort = document.getElementById('auto-sort-keys')?.checked;
+
+        const from = opts.range ? opts.range.from : 0;
+        const to = opts.range ? opts.range.to : editor.state.doc.length;
+
+        let content = rawText;
+        let handled = false;
+
+        // 1) JSON-first — only when it actually looks like JSON, so the
+        //    Python→JSON regex passes never run over a huge CSV blob.
+        if (!opts.forceCsv && (autoCSV || autoFormat || autoSort) && looksLikeJSONStart(rawText)) {
+          try {
+            const parsed = window.parseFlexibleJSON(rawText);
+            content = buildJSONString(parsed, { autoSort });
+            handled = true;
+          } catch (err) { /* not JSON — fall through to CSV */ }
+        }
+
+        // 2) CSV — convert off-thread, sampling very large inputs.
+        if (!handled && (opts.forceCsv || (autoCSV && cheapLooksLikeCSV(rawText)))) {
+          lastRawCsv[side] = rawText;
+          setIngestBusy('Converting CSV…');
+          await nextPaint();
+          try {
+            const res = await csvToJsonStringOffThread(rawText, { autoSort, side });
+            content = res.json;
+            handled = true;
+            if (res.truncated) showSampleNotice(side, res.builtRows, res.approxTotalRows);
+            showConversionMessage(res.truncated
+              ? `CSV converted (first ${res.builtRows.toLocaleString()} of ~${res.approxTotalRows.toLocaleString()} rows)`
+              : 'CSV converted to JSON');
+          } catch (err) {
+            updateStatus('CSV conversion failed: ' + (err && err.message ? err.message : err));
+            showErrorMessage('CSV conversion failed: ' + (err && err.message ? err.message : err));
+            return;
+          }
+        }
+
+        // 3) Proactive performance posture before the heavy render.
+        await applyProactivePosture(content, side);
+        await nextPaint();
+
+        // 4) One dispatch.
+        editor.dispatch({ changes: { from, to, insert: content } });
+
+        // 5) Coalesced follow-up.
+        afterContentChanged({ checkSize: true });
       }
 
       async function handlePaste(e, side) {
@@ -2778,82 +2940,24 @@
         const autoFormat = document.getElementById('auto-format-json')?.checked;
         const autoSort = document.getElementById('auto-sort-keys')?.checked;
 
-        let content = text;
-        let isJSON = false;
+        // No auto-processing enabled → let the editor paste natively.
+        if (!(autoCSV || autoFormat || autoSort)) return;
 
-  // Resolve the target editor and current selection for this side so that
-  // any auto-processed paste only affects the selection/caret, not the
-  // entire document. This preserves normal editor experience when
-  // pasting into the middle of existing content.
-  const editor = side === 'left' ? mergeView.a : mergeView.b;
-  const mainSelection = editor.state.selection?.main;
-  const from = mainSelection ? mainSelection.from : 0;
-  const to = mainSelection ? mainSelection.to : editor.state.doc.length;
-        
-        // JSON-first heuristic: Try parsing as JSON/Python if any auto-processing is enabled
-        if (autoCSV || autoFormat || autoSort) {
-          try {
-            const parsed = window.parseFlexibleJSON(content);
-            content = buildJSONString(parsed, { autoSort });
-            isJSON = true;
-          } catch (err) {
-            // Not valid JSON/Python, continue to CSV check
-            console.log('JSON parsing failed, checking for CSV:', err);
-          }
-        }
-        
-        // Only attempt CSV conversion if JSON parsing failed and auto CSV is enabled
-        if (!isJSON && autoCSV) {
-          const isCSV = window.CSVUtils && window.CSVUtils.isCSV(text);
-          if (isCSV) {
-            e.preventDefault();
-            e.stopPropagation();
+        // Only take over when we will actually transform the content;
+        // otherwise plain text pastes natively (preserves caret behaviour).
+        const willHandle = looksLikeJSONStart(text) || (autoCSV && cheapLooksLikeCSV(text));
+        if (!willHandle) return;
 
-            try {
-              const jsonData = await window.CSVUtils.csvToJSONAsync(text, { coerceTypes: true });
-              content = buildJSONString(jsonData, { autoSort });
+        e.preventDefault();
+        e.stopPropagation();
 
-              editor.dispatch({
-                changes: { from, to, insert: content }
-              });
+        const editor = side === 'left' ? mergeView.a : mergeView.b;
+        const sel = editor.state.selection?.main;
+        const range = sel
+          ? { from: sel.from, to: sel.to }
+          : { from: 0, to: editor.state.doc.length };
 
-              showConversionMessage("CSV converted to JSON");
-              
-              // Force immediate diff refresh
-              setTimeout(() => {
-                refreshMergeViewIfNeeded();
-                updateDiffStatus();
-                updatePlaceholders();
-                updatePaneButtonVisibility();
-                // Check for large content and suggest optimizations
-                checkContentSizeAndSuggest();
-              }, 100);
-            } catch (err) {
-              showErrorMessage("CSV conversion failed: " + err.message);
-            }
-            return;
-          }
-        }
-        
-        // If JSON was parsed or formatting requested, insert the formatted content
-        if (isJSON && (autoFormat || autoSort || autoCSV)) {
-          e.preventDefault();
-          e.stopPropagation();
-
-          editor.dispatch({
-            changes: { from, to, insert: content }
-          });
-
-          // Force immediate diff refresh
-          setTimeout(() => {
-            refreshMergeViewIfNeeded();
-            updateDiffStatus();
-            updatePlaceholders();
-            updatePaneButtonVisibility();
-            // Check for large content and suggest optimizations
-            checkContentSizeAndSuggest();
-          }, 100);
-        }
+        await ingestContent(text, side, { range });
       }
 
       // Show conversion message
@@ -2953,27 +3057,43 @@
 
       // Save content to storage (called by auto-save extension)
       function saveContent() {
-        const leftContent = mergeView.a.state.doc.toString();
-        const rightContent = mergeView.b.state.doc.toString();
+        const total = mergeView.a.state.doc.length + mergeView.b.state.doc.length;
 
-        try {
-          StorageManager.saveToStorage(leftContent, rightContent);
-        } catch (e) {
-          console.warn('saveToStorage failed during autosave', e);
-          if (StorageManager.saveToIndexedDB) {
-            StorageManager.saveToIndexedDB(leftContent, rightContent).catch(err => {
-              console.error('IndexedDB fallback failed:', err);
-            });
+        if (total > AUTOSAVE_MAX_BYTES) {
+          // Too large for localStorage. Skip the synchronous multi-MB
+          // toString()+stringify (and the branch-modified reads) that would
+          // otherwise run on every change and thrash memory.
+          if (!window.__autosaveSkipNotified) {
+            window.__autosaveSkipNotified = true;
+            if (window.PerformanceToast) {
+              PerformanceToast.show(
+                'Content is too large to auto-save locally — use Export snapshot to keep a copy.',
+                'info', 5000
+              );
+            }
           }
+        } else {
+          window.__autosaveSkipNotified = false;
+          const leftContent = mergeView.a.state.doc.toString();
+          const rightContent = mergeView.b.state.doc.toString();
+          try {
+            StorageManager.saveToStorage(leftContent, rightContent);
+          } catch (e) {
+            console.warn('saveToStorage failed during autosave', e);
+            if (StorageManager.saveToIndexedDB) {
+              StorageManager.saveToIndexedDB(leftContent, rightContent).catch(err => {
+                console.error('IndexedDB fallback failed:', err);
+              });
+            }
+          }
+
+          // Mark branches as modified (check in background)
+          checkBranchModified('left');
+          checkBranchModified('right');
         }
-        
-        // Mark branches as modified (check in background)
-        checkBranchModified('left');
-        checkBranchModified('right');
 
         updateClearButtonVisibility();
         updateDiffStatus();
-        updatePlaceholders();
         updatePaneButtonVisibility();
       }
 
