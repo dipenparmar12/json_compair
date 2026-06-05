@@ -560,6 +560,43 @@ ins {
     background: #3d3d3d;
 }
 
+/* Dark theme — Copy / Paste / Clear hover buttons */
+.cm-theme-dark .pane-controls button {
+    background: #2d2d2d;
+    color: #ccc;
+    border-color: #555;
+}
+
+.cm-theme-dark .pane-controls button:hover {
+    background: #3d3d3d;
+    color: #eee;
+    border-color: #777;
+}
+
+/* Dark theme — Save branch button */
+.cm-theme-dark .branch-save-btn {
+    background: #2d2d2d;
+    color: #ccc;
+    border-color: #555;
+}
+
+.cm-theme-dark .branch-save-btn:hover {
+    background: #1e3a2f;
+    border-color: #08c988;
+}
+
+/* Dark theme — New Empty Branch quick button */
+.cm-theme-dark .branch-new-quick-btn {
+    background: #2d2d2d;
+    color: #ccc;
+    border-color: #555;
+}
+
+.cm-theme-dark .branch-new-quick-btn:hover {
+    background: #1e3a2f;
+    border-color: #08c988;
+}
+
 .pane-wrapper {
     position: relative;
     flex: 1;
