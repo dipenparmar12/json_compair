@@ -89,7 +89,7 @@ Loaded via ES Module Import Maps from unpkg.com:
 Loaded separately via `<script>` (cdnjs), exposed as globals:
 - `pako` 2.1.0 — gzip compression for URL sharing
 - `JSZip` 3.10.1 — ZIP snapshot import/export
-- `diff_match_patch` 1.0.5 — used **only for the status-bar diff count**, not for rendering (rendering is CM6 MergeView's own diff)
+- `diff_match_patch` 1.0.5 — still loaded, but **no longer used for the live status-bar count**. The count now comes from `mergeView.chunks.length` (see `updateDiffStatus()`); DMP/the count worker are effectively dormant. Rendering has always been CM6 MergeView's own diff.
 
 ### Dependencies (CodeMirror 5 - v5/)
 
@@ -178,7 +178,7 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "collapseUnchanged": false,    // Auto-collapse identical blocks
   "orientation": "a-b",          // a-b (side-by-side) or a-b-merge
   "revertControls": "a-to-b",    // a-to-b|b-to-a|none
-  "scanLimit": 10000,            // Max lines to diff
+  "scanLimit": 6000,             // Max LCS scan effort (auto-capped by content size)
 
   // Auto-Processing
   "autoCsv": true,               // Auto-convert CSV
@@ -419,7 +419,10 @@ node server.js
 
 ### 2. Settings Apply Methods
 - **Word wrap, theme**: Applied via `Compartment.reconfigure()` (no reload)
-- **Diff settings**: Require `recreateMergeView()` (destroys and rebuilds)
+- **Diff settings** (highlight, gutter, collapse, revertControls, scanLimit): Applied
+  in place via `mergeView.reconfigure(buildReconfigureConfig(...))` when CM6 merge ≥ 6.7
+  (`canReconfigure()`). Full `recreateMergeView()` is now reserved for the one case
+  reconfigure can't handle: an **orientation flip** (which can reorder the panes).
 
 ### 3. CSV Auto-Detection Entry Points
 - Drag & drop
@@ -463,9 +466,9 @@ Two sections:
 2. **Full Settings**: All configuration options
 
 ### Status Bar
-Shows diff count and current mode:
-- "No differences found"
-- "Found X difference(s)"
+Shows diff count and current mode (count = `mergeView.chunks.length`):
+- "No differences"
+- "N changed blocks"
 - "Add content to both panels to compare"
 
 ## Testing
@@ -562,27 +565,48 @@ The project uses a special terminal protocol for Copilot:
 
 ## Diff Engine Architecture (v6) — IMPORTANT
 
-There are **two independent diff computations** in v6. Confusing them is the #1 source of
-bugs and wasted work, so understand the split before touching diff/perf code:
+v6 has **one diff that matters** — CodeMirror's MergeView — plus a dormant legacy counter.
+Understand the split before touching diff/perf code:
 
 ### 1. Rendering diff — CodeMirror 6 `MergeView` (the real one)
-- Computes the **visible** line + character diff and draws the gutters/highlights.
+- Computes the line + character diff and draws the gutters/highlights.
 - Configured in `MergeView({...})` at `v6/index.html` (`initializeApp`, ~line 500) and
-  rebuilt in `recreateMergeView()` (~line 1071).
+  rebuilt in `recreateMergeView()` (~line 1255).
 - Key knobs: `highlightChanges`, `gutter`, `collapseUnchanged`, `revertControls`,
   `orientation`, and `diffConfig.scanLimit` (UI default **6000**, set via the Scan Limit input).
 - Recomputes automatically on every `dispatch` — you do NOT need to recreate the view to
   refresh the diff after a content change.
 - The authoritative chunk list lives at `mergeView.chunks`.
 
-### 2. Status-bar count diff — `diff_match_patch` (display only)
-- `updateDiffStatus()` (`v6/index.html` ~line 2933) runs a **separate full DMP diff** purely
-  to print "Found N differences". This is `diff_cleanupSemantic` + chunk counting.
-- For content > **100 KB** it offloads counting to the Web Worker (`diff-worker.js`).
-- ⚠️ This is a *second* diff over the same text and counts **character** chunks, while the
-  MergeView renders **line** chunks — so the displayed number can disagree with the screen.
+### 2. Status-bar count — `mergeView.chunks.length` (NOT a second diff anymore)
+- `updateDiffStatus()` (`v6/index.html` ~line 3230) just reads `mergeView.chunks.length`
+  and prints "N changed blocks". No separate DMP pass, no worker round-trip.
+- The old `diff_match_patch` full-diff count (and its >100 KB worker offload) was **removed**;
+  `diff_match_patch` is still `<script>`-loaded but effectively unused. This also fixed the
+  old count/render mismatch (DMP counted char chunks; MergeView renders line chunks).
 
-### 3. Performance managers (`viewport_diff.js`)
+### 3. Adaptive scanLimit cap — prevents main-thread freezes (~line 1060)
+- CM6's MergeView diff is **synchronous** and grows ~O(scanLimit²) on dissimilar docs, so a
+  large `scanLimit` on big/different inputs freezes the tab (60000 measured ~66× slower than
+  6000 for *identical* diff detail). CM6 merge 6.7.2 has no diff `timeout`, so scanLimit is
+  the only lever (the stored `timeout` setting is inert).
+- `clampScanLimit()` caps the *applied* scanLimit by combined content size, independent of the
+  user/snapshot/URL value (`DIFF_SCAN_CAPS`): ≤256 KB trust the user · ≤2 MB → 10000 ·
+  ≤8 MB → 6000 · >8 MB → 4000. `buildDiffConfig()` wires this into every config build.
+- See memory [[v6-scanlimit-freeze]].
+
+### 4. In-place reconfigure + forced re-collapse (no more teardown on edit)
+- `canReconfigure()` gates on CM6 merge ≥ 6.7. When true, settings/edits call
+  `mergeView.reconfigure(buildReconfigureConfig(...))` instead of full DOM teardown.
+  `recreateMergeView()` now runs only for an **orientation flip**.
+- `refreshMergeViewIfNeeded()` (called after format/sort/paste/CSV ingest and debounced edits,
+  only while Collapse-Unchanged is on) reconfigures in place, then calls `forceRecollapse()`.
+- `forceRecollapse()` works around CM6's collapse being a singleton StateField that only folds
+  in its `init`: it reconfigures `collapseUnchanged: undefined` then back on, forcing a re-fold
+  against the latest chunks. Cheap (two state-effect dispatches, no DOM rebuild). See memory
+  [[v6-collapse-needs-reinit]].
+
+### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on
   scroll (debounced). NOTE: it currently affects only the status text, NOT what MergeView renders.
 - `PerformanceMode` — bundles settings (auto-enables `collapseUnchanged`) for faster rendering.
@@ -590,28 +614,24 @@ bugs and wasted work, so understand the split before touching diff/perf code:
   (thresholds: 300 KB large, 500 KB warning, 2 MB critical).
 - `PerformanceToast` — transient notifications.
 
-### Known inefficiencies / where to optimize
-- **Double diffing**: DMP recomputes a full diff just to count; the count could come from
-  `mergeView.chunks.length` instead (removes the duplicate pass and fixes count/render mismatch).
-- **Full teardown on edit**: `refreshMergeViewIfNeeded()` calls `recreateMergeView()` (full DOM
-  rebuild) every 500 ms while typing *when Collapse-Unchanged is on*. Prefer
-  `mergeView.reconfigure({...})` for options that support it (CM6 merge ≥ 6.7).
+### Remaining inefficiencies / where to optimize
 - **Viewport mode is cosmetic** for rendering — MergeView still diffs the whole document.
 - **No memoization** — identical content re-diffs from scratch on every recreate.
-- The genuinely effective CM6 lever for large files is **`collapseUnchanged` + an adaptive
-  `scanLimit`**, not the viewport counter.
+- The genuinely effective CM6 lever for large files is **`collapseUnchanged` + the adaptive
+  `scanLimit` cap**, not the viewport counter.
 
 ## Performance Considerations
 
 ### Large content handling
 - IndexedDB fallback for localStorage quota (StorageManager)
 - ZIP compression for snapshots (JSZip)
-- Web Worker (`diff-worker.js`) keeps the >100 KB count off the main thread
+- Web Worker (`diff-worker.js`) handles off-thread CSV→JSON ingest (its diff-count role is retired)
 - `collapseUnchanged` reduces rendered DOM size dramatically
 - (NOTE: v6 does NOT use Oboe.js — that streaming parser is v5 only)
 
 ### Diff Performance levers
-- `scanLimit` (`diffConfig.scanLimit`) bounds the LCS scan for the rendering diff
+- `scanLimit` (`diffConfig.scanLimit`) bounds the LCS scan for the rendering diff; the applied
+  value is auto-capped by content size via `clampScanLimit()` (see Diff Engine Architecture §3)
 - `collapseUnchanged: { margin: 3, minSize: 4 }` folds identical regions
 - Performance Mode auto-enables collapse for very large inputs
 
@@ -625,13 +645,15 @@ bugs and wasted work, so understand the split before touching diff/perf code:
 ## Future Enhancements
 
 Potential improvements (check `todo.md` for current priorities):
-- Derive status count from `mergeView.chunks` (kill the duplicate DMP diff)
 - Make Viewport Diff actually limit rendering (not just the count)
-- Replace full `recreateMergeView()` with `mergeView.reconfigure()` on edits
 - Memoize diff results by content hash
 - Optional semantic JSON mode (canonicalize keys/whitespace before diffing)
 - Virtualized rendering for very large files
 - More CodeMirror 6 themes / better mobile UI / PWA / offline v6
+
+> Done (was on this list): status count now derives from `mergeView.chunks.length`
+> (no more duplicate DMP diff); edits/settings reconfigure the live view in place
+> instead of full `recreateMergeView()` teardown.
 
 ## Getting Help
 
@@ -649,6 +671,6 @@ Potential improvements (check `todo.md` for current priorities):
 
 ---
 
-**Last Updated**: 2026-05-28
+**Last Updated**: 2026-06-06
 **Current Version**: v6 (CodeMirror 6) is primary, v5 (CodeMirror 5) is legacy
 **Status**: Active development on `main` branch
