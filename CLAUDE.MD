@@ -41,6 +41,7 @@ json_compair/
 │       ├── utils_zip.js    # ZIP snapshot import/export
 │       ├── utils_branch.js # Git-like branching for panels
 │       ├── viewport_diff.js # ViewportDiffManager, PerformanceMode, LargeFileDetector, PerformanceToast
+│       ├── json_align.js   # Block-level JSON aligner (window.JSONAlign) — gap-pads matching items/keys
 │       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
 ├── v5/                     # Legacy CodeMirror 5 version
@@ -173,6 +174,7 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "theme": "light",              // light|dark|oneDark|default
 
   // Diff Settings
+  "blockDiff": true,             // Object-aware (block-level) JSON diff (see Diff Engine §6)
   "highlightChanges": true,      // Red/green highlighting
   "gutter": true,                // Diff gutter markers
   "collapseUnchanged": false,    // Auto-collapse identical blocks
@@ -606,6 +608,30 @@ Understand the split before touching diff/perf code:
   against the latest chunks. Cheap (two state-effect dispatches, no DOM rebuild). See memory
   [[v6-collapse-needs-reinit]].
 
+### 6. Block-level (object-aware) JSON alignment — `json_align.js` + `applyBlockAlignment()`
+- **Why:** CM6's diff is char/line based and can't be replaced (`MergeView.chunks` is
+  read-only; no custom-diff hook). On arrays of objects it greedily matches shared boilerplate
+  (`{`, `},`, `"id": `) ACROSS element boundaries, so a removed item shows as stray half-matched
+  lines + a "comma" artifact instead of one clean block.
+- **How:** `window.JSONAlign.align(leftText, rightText)` (in `json_align.js`) parses both sides,
+  structurally aligns them (arrays by element via LCS over deep-equality with positional pairing
+  of "changed" items; objects by key), and returns BOTH sides re-serialized as pretty JSON with
+  blank **gap lines** where an item/key exists on only one side. Blank lines are insignificant
+  JSON whitespace, so the result parses to the identical value — the editors keep holding valid
+  JSON and all ~50 `mergeView.a/b.state.doc` readers keep working. MergeView then diffs an
+  already-aligned document → clean whole-block adds/removes (Proxyman-style), equal line counts
+  (so no `cm-mergeSpacer` in this mode), and the gap renders as calm empty `cm-changedLine`s
+  (neutral `--diff-changed-line`).
+- **Wiring (kept minimal):** `applyBlockAlignment()` (near `forceRecollapse`) runs at startup
+  (end of `initializeBranches`) and on the existing debounced change timer in `autoSaveExtension`
+  — but **skipped while the user is typing** (`tr.isUserEvent('input.type'|'delete')`) so it never
+  reformats mid-edit. Paste/format/sort/branch/snapshot all dispatch programmatically → re-align
+  automatically. Idempotent (re-aligning aligned content is a no-op), guarded by `_blockAligning`.
+- **Setting:** `blockDiff` (default **true**, toggle in settings panel). Off → `removeBlockAlignment()`
+  strips gaps (only when the result is valid JSON) and CM6's default diff returns.
+- **Fallback:** any parse failure / non-JSON / >3 MB combined → `align()` returns `{ok:false}` →
+  no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
+
 ### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on
   scroll (debounced). NOTE: it currently affects only the status text, NOT what MergeView renders.
@@ -647,13 +673,13 @@ Understand the split before touching diff/perf code:
 Potential improvements (check `todo.md` for current priorities):
 - Make Viewport Diff actually limit rendering (not just the count)
 - Memoize diff results by content hash
-- Optional semantic JSON mode (canonicalize keys/whitespace before diffing)
 - Virtualized rendering for very large files
 - More CodeMirror 6 themes / better mobile UI / PWA / offline v6
 
 > Done (was on this list): status count now derives from `mergeView.chunks.length`
 > (no more duplicate DMP diff); edits/settings reconfigure the live view in place
-> instead of full `recreateMergeView()` teardown.
+> instead of full `recreateMergeView()` teardown; **object-aware (block-level) JSON
+> diff** via `json_align.js` (was "Optional semantic JSON mode") — see Diff Engine §6.
 
 ## Getting Help
 
