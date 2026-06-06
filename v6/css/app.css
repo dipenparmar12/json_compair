@@ -39,6 +39,12 @@
     --diff-del-text: #ffc1ba;
     --diff-gutter: #ffd33d;
 
+    /* Alignment gap (the empty .cm-mergeSpacer CM6 draws opposite an
+       add/remove). Kept faint + neutral so it reads as "no content here"
+       without grabbing attention — the block on the other pane stands out. */
+    --diff-gap-fill: rgba(130, 130, 130, 0.07);
+    --diff-changed-line: rgba(255, 211, 61, 0.10);    /* faint tint for modified lines */
+
     /* Spacing scale */
     --space-1: 4px;
     --space-2: 8px;
@@ -76,6 +82,9 @@
     --diff-del-line: #3a1618;
     --diff-del-text: #6e2b28;
     --diff-gutter: #b9933a;
+
+    --diff-gap-fill: rgba(255, 255, 255, 0.045);
+    --diff-changed-line: rgba(185, 147, 58, 0.16);
 }
 
 * {
@@ -263,9 +272,11 @@ button:disabled {
          Matches modern Git/GitHub diff visualization
          ==================================================================== */
 
-/* Changed line container - light background */
+/* Changed (modified-but-present) line — faint tint so a value/key edit is
+   visible even with character highlighting off. Pure insert/delete lines
+   override this with their own full-width red/green via <ins>/<del>. */
 .cm-changedLine {
-    background-color: transparent !important;
+    background-color: var(--diff-changed-line) !important;
 }
 
 /* Deleted lines (left side) - Red background */
@@ -343,6 +354,28 @@ ins {
     background-color: var(--diff-gutter) !important;
     width: 3px !important;
     margin-left: 2px !important;
+}
+
+/* Per-side gutter tint: left pane (a) marks removals/edits in red,
+   right pane (b) marks additions/edits in green — mirrors the line colors. */
+.cm-merge-a .cm-changedLineGutter {
+    background-color: var(--diff-del-text) !important;
+}
+
+.cm-merge-b .cm-changedLineGutter {
+    background-color: var(--diff-add-text) !important;
+}
+
+/* ====================================================================
+   ALIGNMENT GAP ("no content here")
+   When a whole array item / object exists on only one side, CM6 keeps
+   the panes aligned by inserting a blank .cm-mergeSpacer on the side
+   that lacks those lines. We give it only a faint neutral fill so the
+   region reads as intentionally empty without grabbing attention — the
+   added/removed block on the OTHER pane is what should stand out.
+   ==================================================================== */
+.cm-mergeSpacer {
+    background-color: var(--diff-gap-fill);
 }
 
 /* Status bar removed (was #diff-status) */
