@@ -41,6 +41,7 @@
     <script src="./utils/utils_zip.js"></script>
     <script src="./utils/utils_branch.js"></script>
     <script src="./utils/viewport_diff.js"></script>
+    <script src="./utils/json_align.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -138,13 +139,21 @@
               <div class="settings-section-title settings-section-divided">DIFF VIEW SETTINGS</div>
               
               <label class="setting-row">
+                <input type="checkbox" id="setting-block-diff" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Block Diff (JSON)</div>
+                  <div class="setting-desc">Align whole array items / object keys so added &amp; removed blocks read cleanly. Falls back to text diff for non-JSON.</div>
+                </div>
+              </label>
+
+              <label class="setting-row">
                 <input type="checkbox" id="setting-highlight-changes" checked />
                 <div class="setting-text">
                   <div class="setting-title">Highlight Changes</div>
                   <div class="setting-desc">Show character-level diffs in chunks</div>
                 </div>
               </label>
-              
+
               <label class="setting-row">
                 <input type="checkbox" id="setting-gutter" checked />
                 <div class="setting-text">
@@ -328,15 +337,22 @@
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
         if (update.docChanged) {
+          // Skip block re-alignment while the user is actively typing/deleting so
+          // we never reformat mid-edit; paste/drop/programmatic changes re-align.
+          // (Our own alignment dispatch is guarded by _blockAligning.)
+          const userTyping = !_blockAligning && update.transactions.some(
+            tr => tr.isUserEvent('input.type') || tr.isUserEvent('delete'));
+
           // Debounce saves to avoid excessive localStorage writes
           clearTimeout(window.autoSaveTimer);
           window.autoSaveTimer = setTimeout(() => {
             saveContent();
           }, 300);
-          
+
           // Debounce merge view refresh for diff recalculation
           clearTimeout(window.diffRefreshTimer);
           window.diffRefreshTimer = setTimeout(() => {
+            if (!userTyping) applyBlockAlignment();
             refreshMergeViewIfNeeded();
           }, 500);
           
@@ -615,6 +631,12 @@
         
         // Update branch selectors
         updateBranchSelectors();
+        // Align panes for block-level diff once initial content has settled
+        // (initial content arrives via the editor `doc:` config, which does not
+        // fire the change listener, so we trigger it explicitly here). When the
+        // feature is off, strip any gap lines a shared/aligned snapshot carried.
+        if (blockDiffEnabled()) applyBlockAlignment();
+        else removeBlockAlignment();
         updateDiffStatus();
       }
 
@@ -642,6 +664,7 @@
         document.getElementById('setting-highlight-changes').checked = settings.highlightChanges;
         document.getElementById('setting-gutter').checked = settings.gutter;
         document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
+        { const bd = document.getElementById('setting-block-diff'); if (bd) bd.checked = settings.blockDiff !== false; }
         document.getElementById('setting-orientation').value = settings.orientation;
         document.getElementById('setting-revert-controls').value = settings.revertControls;
         // Show the value honestly within the input's allowed range. Legacy
@@ -677,6 +700,7 @@
         document.getElementById('setting-scroll-lock').addEventListener('change', applyScrollLock);
         document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-block-diff').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-collapse-unchanged').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
@@ -1150,6 +1174,9 @@
         wordWrapEnabled = newWordWrap;
         scrollLocked = newScrollLock;
         
+        const prevBlockDiff = SettingsManager.get('blockDiff') !== false;
+        const newBlockDiff = document.getElementById('setting-block-diff')?.checked ?? true;
+
         // Save all settings to localStorage
         SettingsManager.set('wordWrap', newWordWrap);
         SettingsManager.set('scrollLock', newScrollLock);
@@ -1159,6 +1186,7 @@
         SettingsManager.set('orientation', newSettings.orientation);
         SettingsManager.set('revertControls', newSettings.revertControls);
         SettingsManager.set('scanLimit', newSettings.scanLimit);
+        SettingsManager.set('blockDiff', newBlockDiff);
         
         // Sync quick toggles
         const quickCollapse = document.getElementById('quick-collapse-unchanged');
@@ -1172,6 +1200,14 @@
           mergeView.reconfigure(buildReconfigureConfig(newSettings));
         } else {
           recreateMergeView(newSettings, newWordWrap);
+        }
+
+        // Apply block-diff alignment change: turning it on aligns now; turning
+        // it off restores the raw (un-gapped) text so the default diff returns.
+        if (newBlockDiff) {
+          applyBlockAlignment();
+        } else if (prevBlockDiff) {
+          removeBlockAlignment();
         }
 
         updateStatus('Settings applied');
@@ -1222,6 +1258,64 @@
         if (!settings.collapseUnchanged) return;
         mergeView.reconfigure({ collapseUnchanged: undefined });
         mergeView.reconfigure({ collapseUnchanged: { margin: 3, minSize: 4 } });
+      }
+
+      // ---- Block-level (object-aware) JSON diff ------------------------------
+      // CM6's MergeView can't take a custom diff, so instead of replacing the
+      // engine we feed it a structurally-aligned version of both documents:
+      // matching array items / object keys land on matching lines, and blank
+      // "gap" lines mark where an item exists on only one side. Blank lines are
+      // insignificant JSON whitespace, so the docs still parse to the exact same
+      // value and every existing reader keeps working. See utils/json_align.js.
+      let _blockAligning = false;
+
+      function blockDiffEnabled() {
+        try { return SettingsManager.get('blockDiff') !== false; } catch (e) { return false; }
+      }
+
+      // Replace one pane's content only if it actually changes (avoids needless
+      // dispatches / autosave churn / cursor jumps). _blockAligning guards reentry.
+      function setPaneIfChanged(view, text) {
+        if (view.state.doc.toString() === text) return;
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+      }
+
+      // Align both panes for block-level diffing. No-op (raw text + CM6's default
+      // diff) when disabled, when either side isn't valid JSON, or on any error.
+      function applyBlockAlignment() {
+        if (_blockAligning || !blockDiffEnabled() || !window.JSONAlign) return;
+        let res;
+        try {
+          res = window.JSONAlign.align(mergeView.a.state.doc.toString(), mergeView.b.state.doc.toString());
+        } catch (e) { return; }
+        if (!res || !res.ok) return;
+        _blockAligning = true;
+        try {
+          setPaneIfChanged(mergeView.a, res.left);
+          setPaneIfChanged(mergeView.b, res.right);
+        } finally {
+          _blockAligning = false;
+        }
+      }
+
+      // Strip alignment gap lines from both panes (used when Block Diff is turned
+      // off, or for content arriving already-aligned) so the raw text and CM6's
+      // default diff return. Only strips when the result is valid JSON, so plain
+      // text with intentional blank lines is never mangled.
+      function removeBlockAlignment() {
+        if (!window.JSONAlign) return;
+        _blockAligning = true;
+        try {
+          [mergeView.a, mergeView.b].forEach(view => {
+            const cur = view.state.doc.toString();
+            const stripped = window.JSONAlign.stripGaps(cur);
+            if (stripped === cur) return;
+            try { JSON.parse(stripped); } catch (e) { return; } // not JSON → leave as-is
+            view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: stripped } });
+          });
+        } finally {
+          _blockAligning = false;
+        }
       }
 
       // Recreate merge view with new settings (extracted common logic)
