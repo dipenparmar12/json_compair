@@ -1201,9 +1201,27 @@
 
         if (canReconfigure()) {
           mergeView.reconfigure(buildReconfigureConfig(currentSettings));
+          // CM6's collapse is a singleton StateField that only computes folds in
+          // its `init`; a same-value reconfigure preserves the old field value and
+          // never re-folds the newly-unchanged regions (that's why only a manual
+          // off/on toggle worked). Force a re-init by dropping the collapse
+          // extension and immediately re-adding it, so it recomputes from the
+          // current diff chunks (already updated synchronously on the edit).
+          forceRecollapse(currentSettings);
         } else {
           recreateMergeView(currentSettings, wordWrapEnabled);
         }
+      }
+
+      // Re-fold unchanged regions after a programmatic content change while
+      // Collapse Unchanged is on. Toggling the collapse compartment off→on forces
+      // CM6 to re-run buildCollapsedRanges against the latest chunks. Cheap: two
+      // state-effect dispatches, no DOM teardown.
+      function forceRecollapse(settings) {
+        if (!canReconfigure()) return;
+        if (!settings.collapseUnchanged) return;
+        mergeView.reconfigure({ collapseUnchanged: undefined });
+        mergeView.reconfigure({ collapseUnchanged: { margin: 3, minSize: 4 } });
       }
 
       // Recreate merge view with new settings (extracted common logic)
@@ -2342,6 +2360,7 @@
 
           updateStatus("Formatted successfully");
           updateDiffStatus();
+          refreshMergeViewIfNeeded();
         } catch (e) {
           updateStatus("Error formatting: " + e.message);
         }
@@ -2377,6 +2396,7 @@
 
           updateStatus("Sorted successfully");
           updateDiffStatus();
+          refreshMergeViewIfNeeded();
         } catch (e) {
           updateStatus("Error sorting: " + e.message);
         }
@@ -2852,6 +2872,8 @@
           updateDiffStatus();
           updatePaneButtonVisibility();
           updateClearButtonVisibility();
+          // Re-fold unchanged regions for paste/drag/CSV ingest while Collapse is on.
+          refreshMergeViewIfNeeded();
           if (opts.checkSize) checkContentSizeAndSuggest();
         }, 50);
       }
