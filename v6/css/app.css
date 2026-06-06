@@ -43,7 +43,7 @@
        add/remove). Kept faint + neutral so it reads as "no content here"
        without grabbing attention — the block on the other pane stands out. */
     --diff-gap-fill: rgba(130, 130, 130, 0.07);
-    --diff-changed-line: rgba(255, 211, 61, 0.10);    /* faint tint for modified lines */
+    --diff-changed-line: rgba(130, 130, 130, 0.07);   /* calm neutral: gap lines + modified lines */
 
     /* Spacing scale */
     --space-1: 4px;
@@ -84,7 +84,7 @@
     --diff-gutter: #b9933a;
 
     --diff-gap-fill: rgba(255, 255, 255, 0.045);
-    --diff-changed-line: rgba(185, 147, 58, 0.16);
+    --diff-changed-line: rgba(255, 255, 255, 0.045);
 }
 
 * {
