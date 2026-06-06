@@ -367,7 +367,7 @@ ins {
 .pane-controls {
     position: absolute;
     top: 10px;
-    right: 10px;
+    right: 22px;
     z-index: 100;
     display: flex;
     gap: 5px;
@@ -558,6 +558,43 @@ ins {
 
 .cm-theme-dark .export-dropdown-item:hover {
     background: #3d3d3d;
+}
+
+/* Dark theme — Copy / Paste / Clear hover buttons */
+.cm-theme-dark .pane-controls button {
+    background: #2d2d2d;
+    color: #ccc;
+    border-color: #555;
+}
+
+.cm-theme-dark .pane-controls button:hover {
+    background: #3d3d3d;
+    color: #eee;
+    border-color: #777;
+}
+
+/* Dark theme — Save branch button */
+.cm-theme-dark .branch-save-btn {
+    background: #2d2d2d;
+    color: #ccc;
+    border-color: #555;
+}
+
+.cm-theme-dark .branch-save-btn:hover {
+    background: #1e3a2f;
+    border-color: #08c988;
+}
+
+/* Dark theme — New Empty Branch quick button */
+.cm-theme-dark .branch-new-quick-btn {
+    background: #2d2d2d;
+    color: #ccc;
+    border-color: #555;
+}
+
+.cm-theme-dark .branch-new-quick-btn:hover {
+    background: #1e3a2f;
+    border-color: #08c988;
 }
 
 .pane-wrapper {
@@ -1035,7 +1072,7 @@ select.toggle-button {
 /* Both panels keep branch selector on the RIGHT side */
 .branch-selector-left,
 .branch-selector-right {
-    right: 10px;
+    right: 20px;
     left: auto;
 }
 
@@ -1061,6 +1098,32 @@ select.toggle-button {
 }
 
 .branch-save-btn:active {
+    transform: scale(0.98);
+}
+
+/* Quick "New Empty Branch" button — always visible next to the dropdown */
+.branch-new-quick-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.branch-new-quick-btn:hover {
+    background: #e8f5e9;
+    border-color: #08c988;
+    transform: scale(1.05);
+}
+
+.branch-new-quick-btn:active {
     transform: scale(0.98);
 }
 

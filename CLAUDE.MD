@@ -41,7 +41,7 @@ json_compair/
 │       ├── utils_zip.js    # ZIP snapshot import/export
 │       ├── utils_branch.js # Git-like branching for panels
 │       ├── viewport_diff.js # ViewportDiffManager, PerformanceMode, LargeFileDetector, PerformanceToast
-│       └── diff-worker.js  # Web Worker: inlined diff_match_patch for off-thread diff counting
+│       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
 ├── v5/                     # Legacy CodeMirror 5 version
 │   ├── index.html
@@ -238,8 +238,34 @@ Both v5 and v6 load utilities in `<head>`:
 ```
 
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
-> at runtime (`new Worker('./utils/diff-worker.js')`) and has its own inlined copy of
-> `diff_match_patch` so it runs standalone off the main thread.
+> at runtime (`new Worker('./utils/diff-worker.js')`, started in `initializeApp`) and has its
+> own inlined copies of `diff_match_patch` **and** the CSV parser so it runs standalone off
+> the main thread. v6 talks to it through the promise-based `callWorker(action, payload)` RPC
+> in `index.html`. Its primary job today is the `csvToJsonString` action (streaming CSV→JSON
+> with an optional `maxRows` cap), used by the ingest pipeline below.
+
+### Content ingest pipeline (v6) — IMPORTANT
+
+All outside text entering a panel (paste event, Paste button, file drop, manual CSV→JSON)
+funnels through **`ingestContent(rawText, side, opts)`** in `v6/index.html`. This exists so
+the CSV→JSON *transform* and the MergeView *diff/render* never pile up on the main thread and
+OOM the tab (the old failure mode on medium/large CSV). It:
+
+1. Sniffs type cheaply on a small prefix (`looksLikeJSONStart` / `cheapLooksLikeCSV`) — never
+   splits or regex-scans a multi-MB blob just to classify it.
+2. Converts CSV **off-thread** via the worker, **row-capping** very large inputs to
+   `MAX_RENDER_CELLS_PER_PANEL` (≈ keys × rows). Wide CSVs sample fewer rows; narrow CSVs
+   sample many. A persistent toast discloses "showing first N of ~M rows" with a
+   `window.__ingestConvertAll(side)` escape hatch that re-ingests the full dataset on opt-in.
+3. Enables `collapseUnchanged` **before** the first large render (`applyProactivePosture`),
+   so we never render every line and then re-render collapsed.
+4. Dispatches once, then runs a single coalesced `afterContentChanged()` instead of the old
+   per-entry-point `setTimeout(100, …)` cascade.
+
+Supporting size guards: `updateConversionButtons()` skips full `isCSV`/`isConvertibleToCSV`
+parsing above `DETECT_MAX_BYTES`; `saveContent()` skips the synchronous localStorage stringify
+above `AUTOSAVE_MAX_BYTES` (use Export snapshot instead). Tuning constants live near the top of
+the ingest block in `index.html`.
 
 ## CodeMirror 6 Integration (v6/)
 

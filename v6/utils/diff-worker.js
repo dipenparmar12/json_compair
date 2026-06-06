@@ -604,21 +604,82 @@ function sortJSONArray(arr) {
 }
 
 /**
- * CSV to JSON conversion (lightweight)
+ * Restore a cell value that is itself a JSON object/array string back to a
+ * real object/array. Mirrors tryParseNestedJSON() in utils_csv.js so the
+ * off-thread parser produces output identical to the main-thread parser.
+ */
+function tryParseNestedJSON(val) {
+  if (typeof val !== 'string') return val;
+  const t = val.trim();
+  if ((t[0] === '{' && t[t.length - 1] === '}') ||
+      (t[0] === '[' && t[t.length - 1] === ']')) {
+    try { return JSON.parse(t); } catch (e) { return val; }
+  }
+  return val;
+}
+
+/**
+ * Coerce a raw CSV cell to a typed value. Matches utils_csv.js semantics:
+ * with coerceTypes we recognise ints/floats/booleans/empty, otherwise we
+ * still attempt nested-JSON restoration.
+ */
+function coerceCell(val, coerceTypes) {
+  if (coerceTypes) {
+    if (/^-?\d+$/.test(val)) return parseInt(val, 10);
+    if (/^-?\d*\.\d+$/.test(val)) return parseFloat(val);
+    if (/^(true|false)$/i.test(val)) return /^true$/i.test(val);
+    if (val === "") return null;
+  }
+  return tryParseNestedJSON(val);
+}
+
+/**
+ * Streaming CSV to JSON conversion.
+ *
+ * Builds row objects on the fly so we never hold the full tokenised grid in
+ * memory, and honours options.maxRows so very large inputs can be converted
+ * as a bounded sample without OOMing. Returns:
+ *   { data, builtRows, approxTotalRows, truncated }
+ * where approxTotalRows is estimated from the byte ratio when truncated.
  */
 function csvToJSON(csvText, options = {}) {
-  if (!csvText || !csvText.trim()) return [];
+  const empty = { data: [], builtRows: 0, approxTotalRows: 0, truncated: false };
+  if (!csvText || !csvText.trim()) return empty;
+
+  const coerceTypes = !!options.coerceTypes;
+  const maxRows = (typeof options.maxRows === 'number' && options.maxRows > 0)
+    ? options.maxRows : Infinity;
 
   const text = csvText.replace(/\r\n|\r/g, "\n").trim();
-  const firstLine = text.split("\n")[0] || "";
+  const firstNl = text.indexOf("\n");
+  const firstLine = firstNl === -1 ? text : text.slice(0, firstNl);
   let sep = ",";
   if (firstLine.indexOf("\t") > -1) sep = "\t";
   else if (firstLine.indexOf(";") > -1) sep = ";";
 
-  const rows = [];
+  let headers = null;
+  const data = [];
   let cur = "";
   let inQuotes = false;
   let row = [];
+  let truncated = false;
+  let bytesConsumed = text.length;
+
+  function commitRow() {
+    if (headers === null) {
+      headers = row.map((h) => h.trim());
+    } else if (!(row.length === 1 && row[0].trim() === "")) {
+      const obj = {};
+      for (let c = 0; c < headers.length; c++) {
+        const key = headers[c] || `col${c}`;
+        const raw = c < row.length ? row[c] : "";
+        const val = (raw === undefined || raw === null) ? '' : String(raw).trim();
+        obj[key] = coerceCell(val, coerceTypes);
+      }
+      data.push(obj);
+    }
+    row = [];
+  }
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -630,35 +691,26 @@ function csvToJSON(csvText, options = {}) {
     }
 
     if (!inQuotes && ch === sep) { row.push(cur); cur = ""; continue; }
-    if (!inQuotes && ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; continue; }
+    if (!inQuotes && ch === "\n") {
+      row.push(cur); cur = "";
+      commitRow();
+      if (data.length >= maxRows) { truncated = true; bytesConsumed = i + 1; break; }
+      continue;
+    }
     cur += ch;
   }
 
-  if (cur !== "" || inQuotes || row.length > 0) { row.push(cur); rows.push(row); }
-  if (rows.length === 0) return [];
-
-  const headers = rows[0].map((h) => h.trim());
-  const data = [];
-  for (let r = 1; r < rows.length; r++) {
-    const cells = rows[r];
-    if (cells.length === 1 && cells[0].trim() === "") continue;
-    const obj = {};
-    for (let c = 0; c < headers.length; c++) {
-      const key = headers[c] || `col${c}`;
-      const raw = c < cells.length ? cells[c] : "";
-      const val = (raw === undefined || raw === null) ? '' : String(raw).trim();
-      if (options.coerceTypes) {
-        if (/^-?\d+$/.test(val)) obj[key] = parseInt(val, 10);
-        else if (/^-?\d*\.\d+$/.test(val)) obj[key] = parseFloat(val);
-        else if (/^(true|false)$/i.test(val)) obj[key] = /^true$/i.test(val);
-        else if (val === "") obj[key] = null;
-        else obj[key] = val;
-      } else { obj[key] = val; }
-    }
-    data.push(obj);
+  if (!truncated && (cur !== "" || inQuotes || row.length > 0)) {
+    row.push(cur);
+    commitRow();
   }
 
-  return data;
+  const builtRows = data.length;
+  const approxTotalRows = truncated && bytesConsumed > 0
+    ? Math.max(builtRows, Math.round(builtRows * (text.length / bytesConsumed)))
+    : builtRows;
+
+  return { data, builtRows, approxTotalRows, truncated };
 }
 
 // Worker message handling
@@ -721,8 +773,17 @@ self.addEventListener('message', function (e) {
         }
         
         case 'csvToJsonString': {
-          const arr = csvToJSON(payload.text, { coerceTypes: true });
-          result = JSON.stringify(arr, null, 3);
+          const opts = payload.options || { coerceTypes: true };
+          if (typeof payload.maxRows === 'number') opts.maxRows = payload.maxRows;
+          const parsed = csvToJSON(payload.text, opts);
+          let arr = parsed.data;
+          if (payload.autoSort) arr = sortJSONKeys(arr);
+          result = {
+            json: JSON.stringify(arr, null, 3),
+            builtRows: parsed.builtRows,
+            approxTotalRows: parsed.approxTotalRows,
+            truncated: parsed.truncated
+          };
           break;
         }
         
