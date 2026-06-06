@@ -223,6 +223,8 @@
       highlightChanges: true,
       gutter: true,
       collapseUnchanged: false,
+      blockDiff: true,      // Object-aware (block-level) diff for valid JSON; falls back to text diff
+
       orientation: "a-b",
       revertControls: "none",
       scanLimit: 6000,     // Increased from 500 to better detect identical lines in different positions
