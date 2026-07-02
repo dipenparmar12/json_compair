@@ -1,17 +1,21 @@
 /* ====================================================================
    diff_ignore.js — exclude keys/patterns from the JSON diff
    --------------------------------------------------------------------
-   CodeMirror's MergeView owns the diff and won't accept a custom one, so
-   we cannot delete "ignored" keys from the comparison at the engine level.
-   Instead this module identifies, purely from the pretty-printed text, the
-   line numbers that belong to an excluded key (the key line + its whole
-   nested value). index.html turns that into a CM6 line decoration that
-   neutralises the red/green highlight (and paints a subdued grey), and the
-   diff counter skips chunks that fall entirely inside those lines.
+   CodeMirror's MergeView owns the diff and won't accept a custom one. To
+   truly EXCLUDE a property (so the record collapses, isn't counted, and
+   shows no color), json_align normalizes the matched value to be identical
+   on both sides. This module supplies the pure matching logic used both by
+   that normalization (via a predicate) and by the grey "ignored" decoration
+   (via a line-number scan of the pretty-printed text).
 
-   Matching is by JSON *key name*:
-     - plain text        → exact key match  (e.g. "updatedAt")
-     - "/regex/flags"    → RegExp tested against the key name (e.g. "/_id$/i")
+   Match scope (config `ignoreScope`, default 'both'):
+     - 'key'   → test the JSON key name
+     - 'value' → test the property's (primitive) value
+     - 'both'  → match if EITHER the key or the value matches
+
+   Pattern syntax (per entry):
+     - plain text     → exact match (key name, or value's string form)
+     - "/regex/flags" → RegExp tested against the key / value string
 
    Pure + dependency-free (no CodeMirror). Exposes window.DiffIgnore.
    ==================================================================== */
@@ -49,8 +53,18 @@
     return out;
   }
 
-  // Build a fast key-name matcher from parsed descriptors. Returns null when
-  // there are no *usable* patterns, so callers can cheaply short-circuit.
+  // A primitive JS value → the string we test patterns against.
+  //   "abc" → abc   123 → "123"   true → "true"   null → "null"
+  function valueToTestString(v) {
+    if (typeof v === 'string') return v;
+    if (v === null) return 'null';
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    return null; // objects/arrays are not value-matchable
+  }
+
+  // Build a matcher from parsed descriptors. Returns null when there are no
+  // usable patterns, so callers can cheaply short-circuit.
+  //   { testKey(key) , testValueStr(str) , testValue(jsVal) }
   function makeMatcher(parsed) {
     var plain = Object.create(null), regexes = [], hasPlain = false, i;
     for (i = 0; i < parsed.length; i++) {
@@ -59,10 +73,34 @@
       else if (p.kind === 'regex') regexes.push(p.re);
     }
     if (!hasPlain && regexes.length === 0) return null;
-    return function (key) {
-      if (hasPlain && plain[key] === true) return true;
+    function testStr(s) {
+      if (typeof s !== 'string') return false;
+      if (hasPlain && plain[s] === true) return true;
       for (var j = 0; j < regexes.length; j++) {
-        if (regexes[j].test(key)) return true;
+        if (regexes[j].test(s)) return true;
+      }
+      return false;
+    }
+    return {
+      testKey: testStr,
+      testValueStr: testStr,
+      testValue: function (v) {
+        var s = valueToTestString(v);
+        return s === null ? false : testStr(s);
+      }
+    };
+  }
+
+  // Build the (key, aVal, bVal) predicate json_align uses to decide whether a
+  // property should be normalized/ignored, honoring the match scope.
+  function makePredicate(matcher, scope) {
+    if (!matcher) return null;
+    var s = scope || 'both';
+    return function (key, aVal, bVal) {
+      if (s !== 'value' && matcher.testKey(key)) return true;
+      if (s !== 'key') {
+        if (aVal !== undefined && matcher.testValue(aVal)) return true;
+        if (bVal !== undefined && matcher.testValue(bVal)) return true;
       }
       return false;
     };
@@ -81,6 +119,35 @@
     return m ? m[0].length : -1;
   }
 
+  // The primitive value's comparable string on a key line, or null for a
+  // container ({ or [) / non-extractable value. Used for value-scope scanning.
+  function lineValueStr(line) {
+    var col = valueStartCol(line);
+    if (col < 0) return null;
+    var rest = line.slice(col).trim();
+    if (rest.charAt(rest.length - 1) === ',') rest = rest.slice(0, -1).replace(/\s+$/, '');
+    if (rest === '') return null;
+    var c0 = rest.charAt(0);
+    if (c0 === '{' || c0 === '[') return null;         // container value
+    if (c0 === '"') {
+      try { return JSON.parse(rest); } catch (e) { return null; }
+    }
+    return rest;                                        // number / true / false / null
+  }
+
+  // Does a key line match, given scope? (key and/or value scope.)
+  function lineMatches(line, matcher, scope) {
+    var key = lineKey(line);
+    if (key === null) return false;
+    var s = scope || 'both';
+    if (s !== 'value' && matcher.testKey(key)) return true;
+    if (s !== 'key') {
+      var v = lineValueStr(line);
+      if (v !== null && matcher.testValueStr(v)) return true;
+    }
+    return false;
+  }
+
   // Last line index (0-based) of the value beginning on key line `startIdx`.
   // Primitives end on the same line; objects/arrays span until their brackets
   // balance, respecting strings and blank alignment-gap lines in between.
@@ -89,10 +156,10 @@
     if (col < 0) return startIdx;
     var depth = 0, inStr = false, esc = false, started = false;
     for (var i = startIdx; i < lines.length; i++) {
-      var s = lines[i];
+      var st = lines[i];
       var from = (i === startIdx) ? col : 0;
-      for (var c = from; c < s.length; c++) {
-        var ch = s.charCodeAt(c);
+      for (var c = from; c < st.length; c++) {
+        var ch = st.charCodeAt(c);
         if (inStr) {
           if (esc) esc = false;
           else if (ch === 92) esc = true;        // backslash
@@ -111,15 +178,14 @@
     return lines.length - 1;                       // unbalanced → to end (safe)
   }
 
-  // Given full document text and a matcher, return a Set of 1-based line
-  // numbers belonging to an excluded key (key line + its entire value block).
-  function computeIgnoredLines(text, matcher) {
+  // Given full document text, a matcher and a scope, return a Set of 1-based
+  // line numbers belonging to a matched key (key line + its entire value block).
+  function computeIgnoredLines(text, matcher, scope) {
     var ignored = new Set();
     if (!matcher || typeof text !== 'string' || !text) return ignored;
     var lines = text.split('\n');
     for (var i = 0; i < lines.length; i++) {
-      var key = lineKey(lines[i]);
-      if (key === null || !matcher(key)) continue;
+      if (lineKey(lines[i]) === null || !lineMatches(lines[i], matcher, scope)) continue;
       var end = regionEnd(lines, i);
       for (var l = i; l <= end; l++) ignored.add(l + 1);  // 1-based (CM6 doc.line)
       i = end;                                            // skip covered children
@@ -131,6 +197,7 @@
     parseOne: parseOne,
     parsePatterns: parsePatterns,
     makeMatcher: makeMatcher,
+    makePredicate: makePredicate,
     lineKey: lineKey,
     computeIgnoredLines: computeIgnoredLines,
   };
