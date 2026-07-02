@@ -42,6 +42,7 @@
     <script src="./utils/utils_branch.js"></script>
     <script src="./utils/viewport_diff.js"></script>
     <script src="./utils/json_align.js"></script>
+    <script src="./utils/diff_ignore.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -220,6 +221,39 @@
               </div>
             </div>
           </div>
+
+          <!-- Ignore keys / patterns dropdown (excludes matches from the diff) -->
+          <div class="ignore-dropdown menu-anchor">
+            <button id="btn-ignore" class="btn" title="Exclude keys/patterns from the diff comparison">
+              🚫 Ignore<span id="ignore-count-badge" class="ignore-badge" style="display: none;">0</span>
+            </button>
+            <div id="ignore-panel" class="dropdown-panel settings-panel settings-panel-left ignore-panel" style="display: none;">
+              <div class="settings-section-title">Exclude from diff</div>
+              <div class="ignore-desc">
+                Keys matching these are excluded from the comparison and shown grayed-out
+                (no red/green). Use plain text for an exact key name, or
+                <code>/regex/flags</code> for a pattern — e.g. <code>updatedAt</code> or <code>/_id$/i</code>.
+              </div>
+
+              <div class="ignore-input-row">
+                <input type="text" id="ignore-input" class="ignore-input"
+                       placeholder="Key name or /regex/flags" autocomplete="off" spellcheck="false" />
+                <button id="ignore-add" class="btn btn-primary">Add</button>
+              </div>
+              <div id="ignore-error" class="ignore-error" style="display: none;"></div>
+
+              <ul id="ignore-list" class="ignore-list"></ul>
+              <div id="ignore-empty" class="ignore-empty">No patterns yet — matches will be diffed normally.</div>
+
+              <label class="setting-row" style="margin-top: 10px;">
+                <input type="checkbox" id="ignore-styled" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Show grayed-out style</div>
+                  <div class="setting-desc">Tint excluded matches with a subdued gray background. Off = fully neutral (still no red/green).</div>
+                </div>
+              </label>
+            </div>
+          </div>
         </div>
 
         <div class="intro-center">
@@ -305,6 +339,8 @@
         highlightActiveLine,
         keymap,
         placeholder,
+        Decoration,
+        ViewPlugin,
       } from "@codemirror/view";
       import {
         foldGutter,
@@ -332,7 +368,7 @@
       import { lintKeymap } from "@codemirror/lint";
 
       // Import Compartment for dynamic configuration
-      import { Compartment } from "@codemirror/state";
+      import { Compartment, RangeSetBuilder } from "@codemirror/state";
 
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
@@ -371,7 +407,209 @@
       
       // Theme compartment for dynamic theme switching
       const themeCompartment = new Compartment();
-      
+
+      // ---- Ignore keys / patterns (exclude matches from the diff) -----------
+      // A per-editor compartment holds a ViewPlugin that decorates the lines of
+      // any excluded key with `.cm-ignoredLine`, which the CSS uses to override
+      // the red/green diff highlight with a calm neutral/gray fill. The pure
+      // matching + line-scan logic lives in utils/diff_ignore.js. The same diff
+      // is still computed by MergeView; we only re-skin the ignored lines and
+      // skip fully-ignored chunks in the status count.
+      const ignoreCompartment = new Compartment();
+      const ignoredLineDeco = Decoration.line({ class: 'cm-ignoredLine' });
+      let ignorePatterns = [];   // raw pattern strings, persisted in settings
+      let ignoreMatcher = null;  // compiled key-name matcher (null when empty)
+      let ignoreStyled = true;   // gray tint on (optional) vs. fully neutral
+
+      // Coerce a stored value into a clean array of trimmed, de-duped, non-empty
+      // pattern strings (tolerates arrays, a single string, or junk from URLs).
+      function normalizeIgnorePatterns(val) {
+        let arr;
+        if (Array.isArray(val)) arr = val;
+        else if (typeof val === 'string' && val.trim()) arr = [val];
+        else return [];
+        const seen = new Set(), out = [];
+        for (const item of arr) {
+          if (typeof item !== 'string') continue;
+          const s = item.trim();
+          if (s && !seen.has(s)) { seen.add(s); out.push(s); }
+        }
+        return out;
+      }
+
+      function rebuildIgnoreMatcher() {
+        try {
+          const parsed = window.DiffIgnore.parsePatterns(ignorePatterns);
+          ignoreMatcher = window.DiffIgnore.makeMatcher(parsed);
+        } catch (e) {
+          ignoreMatcher = null;
+        }
+      }
+
+      // Build the ViewPlugin extension for the *current* matcher. Returns [] when
+      // nothing is excluded so there is zero overhead in the common case.
+      function buildIgnoreExtension() {
+        const matcher = ignoreMatcher;
+        if (!matcher) return [];
+        function computeSet(view) {
+          try { return window.DiffIgnore.computeIgnoredLines(view.state.doc.toString(), matcher); }
+          catch (e) { return new Set(); }
+        }
+        function buildDecos(view, set) {
+          const b = new RangeSetBuilder();
+          if (set && set.size) {
+            for (const { from, to } of view.visibleRanges) {
+              let pos = from;
+              while (pos <= to) {
+                const line = view.state.doc.lineAt(pos);
+                if (set.has(line.number)) b.add(line.from, line.from, ignoredLineDeco);
+                pos = line.to + 1;
+              }
+            }
+          }
+          return b.finish();
+        }
+        return ViewPlugin.fromClass(class {
+          constructor(view) { this.set = computeSet(view); this.decorations = buildDecos(view, this.set); }
+          update(u) {
+            // Recompute the ignored-line set only when the doc changes; on pure
+            // scroll just rebuild the (cheap) viewport decorations from the cache.
+            if (u.docChanged) { this.set = computeSet(u.view); this.decorations = buildDecos(u.view, this.set); }
+            else if (u.viewportChanged) { this.decorations = buildDecos(u.view, this.set); }
+          }
+        }, { decorations: v => v.decorations });
+      }
+
+      // Push the current matcher into both live panes (in place, no rebuild).
+      function reconfigureIgnore() {
+        if (!mergeView) return;
+        const ext = buildIgnoreExtension();
+        try {
+          mergeView.a.dispatch({ effects: ignoreCompartment.reconfigure(ext) });
+          mergeView.b.dispatch({ effects: ignoreCompartment.reconfigure(ext) });
+        } catch (e) { /* view may be mid-recreate */ }
+      }
+
+      // Toggle the "gray tint" skin on the container (optional subdued style).
+      function updateIgnoreStyleClass() {
+        const c = document.getElementById('view-container');
+        if (c) c.classList.toggle('ignore-styled', !!ignoreStyled);
+      }
+
+      // Apply a change to the pattern list: persist, recompile, re-skin panes,
+      // refresh the little UI list + badge, and re-count the diff.
+      function applyIgnorePatterns() {
+        SettingsManager.set('ignorePatterns', ignorePatterns);
+        rebuildIgnoreMatcher();
+        reconfigureIgnore();
+        renderIgnoreList();
+        updateDiffStatus();
+      }
+
+      // Add one raw pattern. Returns an error string, or null on success.
+      function addIgnorePattern(raw) {
+        const s = (raw || '').trim();
+        if (!s) return 'Enter a key name or /regex/.';
+        if (ignorePatterns.indexOf(s) !== -1) return 'That pattern is already in the list.';
+        const parsed = window.DiffIgnore.parseOne(s);
+        if (parsed && parsed.kind === 'invalid') return 'Invalid regex: ' + parsed.error;
+        ignorePatterns.push(s);
+        applyIgnorePatterns();
+        return null;
+      }
+
+      function removeIgnorePattern(raw) {
+        const idx = ignorePatterns.indexOf(raw);
+        if (idx === -1) return;
+        ignorePatterns.splice(idx, 1);
+        applyIgnorePatterns();
+      }
+
+      // Render the pattern chips, empty-state message, and the toolbar badge.
+      function renderIgnoreList() {
+        const list = document.getElementById('ignore-list');
+        const empty = document.getElementById('ignore-empty');
+        const badge = document.getElementById('ignore-count-badge');
+        if (!list) return;
+        list.innerHTML = '';
+        ignorePatterns.forEach((p) => {
+          const parsed = window.DiffIgnore.parseOne(p);
+          const isRegex = parsed && parsed.kind === 'regex';
+          const li = document.createElement('li');
+          li.className = 'ignore-item';
+          const label = document.createElement('span');
+          label.className = 'ignore-item-label' + (isRegex ? ' ignore-item-regex' : '');
+          label.textContent = p;
+          label.title = isRegex ? 'Regular expression (matched against key names)' : 'Exact key name';
+          const btn = document.createElement('button');
+          btn.className = 'ignore-remove';
+          btn.type = 'button';
+          btn.setAttribute('aria-label', 'Remove ' + p);
+          btn.textContent = '×';
+          btn.addEventListener('click', () => removeIgnorePattern(p));
+          li.appendChild(label);
+          li.appendChild(btn);
+          list.appendChild(li);
+        });
+        if (empty) empty.style.display = ignorePatterns.length ? 'none' : 'block';
+        if (badge) {
+          badge.textContent = String(ignorePatterns.length);
+          badge.style.display = ignorePatterns.length ? 'inline-flex' : 'none';
+        }
+      }
+
+      function showIgnoreError(msg) {
+        const el = document.getElementById('ignore-error');
+        if (!el) return;
+        if (msg) { el.textContent = msg; el.style.display = 'block'; }
+        else { el.textContent = ''; el.style.display = 'none'; }
+      }
+
+      // Wire up the ignore dropdown: open/close, add/remove, and the style toggle.
+      function initializeIgnorePanel() {
+        const btn = document.getElementById('btn-ignore');
+        const panel = document.getElementById('ignore-panel');
+        const input = document.getElementById('ignore-input');
+        const addBtn = document.getElementById('ignore-add');
+        const styled = document.getElementById('ignore-styled');
+        if (!btn || !panel) return;
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = panel.style.display !== 'none';
+          panel.style.display = open ? 'none' : 'block';
+          if (!open && input) setTimeout(() => input.focus(), 0);
+        });
+        document.addEventListener('click', (e) => {
+          if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            panel.style.display = 'none';
+          }
+        });
+
+        const submit = () => {
+          const err = addIgnorePattern(input ? input.value : '');
+          if (err) { showIgnoreError(err); return; }
+          showIgnoreError('');
+          if (input) input.value = '';
+        };
+        if (addBtn) addBtn.addEventListener('click', submit);
+        if (input) {
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); submit(); }
+          });
+          input.addEventListener('input', () => showIgnoreError(''));
+        }
+        if (styled) {
+          styled.checked = ignoreStyled;
+          styled.addEventListener('change', () => {
+            ignoreStyled = styled.checked;
+            SettingsManager.set('ignoreStyled', ignoreStyled);
+            updateIgnoreStyleClass();
+          });
+        }
+        renderIgnoreList();
+      }
+
       // Define theme extensions
       const lightTheme = EditorView.theme({
         "&": {
@@ -511,7 +749,13 @@
         scrollLocked = SettingsManager.get('scrollLock');
         currentTheme = SettingsManager.get('theme');
         syncDocumentTheme(currentTheme);
-        
+
+        // Ignore-patterns must be compiled before the MergeView is built, since
+        // each pane mounts the ignore ViewPlugin via ignoreCompartment.of(...).
+        ignorePatterns = normalizeIgnorePatterns(SettingsManager.get('ignorePatterns'));
+        ignoreStyled = SettingsManager.get('ignoreStyled') !== false;
+        rebuildIgnoreMatcher();
+
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
         const mergeSettings = loadMergeSettings();
 
@@ -523,10 +767,11 @@
           a: {
             doc: initialContent.left,
             extensions: [
-              basicSetup, 
-              json(), 
-              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), 
-              themeCompartment.of(getThemeExtension(currentTheme)), 
+              basicSetup,
+              json(),
+              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
+              themeCompartment.of(getThemeExtension(currentTheme)),
+              ignoreCompartment.of(buildIgnoreExtension()),
               autoSaveExtension,
               placeholder(leftPlaceholderText)
             ],
@@ -534,10 +779,11 @@
           b: {
             doc: initialContent.right,
             extensions: [
-              basicSetup, 
-              json(), 
-              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), 
-              themeCompartment.of(getThemeExtension(currentTheme)), 
+              basicSetup,
+              json(),
+              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
+              themeCompartment.of(getThemeExtension(currentTheme)),
+              ignoreCompartment.of(buildIgnoreExtension()),
               autoSaveExtension,
               placeholder(rightPlaceholderText)
             ],
@@ -588,7 +834,9 @@
         initializeQuickToggles();
         initializeExtraSettingsPanel();
         initializeInfoDropdown();
-        
+        initializeIgnorePanel();
+        updateIgnoreStyleClass();
+
         // Initialize branch system - load active branches if they exist
         await initializeBranches();
       }
@@ -1333,10 +1581,11 @@
           a: {
             doc: leftContent,
             extensions: [
-              basicSetup, 
-              json(), 
-              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), 
-              themeCompartment.of(getThemeExtension(currentTheme)), 
+              basicSetup,
+              json(),
+              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []),
+              themeCompartment.of(getThemeExtension(currentTheme)),
+              ignoreCompartment.of(buildIgnoreExtension()),
               autoSaveExtension,
               placeholder(leftPlaceholderText)
             ],
@@ -1344,10 +1593,11 @@
           b: {
             doc: rightContent,
             extensions: [
-              basicSetup, 
-              json(), 
-              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), 
-              themeCompartment.of(getThemeExtension(currentTheme)), 
+              basicSetup,
+              json(),
+              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []),
+              themeCompartment.of(getThemeExtension(currentTheme)),
+              ignoreCompartment.of(buildIgnoreExtension()),
               autoSaveExtension,
               placeholder(rightPlaceholderText)
             ],
@@ -3347,13 +3597,55 @@
           }
         }
 
-        const chunkCount = mergeView?.chunks?.length || 0;
+        const chunkCount = countVisibleChunks();
         if (chunkCount === 0) {
-          setDiffSummary('same', 'No differences');
+          const ignoredActive = !!ignoreMatcher && (mergeView?.chunks?.length || 0) > 0;
+          setDiffSummary('same', ignoredActive ? 'No differences (excluded matches ignored)' : 'No differences');
         } else {
           setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }
         updateDiffNavState();
+      }
+
+      // Count diff chunks, skipping any whose changed lines lie entirely within
+      // excluded (ignored) keys — so the status reflects the "excluded from the
+      // diff" promise even though MergeView still computes them internally.
+      function countVisibleChunks() {
+        const chunks = mergeView?.chunks || [];
+        if (!ignoreMatcher) return chunks.length;
+        let ignoredA, ignoredB;
+        try {
+          ignoredA = window.DiffIgnore.computeIgnoredLines(mergeView.a.state.doc.toString(), ignoreMatcher);
+          ignoredB = window.DiffIgnore.computeIgnoredLines(mergeView.b.state.doc.toString(), ignoreMatcher);
+        } catch (e) {
+          return chunks.length;
+        }
+        // Every changed line a chunk spans on this side sits inside an excluded
+        // key? (An empty span — pure add/remove on the other side — is handled
+        // by the caller, not here.)
+        const spanAllIgnored = (doc, from, to, set) => {
+          let pos = from;
+          while (pos < to) {
+            const line = doc.lineAt(pos);
+            if (!set.has(line.number)) return false;
+            pos = line.to + 1;
+          }
+          return true;
+        };
+        let count = 0;
+        for (const ch of chunks) {
+          const spanA = ch.toA > ch.fromA, spanB = ch.toB > ch.fromB;
+          let fullyIgnored = false;
+          try {
+            // Fully ignored = has changed lines, and every changed line (on the
+            // side(s) that actually changed) falls inside an excluded key.
+            fullyIgnored = (spanA || spanB)
+              && (!spanA || spanAllIgnored(mergeView.a.state.doc, ch.fromA, ch.toA, ignoredA))
+              && (!spanB || spanAllIgnored(mergeView.b.state.doc, ch.fromB, ch.toB, ignoredB));
+          } catch (e) { fullyIgnored = false; }
+          if (!fullyIgnored) count++;
+        }
+        return count;
       }
 
       // Update status message (transient, neutral styling).

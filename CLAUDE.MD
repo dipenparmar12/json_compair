@@ -42,6 +42,7 @@ json_compair/
 │       ├── utils_branch.js # Git-like branching for panels
 │       ├── viewport_diff.js # ViewportDiffManager, PerformanceMode, LargeFileDetector, PerformanceToast
 │       ├── json_align.js   # Block-level JSON aligner (window.JSONAlign) — gap-pads matching items/keys
+│       ├── diff_ignore.js  # Exclude keys/patterns from the diff (window.DiffIgnore) — key-name matcher + line-scan
 │       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
 ├── v5/                     # Legacy CodeMirror 5 version
@@ -181,6 +182,8 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "orientation": "a-b",          // a-b (side-by-side) or a-b-merge
   "revertControls": "a-to-b",    // a-to-b|b-to-a|none
   "scanLimit": 6000,             // Max LCS scan effort (auto-capped by content size)
+  "ignorePatterns": [],          // Key names / /regex/ excluded from the diff (see Diff Engine §7)
+  "ignoreStyled": true,          // Tint excluded matches gray (off = neutral, still no red/green)
 
   // Auto-Processing
   "autoCsv": true,               // Auto-convert CSV
@@ -224,6 +227,13 @@ window.BranchManager
   .saveBranch()
   .createBranch()
   .deleteBranch()
+
+// diff_ignore.js (v6)
+window.DiffIgnore
+  .parseOne()           // "/re/flags" → regex descriptor, else plain key match
+  .parsePatterns()
+  .makeMatcher()        // → (keyName) => bool  (null when no usable patterns)
+  .computeIgnoredLines()// (text, matcher) → Set<1-based line no.> (key + value block)
 ```
 
 ### Loading Pattern
@@ -237,6 +247,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/utils_zip.js"></script>
 <script src="./utils/utils_branch.js"></script>
 <script src="./utils/viewport_diff.js"></script>  <!-- v6 only: performance managers -->
+<script src="./utils/diff_ignore.js"></script>    <!-- v6 only: exclude keys/patterns from diff -->
 ```
 
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
@@ -631,6 +642,32 @@ Understand the split before touching diff/perf code:
   strips gaps (only when the result is valid JSON) and CM6's default diff returns.
 - **Fallback:** any parse failure / non-JSON / >3 MB combined → `align()` returns `{ok:false}` →
   no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
+
+### 7. Exclude keys/patterns from the diff — `diff_ignore.js` + `.cm-ignoredLine`
+- **Why:** users want to ignore noisy fields (ids, timestamps, hashes). CM6 owns the diff and
+  won't drop keys from it, so — like block-diff — we don't replace the engine; we re-skin the
+  matched lines and correct the count.
+- **Matching (by JSON *key name*):** `window.DiffIgnore` (in `diff_ignore.js`, pure/no-CM6) parses
+  each pattern as either a **plain** exact key name or a **`/regex/flags`** RegExp tested against
+  the key. `computeIgnoredLines(text, matcher)` scans the pretty-printed text and returns the
+  1-based line numbers of every excluded key **plus its whole value block** (nested objects/arrays
+  and alignment-gap blanks included, via a string-aware bracket-depth scan).
+- **Rendering:** a per-pane `ViewPlugin` in an `ignoreCompartment` (built by `buildIgnoreExtension()`
+  in `index.html`) decorates those lines with `.cm-ignoredLine`. CSS (two-class selectors +
+  `!important`) makes it **win over** CM6's red/green: `.cm-ignoredLine` (and its `.cm-changedText`
+  descendants) go transparent/dimmed by default, or subdued gray when the container has
+  `.ignore-styled` (the "Show grayed-out style" toggle, setting `ignoreStyled`, default on). No
+  red/green ever shows on excluded lines regardless of the toggle.
+- **Count:** `updateDiffStatus()` calls `countVisibleChunks()`, which skips any `mergeView.chunks`
+  whose changed lines lie **entirely** inside excluded keys (mapped via `doc.lineAt`), so ignoring
+  a field actually lowers "N changed blocks".
+- **Wiring:** the compartment is mounted in both editors (initial `MergeView` + `recreateMergeView`).
+  Adding/removing a pattern (UI dropdown right after ⚙️ Settings) calls `applyIgnorePatterns()` →
+  persist `ignorePatterns` → recompile matcher → `reconfigureIgnore()` (in-place, no rebuild) →
+  re-render list/badge → recount. The ViewPlugin recomputes its ignored-line set on `docChanged`
+  and just re-emits viewport decorations on scroll.
+- **Setting:** `ignorePatterns` (array of strings) + `ignoreStyled` (bool). Empty list → matcher is
+  `null` → zero overhead (no plugin, raw count). See memory [[v6-ignore-keys-diff]].
 
 ### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on

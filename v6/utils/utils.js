@@ -224,6 +224,8 @@
       gutter: true,
       collapseUnchanged: false,
       blockDiff: true,      // Object-aware (block-level) diff for valid JSON; falls back to text diff
+      ignorePatterns: [],   // Key names / /regex/ excluded from the diff (grayed out)
+      ignoreStyled: true,   // Show excluded matches with a subdued gray tint
 
       orientation: "a-b",
       revertControls: "none",
