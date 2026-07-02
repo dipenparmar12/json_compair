@@ -230,14 +230,24 @@
             <div id="ignore-panel" class="dropdown-panel settings-panel settings-panel-left ignore-panel" style="display: none;">
               <div class="settings-section-title">Exclude from diff</div>
               <div class="ignore-desc">
-                Keys matching these are excluded from the comparison and shown grayed-out
-                (no red/green). Use plain text for an exact key name, or
-                <code>/regex/flags</code> for a pattern — e.g. <code>updatedAt</code> or <code>/_id$/i</code>.
+                Matches are treated as identical on both sides — the field collapses,
+                isn't counted, and shows no red/green (e.g. <code>created_on</code> /
+                <code>updated_at</code> columns). Use plain text for an exact match, or
+                <code>/regex/flags</code> for a pattern — e.g. <code>/_id$/i</code>.
               </div>
+
+              <label class="setting-row row-inline" style="padding-left: 0; padding-right: 0;">
+                <span class="setting-title">Match against</span>
+                <select id="ignore-scope" class="settings-select">
+                  <option value="both">Key or value</option>
+                  <option value="key">Key name</option>
+                  <option value="value">Value</option>
+                </select>
+              </label>
 
               <div class="ignore-input-row">
                 <input type="text" id="ignore-input" class="ignore-input"
-                       placeholder="Key name or /regex/flags" autocomplete="off" spellcheck="false" />
+                       placeholder="Key name / value, or /regex/flags" autocomplete="off" spellcheck="false" />
                 <button id="ignore-add" class="btn btn-primary">Add</button>
               </div>
               <div id="ignore-error" class="ignore-error" style="display: none;"></div>
@@ -409,17 +419,28 @@
       const themeCompartment = new Compartment();
 
       // ---- Ignore keys / patterns (exclude matches from the diff) -----------
-      // A per-editor compartment holds a ViewPlugin that decorates the lines of
-      // any excluded key with `.cm-ignoredLine`, which the CSS uses to override
-      // the red/green diff highlight with a calm neutral/gray fill. The pure
-      // matching + line-scan logic lives in utils/diff_ignore.js. The same diff
-      // is still computed by MergeView; we only re-skin the ignored lines and
-      // skip fully-ignored chunks in the status count.
+      // Two cooperating mechanisms make an "ignored" property vanish from the
+      // diff (see Diff Engine §7):
+      //   1. NORMALIZE — json_align copies the left value onto both sides for a
+      //      matched property, so MergeView sees NO change: the record collapses,
+      //      is not counted, and shows no red/green. Because this rewrites the
+      //      right pane's value, we snapshot the pre-normalized originals
+      //      (`_ignorePristine`) so removing a pattern / turning ignore off can
+      //      restore them, and autosave persists the originals, not the view.
+      //   2. DECORATE — a per-pane ViewPlugin tints the matched lines grey
+      //      (optional) and, as a safety net, overrides any residual red/green
+      //      (e.g. a key present on only one side, which can't be normalized).
+      // Pure matching + line-scan logic lives in utils/diff_ignore.js.
       const ignoreCompartment = new Compartment();
       const ignoredLineDeco = Decoration.line({ class: 'cm-ignoredLine' });
-      let ignorePatterns = [];   // raw pattern strings, persisted in settings
-      let ignoreMatcher = null;  // compiled key-name matcher (null when empty)
-      let ignoreStyled = true;   // gray tint on (optional) vs. fully neutral
+      let ignorePatterns = [];    // raw pattern strings, persisted in settings
+      let ignoreScope = 'both';   // 'key' | 'value' | 'both' — what a pattern tests
+      let ignoreMatcher = null;   // compiled matcher (null when no usable patterns)
+      let ignorePredicate = null; // (key,aVal,bVal)=>bool for json_align (null when empty)
+      let ignoreStyled = true;    // gray tint on (optional) vs. fully neutral
+      let _ignorePristine = null; // { left, right } originals captured before normalization
+
+      function ignoreActive() { return !!ignorePredicate; }
 
       // Coerce a stored value into a clean array of trimmed, de-duped, non-empty
       // pattern strings (tolerates arrays, a single string, or junk from URLs).
@@ -441,8 +462,10 @@
         try {
           const parsed = window.DiffIgnore.parsePatterns(ignorePatterns);
           ignoreMatcher = window.DiffIgnore.makeMatcher(parsed);
+          ignorePredicate = window.DiffIgnore.makePredicate(ignoreMatcher, ignoreScope);
         } catch (e) {
           ignoreMatcher = null;
+          ignorePredicate = null;
         }
       }
 
@@ -450,9 +473,10 @@
       // nothing is excluded so there is zero overhead in the common case.
       function buildIgnoreExtension() {
         const matcher = ignoreMatcher;
+        const scope = ignoreScope;
         if (!matcher) return [];
         function computeSet(view) {
-          try { return window.DiffIgnore.computeIgnoredLines(view.state.doc.toString(), matcher); }
+          try { return window.DiffIgnore.computeIgnoredLines(view.state.doc.toString(), matcher, scope); }
           catch (e) { return new Set(); }
         }
         function buildDecos(view, set) {
@@ -496,11 +520,36 @@
         if (c) c.classList.toggle('ignore-styled', !!ignoreStyled);
       }
 
-      // Apply a change to the pattern list: persist, recompile, re-skin panes,
-      // refresh the little UI list + badge, and re-count the diff.
+      // Restore the pre-normalization originals into both panes (undoes the
+      // "copy left value onto right" that ignore-normalization performs). Guarded
+      // by _blockAligning so it does not re-trigger the transform mid-restore.
+      function restoreIgnorePristine() {
+        if (!_ignorePristine || !mergeView) { _ignorePristine = null; return; }
+        const orig = _ignorePristine;
+        _ignorePristine = null;
+        _blockAligning = true;
+        try {
+          setPaneIfChanged(mergeView.a, orig.left);
+          setPaneIfChanged(mergeView.b, orig.right);
+        } finally {
+          _blockAligning = false;
+        }
+      }
+
+      // Apply a change to the pattern list / scope: restore originals first (so a
+      // removed pattern un-normalizes), persist, recompile, re-run the transform
+      // with the new set, re-skin panes, and refresh the UI + count.
       function applyIgnorePatterns() {
+        // Bring back the real values before recomputing, so dropping a pattern
+        // reveals that field's diff again instead of leaving it normalized.
+        restoreIgnorePristine();
         SettingsManager.set('ignorePatterns', ignorePatterns);
+        SettingsManager.set('ignoreScope', ignoreScope);
         rebuildIgnoreMatcher();
+        // Re-derive the view: normalize for the new set, or strip any leftover
+        // gaps when nothing is active and block-diff is off.
+        if (blockDiffEnabled() || ignoreActive()) applyBlockAlignment();
+        else removeBlockAlignment();
         reconfigureIgnore();
         renderIgnoreList();
         updateDiffStatus();
@@ -540,7 +589,7 @@
           const label = document.createElement('span');
           label.className = 'ignore-item-label' + (isRegex ? ' ignore-item-regex' : '');
           label.textContent = p;
-          label.title = isRegex ? 'Regular expression (matched against key names)' : 'Exact key name';
+          label.title = isRegex ? 'Regular expression' : 'Exact match';
           const btn = document.createElement('button');
           btn.className = 'ignore-remove';
           btn.type = 'button';
@@ -605,6 +654,14 @@
             ignoreStyled = styled.checked;
             SettingsManager.set('ignoreStyled', ignoreStyled);
             updateIgnoreStyleClass();
+          });
+        }
+        const scopeSel = document.getElementById('ignore-scope');
+        if (scopeSel) {
+          scopeSel.value = ignoreScope;
+          scopeSel.addEventListener('change', () => {
+            ignoreScope = scopeSel.value;
+            applyIgnorePatterns();  // re-derive the view for the new match scope
           });
         }
         renderIgnoreList();
@@ -753,6 +810,8 @@
         // Ignore-patterns must be compiled before the MergeView is built, since
         // each pane mounts the ignore ViewPlugin via ignoreCompartment.of(...).
         ignorePatterns = normalizeIgnorePatterns(SettingsManager.get('ignorePatterns'));
+        ignoreScope = ['key', 'value', 'both'].includes(SettingsManager.get('ignoreScope'))
+          ? SettingsManager.get('ignoreScope') : 'both';
         ignoreStyled = SettingsManager.get('ignoreStyled') !== false;
         rebuildIgnoreMatcher();
 
@@ -879,11 +938,11 @@
         
         // Update branch selectors
         updateBranchSelectors();
-        // Align panes for block-level diff once initial content has settled
-        // (initial content arrives via the editor `doc:` config, which does not
-        // fire the change listener, so we trigger it explicitly here). When the
-        // feature is off, strip any gap lines a shared/aligned snapshot carried.
-        if (blockDiffEnabled()) applyBlockAlignment();
+        // Align / normalize panes once initial content has settled (initial
+        // content arrives via the editor `doc:` config, which does not fire the
+        // change listener, so we trigger it explicitly here). When neither block
+        // diff nor ignore is active, strip any gap lines a snapshot carried.
+        if (blockDiffEnabled() || ignoreActive()) applyBlockAlignment();
         else removeBlockAlignment();
         updateDiffStatus();
       }
@@ -1450,9 +1509,10 @@
           recreateMergeView(newSettings, newWordWrap);
         }
 
-        // Apply block-diff alignment change: turning it on aligns now; turning
-        // it off restores the raw (un-gapped) text so the default diff returns.
-        if (newBlockDiff) {
+        // Apply block-diff change: turning it on aligns now; turning it off
+        // restores raw (un-gapped) text — unless ignore is still active, which
+        // keeps normalizing (without gaps) so ignored fields stay collapsed.
+        if (newBlockDiff || ignoreActive()) {
           applyBlockAlignment();
         } else if (prevBlockDiff) {
           removeBlockAlignment();
@@ -1528,15 +1588,28 @@
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
       }
 
-      // Align both panes for block-level diffing. No-op (raw text + CM6's default
-      // diff) when disabled, when either side isn't valid JSON, or on any error.
+      // Transform both panes for diffing. Runs when Block Diff and/or ignore
+      // patterns are active. Block Diff → structural gap-alignment; ignore →
+      // normalize matched values so MergeView sees no change. No-op (raw text +
+      // CM6's default diff) when neither is active, either side isn't valid JSON,
+      // or on any error. (Kept the name applyBlockAlignment: ~10 call sites.)
       function applyBlockAlignment() {
-        if (_blockAligning || !blockDiffEnabled() || !window.JSONAlign) return;
+        if (_blockAligning || !window.JSONAlign) return;
+        const block = blockDiffEnabled();
+        const pred = ignorePredicate;
+        if (!block && !pred) return;
+        const L = mergeView.a.state.doc.toString();
+        const R = mergeView.b.state.doc.toString();
         let res;
         try {
-          res = window.JSONAlign.align(mergeView.a.state.doc.toString(), mergeView.b.state.doc.toString());
+          res = block ? window.JSONAlign.align(L, R, { ignore: pred })
+                      : window.JSONAlign.normalize(L, R, pred);
         } catch (e) { return; }
         if (!res || !res.ok) return;
+        // `changed` is true only while the input still holds un-normalized
+        // (differing) ignored values → it is "fresh" content. Snapshot the
+        // originals so ignore can be undone and autosave keeps real data.
+        if (pred && res.changed) _ignorePristine = { left: L, right: R };
         _blockAligning = true;
         try {
           setPaneIfChanged(mergeView.a, res.left);
@@ -3517,8 +3590,11 @@
           }
         } else {
           window.__autosaveSkipNotified = false;
-          const leftContent = mergeView.a.state.doc.toString();
-          const rightContent = mergeView.b.state.doc.toString();
+          // When ignore-normalization is active the right pane shows the left's
+          // value for ignored fields — persist the pre-normalized originals so a
+          // reload / export keeps real data rather than the normalized view.
+          const leftContent = _ignorePristine ? _ignorePristine.left : mergeView.a.state.doc.toString();
+          const rightContent = _ignorePristine ? _ignorePristine.right : mergeView.b.state.doc.toString();
           try {
             StorageManager.saveToStorage(leftContent, rightContent);
           } catch (e) {
@@ -3599,8 +3675,8 @@
 
         const chunkCount = countVisibleChunks();
         if (chunkCount === 0) {
-          const ignoredActive = !!ignoreMatcher && (mergeView?.chunks?.length || 0) > 0;
-          setDiffSummary('same', ignoredActive ? 'No differences (excluded matches ignored)' : 'No differences');
+          const ignoredHere = !!ignoreMatcher && (mergeView?.chunks?.length || 0) > 0;
+          setDiffSummary('same', ignoredHere ? 'No differences (excluded matches ignored)' : 'No differences');
         } else {
           setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }
@@ -3608,15 +3684,16 @@
       }
 
       // Count diff chunks, skipping any whose changed lines lie entirely within
-      // excluded (ignored) keys — so the status reflects the "excluded from the
-      // diff" promise even though MergeView still computes them internally.
+      // excluded (ignored) keys. With normalization most ignored props are no
+      // longer chunks at all; this still catches the residual case of a matched
+      // key present on only one side (a structural add/remove we can't normalize).
       function countVisibleChunks() {
         const chunks = mergeView?.chunks || [];
         if (!ignoreMatcher) return chunks.length;
         let ignoredA, ignoredB;
         try {
-          ignoredA = window.DiffIgnore.computeIgnoredLines(mergeView.a.state.doc.toString(), ignoreMatcher);
-          ignoredB = window.DiffIgnore.computeIgnoredLines(mergeView.b.state.doc.toString(), ignoreMatcher);
+          ignoredA = window.DiffIgnore.computeIgnoredLines(mergeView.a.state.doc.toString(), ignoreMatcher, ignoreScope);
+          ignoredB = window.DiffIgnore.computeIgnoredLines(mergeView.b.state.doc.toString(), ignoreMatcher, ignoreScope);
         } catch (e) {
           return chunks.length;
         }
