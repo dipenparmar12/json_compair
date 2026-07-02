@@ -183,6 +183,7 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "revertControls": "a-to-b",    // a-to-b|b-to-a|none
   "scanLimit": 6000,             // Max LCS scan effort (auto-capped by content size)
   "ignorePatterns": [],          // Key names / /regex/ excluded from the diff (see Diff Engine §7)
+  "ignoreScope": "both",         // What a pattern matches: 'key' | 'value' | 'both'
   "ignoreStyled": true,          // Tint excluded matches gray (off = neutral, still no red/green)
 
   // Auto-Processing
@@ -230,10 +231,17 @@ window.BranchManager
 
 // diff_ignore.js (v6)
 window.DiffIgnore
-  .parseOne()           // "/re/flags" → regex descriptor, else plain key match
+  .parseOne()           // "/re/flags" → regex descriptor, else plain match
   .parsePatterns()
-  .makeMatcher()        // → (keyName) => bool  (null when no usable patterns)
-  .computeIgnoredLines()// (text, matcher) → Set<1-based line no.> (key + value block)
+  .makeMatcher()        // → { testKey, testValueStr, testValue } (null when none)
+  .makePredicate()      // (matcher, scope) → (key,aVal,bVal)=>bool for json_align
+  .computeIgnoredLines()// (text, matcher, scope) → Set<1-based line no.> (key + value block)
+
+// json_align.js (v6) — ignore-aware
+window.JSONAlign
+  .align(l, r, {ignore})   // block-align + normalize matched values → {ok,left,right,changed}
+  .normalize(l, r, ignore) // normalize only (block-diff off) → {ok,left,right,changed}
+  .stripGaps(text)
 ```
 
 ### Loading Pattern
@@ -643,31 +651,36 @@ Understand the split before touching diff/perf code:
 - **Fallback:** any parse failure / non-JSON / >3 MB combined → `align()` returns `{ok:false}` →
   no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
 
-### 7. Exclude keys/patterns from the diff — `diff_ignore.js` + `.cm-ignoredLine`
-- **Why:** users want to ignore noisy fields (ids, timestamps, hashes). CM6 owns the diff and
-  won't drop keys from it, so — like block-diff — we don't replace the engine; we re-skin the
-  matched lines and correct the count.
-- **Matching (by JSON *key name*):** `window.DiffIgnore` (in `diff_ignore.js`, pure/no-CM6) parses
-  each pattern as either a **plain** exact key name or a **`/regex/flags`** RegExp tested against
-  the key. `computeIgnoredLines(text, matcher)` scans the pretty-printed text and returns the
-  1-based line numbers of every excluded key **plus its whole value block** (nested objects/arrays
-  and alignment-gap blanks included, via a string-aware bracket-depth scan).
-- **Rendering:** a per-pane `ViewPlugin` in an `ignoreCompartment` (built by `buildIgnoreExtension()`
-  in `index.html`) decorates those lines with `.cm-ignoredLine`. CSS (two-class selectors +
-  `!important`) makes it **win over** CM6's red/green: `.cm-ignoredLine` (and its `.cm-changedText`
-  descendants) go transparent/dimmed by default, or subdued gray when the container has
-  `.ignore-styled` (the "Show grayed-out style" toggle, setting `ignoreStyled`, default on). No
-  red/green ever shows on excluded lines regardless of the toggle.
-- **Count:** `updateDiffStatus()` calls `countVisibleChunks()`, which skips any `mergeView.chunks`
-  whose changed lines lie **entirely** inside excluded keys (mapped via `doc.lineAt`), so ignoring
-  a field actually lowers "N changed blocks".
-- **Wiring:** the compartment is mounted in both editors (initial `MergeView` + `recreateMergeView`).
-  Adding/removing a pattern (UI dropdown right after ⚙️ Settings) calls `applyIgnorePatterns()` →
-  persist `ignorePatterns` → recompile matcher → `reconfigureIgnore()` (in-place, no rebuild) →
-  re-render list/badge → recount. The ViewPlugin recomputes its ignored-line set on `docChanged`
-  and just re-emits viewport decorations on scroll.
-- **Setting:** `ignorePatterns` (array of strings) + `ignoreStyled` (bool). Empty list → matcher is
-  `null` → zero overhead (no plugin, raw count). See memory [[v6-ignore-keys-diff]].
+### 7. Exclude keys/patterns from the diff — `diff_ignore.js` + normalization + `.cm-ignoredLine`
+- **Why:** ignore noisy fields (db `created_on`/`updated_at`, ids, hashes) that differ on every
+  record. CM6 owns the diff and won't drop keys, so a matched property is made to **look identical
+  on both sides** — then MergeView genuinely sees no change: the record **collapses**, is **not
+  counted**, and shows **no red/green**. (My first cut only re-skinned lines; that left every record
+  "changed" so nothing collapsed — normalization is what actually delivers "treat as same content".)
+- **Normalization (the mechanism):** `applyBlockAlignment()` runs when Block Diff **or** ignore is
+  active. It passes an `ignore(key,aVal,bVal)` predicate to `JSONAlign.align(...,{ignore})`
+  (block-diff on) or `JSONAlign.normalize(left,right,ignore)` (block-diff off). For a matched
+  property present on **both** sides, json_align emits the **left ("a") value on both sides**. Since
+  this rewrites the right pane's value, the pre-normalized text is snapshotted in `_ignorePristine`
+  (captured when `res.changed` is true = input still un-normalized); removing a pattern / turning
+  ignore off calls `restoreIgnorePristine()`, and **`saveContent()` persists `_ignorePristine`**, so
+  storage/export keep real data, not the normalized view. Known gap: editing a *non-ignored* field
+  while ignore is active isn't merged back into pristine.
+- **Match scope (`ignoreScope`, default `both`):** `window.DiffIgnore.makePredicate(matcher, scope)`
+  — `'key'` tests the key name, `'value'` tests the property's primitive value, `'both'` either.
+  Plain pattern = exact match; `/regex/flags` = RegExp. Selector lives in the ignore dropdown.
+- **Decoration (grey skin, safety net):** a per-pane `ViewPlugin` in `ignoreCompartment` decorates
+  matched lines (`computeIgnoredLines(text, matcher, scope)` → key line + whole value block) with
+  `.cm-ignoredLine`. CSS (two-class selectors + `!important`) overrides any residual red/green
+  (e.g. a matched key present on only one side, which can't be normalized): transparent/dimmed by
+  default, subdued gray when the container has `.ignore-styled` (setting `ignoreStyled`, default on).
+- **Count:** `countVisibleChunks()` still skips chunks lying entirely inside ignored keys — mostly a
+  no-op now (normalized props aren't chunks) but covers the structural-only case.
+- **Wiring:** `applyIgnorePatterns()` (add/remove/scope change) → `restoreIgnorePristine()` first →
+  persist `ignorePatterns`/`ignoreScope` → recompile → re-run transform → `reconfigureIgnore()` →
+  re-render → recount. Compartment mounted in both editors (initial + `recreateMergeView`).
+- **Setting:** `ignorePatterns` (string[]) + `ignoreScope` ('key'|'value'|'both') + `ignoreStyled`
+  (bool). Empty list → predicate `null` → zero overhead. See memory [[v6-ignore-keys-diff]].
 
 ### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on
