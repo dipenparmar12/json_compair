@@ -285,8 +285,10 @@ OOM the tab (the old failure mode on medium/large CSV). It:
 
 Supporting size guards: `updateConversionButtons()` skips full `isCSV`/`isConvertibleToCSV`
 parsing above `DETECT_MAX_BYTES`; `saveContent()` skips the synchronous localStorage stringify
-above `AUTOSAVE_MAX_BYTES` (use Export snapshot instead). Tuning constants live near the top of
-the ingest block in `index.html`.
+above `AUTOSAVE_MAX_BYTES` (use Export snapshot instead); the JSON auto-format/sort step in
+`ingestContent()` is skipped above `FORMAT_MAX_BYTES` (raw text is inserted as-is — parse +
+pretty-print of a multi-MB paste is a guaranteed main-thread stall). Tuning constants live near
+the top of the ingest block in `index.html`.
 
 ## CodeMirror 6 Integration (v6/)
 
@@ -645,7 +647,9 @@ Understand the split before touching diff/perf code:
   (end of `initializeBranches`) and on the existing debounced change timer in `autoSaveExtension`
   — but **skipped while the user is typing** (`tr.isUserEvent('input.type'|'delete')`) so it never
   reformats mid-edit. Paste/format/sort/branch/snapshot all dispatch programmatically → re-align
-  automatically. Idempotent (re-aligning aligned content is a no-op), guarded by `_blockAligning`.
+  automatically. Idempotent (re-aligning aligned content is a no-op), guarded by `_blockAligning`,
+  and **memoized by doc identity** (`_lastAlignMemo`: CM6 `Text` objects are immutable, so
+  same-docs + same-mode + same-predicate ⇒ skip the whole parse/align/stringify, failures included).
 - **Setting:** `blockDiff` (default **true**, toggle in settings panel). Off → `removeBlockAlignment()`
   strips gaps (only when the result is valid JSON) and CM6's default diff returns.
 - **Fallback:** any parse failure / non-JSON / >3 MB combined → `align()` returns `{ok:false}` →
@@ -664,8 +668,14 @@ Understand the split before touching diff/perf code:
   this rewrites the right pane's value, the pre-normalized text is snapshotted in `_ignorePristine`
   (captured when `res.changed` is true = input still un-normalized); removing a pattern / turning
   ignore off calls `restoreIgnorePristine()`, and **`saveContent()` persists `_ignorePristine`**, so
-  storage/export keep real data, not the normalized view. Known gap: editing a *non-ignored* field
-  while ignore is active isn't merged back into pristine.
+  storage/export keep real data, not the normalized view. Any **external** doc change (typing,
+  paste, clear — anything not guarded by `_blockAligning`) invalidates `_ignorePristine` in the
+  autosave listener, so autosave persists what's on screen until the next re-normalization
+  recaptures a fresh pair — a stale pristine can no longer resurrect replaced/cleared content
+  (this was the "cleared data reappears after refresh" bug). Clear All persists the cleared
+  state immediately via `StorageManager.clearStorage()` (empty pair in localStorage + deletes the
+  IndexedDB fallback record); per-pane Clear calls `restoreIgnorePristine()` first (surviving
+  pane keeps its real values) and then saves synchronously.
 - **Match scope (`ignoreScope`, default `both`):** `window.DiffIgnore.makePredicate(matcher, scope)`
   — `'key'` tests the key name, `'value'` tests the property's primitive value, `'both'` either.
   Plain pattern = exact match; `/regex/flags` = RegExp. Selector lives in the ignore dropdown.
@@ -676,6 +686,9 @@ Understand the split before touching diff/perf code:
   default, subdued gray when the container has `.ignore-styled` (setting `ignoreStyled`, default on).
 - **Count:** `countVisibleChunks()` still skips chunks lying entirely inside ignored keys — mostly a
   no-op now (normalized props aren't chunks) but covers the structural-only case.
+- **Caching:** ignored-line sets are computed once per doc version via `getIgnoredLineSet(doc)`
+  (WeakMap keyed on the immutable `Text` object + `_ignoreGen` bumped in `rebuildIgnoreMatcher`);
+  the decoration ViewPlugin and `countVisibleChunks()` share the same scan.
 - **Wiring:** `applyIgnorePatterns()` (add/remove/scope change) → `restoreIgnorePristine()` first →
   persist `ignorePatterns`/`ignoreScope` → recompile → re-run transform → `reconfigureIgnore()` →
   re-render → recount. Compartment mounted in both editors (initial + `recreateMergeView`).
@@ -692,7 +705,10 @@ Understand the split before touching diff/perf code:
 
 ### Remaining inefficiencies / where to optimize
 - **Viewport mode is cosmetic** for rendering — MergeView still diffs the whole document.
-- **No memoization** — identical content re-diffs from scratch on every recreate.
+- **MergeView itself has no memoization** — identical content re-diffs from scratch on every
+  recreate. (The json_align transform IS memoized now — `_lastAlignMemo`, see §6 — and the
+  status pill / button-visibility helpers no longer materialize full doc strings: `docIsBlank()`
+  iterates chunks, and above `TEXT_EQ_MAX_BYTES` equality defers to `mergeView.chunks`.)
 - The genuinely effective CM6 lever for large files is **`collapseUnchanged` + the adaptive
   `scanLimit` cap**, not the viewport counter.
 
