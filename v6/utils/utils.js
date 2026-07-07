@@ -112,6 +112,20 @@
       }
     },
 
+    // Persist an explicit "cleared" state: overwrite the localStorage record
+    // with an empty pair (removing the key entirely would make the next load
+    // fall back to the demo template instead of staying empty) and delete the
+    // IndexedDB fallback record (written when localStorage was full) so stale
+    // oversized content can never resurface after a refresh.
+    clearStorage: function () {
+      try {
+        this.saveToStorage('', '');
+      } catch (err) {
+        console.warn('Failed to persist cleared state:', err && err.message ? err.message : err);
+      }
+      return deleteSnapshotFromIDB(this.STORAGE_KEY);
+    },
+
     loadFromStorage: function () {
       const storedData = localStorage.getItem(this.STORAGE_KEY);
       if (!storedData) return null;
@@ -195,6 +209,26 @@
       });
     } catch (err) {
       return null;
+    }
+  }
+
+  async function deleteSnapshotFromIDB(key) {
+    try {
+      const db = await openIDB();
+      return await new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction(IDB_STORE, 'readwrite');
+          const store = tx.objectStore(IDB_STORE);
+          const req = store.delete(key);
+          req.onsuccess = () => resolve(true);
+          req.onerror = () => reject(req.error || new Error('IDB delete failed'));
+          tx.oncomplete = () => db.close();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    } catch (err) {
+      return false;
     }
   }
 

@@ -383,6 +383,13 @@
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
         if (update.docChanged) {
+          // Any doc change that is NOT our own normalization dispatch invalidates
+          // the pre-normalization snapshot: the docs no longer correspond to it,
+          // and persisting the stale pair would resurrect replaced/cleared content
+          // on the next reload. Re-alignment recaptures a fresh pair when
+          // normalization applies again.
+          if (!_blockAligning) _ignorePristine = null;
+
           // Skip block re-alignment while the user is actively typing/deleting so
           // we never reformat mid-edit; paste/drop/programmatic changes re-align.
           // (Our own alignment dispatch is guarded by _blockAligning.)
@@ -467,17 +474,38 @@
           ignoreMatcher = null;
           ignorePredicate = null;
         }
+        _ignoreGen++; // invalidate cached ignored-line sets computed for the old matcher/scope
+      }
+
+      // Ignored-line sets are cached per doc version: CM6's Text is immutable,
+      // so the doc object is a perfect cache key. Both consumers (the per-pane
+      // decoration plugin and the chunk counter) share one full-text line scan
+      // per doc change instead of each re-running it.
+      let _ignoreGen = 0;
+      const _ignoredLineCache = new WeakMap(); // Text doc → { gen, set }
+      function getIgnoredLineSet(doc) {
+        if (!ignoreMatcher) return null;
+        const hit = _ignoredLineCache.get(doc);
+        if (hit && hit.gen === _ignoreGen) return hit.set;
+        let set;
+        try {
+          set = window.DiffIgnore.computeIgnoredLines(doc.toString(), ignoreMatcher, ignoreScope);
+        } catch (e) {
+          set = new Set();
+        }
+        _ignoredLineCache.set(doc, { gen: _ignoreGen, set });
+        return set;
       }
 
       // Build the ViewPlugin extension for the *current* matcher. Returns [] when
       // nothing is excluded so there is zero overhead in the common case.
       function buildIgnoreExtension() {
-        const matcher = ignoreMatcher;
-        const scope = ignoreScope;
-        if (!matcher) return [];
+        if (!ignoreMatcher) return [];
+        // Reads the shared per-doc cache (getIgnoredLineSet); the extension is
+        // rebuilt whenever the matcher/scope change, so the current globals are
+        // always the ones this plugin instance should use.
         function computeSet(view) {
-          try { return window.DiffIgnore.computeIgnoredLines(view.state.doc.toString(), matcher, scope); }
-          catch (e) { return new Set(); }
+          return getIgnoredLineSet(view.state.doc) || new Set();
         }
         function buildDecos(view, set) {
           const b = new RangeSetBuilder();
@@ -1593,30 +1621,46 @@
       // normalize matched values so MergeView sees no change. No-op (raw text +
       // CM6's default diff) when neither is active, either side isn't valid JSON,
       // or on any error. (Kept the name applyBlockAlignment: ~10 call sites.)
+      // Memo of the last transform run, keyed by the (immutable) doc versions
+      // and the exact mode. The transform is idempotent and several paths funnel
+      // here (debounced change timer, afterContentChanged, applyIgnorePatterns,
+      // branch init), so re-running on untouched docs is pure waste — skipping
+      // it avoids a full parse+align+stringify of both documents.
+      let _lastAlignMemo = null; // { docA, docB, block, pred }
+
       function applyBlockAlignment() {
         if (_blockAligning || !window.JSONAlign) return;
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
         if (!block && !pred) return;
-        const L = mergeView.a.state.doc.toString();
-        const R = mergeView.b.state.doc.toString();
+        const docA = mergeView.a.state.doc;
+        const docB = mergeView.b.state.doc;
+        if (_lastAlignMemo &&
+            _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
+            _lastAlignMemo.block === block && _lastAlignMemo.pred === pred) return;
+        const L = docA.toString();
+        const R = docB.toString();
         let res;
         try {
           res = block ? window.JSONAlign.align(L, R, { ignore: pred })
                       : window.JSONAlign.normalize(L, R, pred);
-        } catch (e) { return; }
-        if (!res || !res.ok) return;
-        // `changed` is true only while the input still holds un-normalized
-        // (differing) ignored values → it is "fresh" content. Snapshot the
-        // originals so ignore can be undone and autosave keeps real data.
-        if (pred && res.changed) _ignorePristine = { left: L, right: R };
-        _blockAligning = true;
-        try {
-          setPaneIfChanged(mergeView.a, res.left);
-          setPaneIfChanged(mergeView.b, res.right);
-        } finally {
-          _blockAligning = false;
+        } catch (e) { res = null; }
+        if (res && res.ok) {
+          // `changed` is true only while the input still holds un-normalized
+          // (differing) ignored values → it is "fresh" content. Snapshot the
+          // originals so ignore can be undone and autosave keeps real data.
+          if (pred && res.changed) _ignorePristine = { left: L, right: R };
+          _blockAligning = true;
+          try {
+            setPaneIfChanged(mergeView.a, res.left);
+            setPaneIfChanged(mergeView.b, res.right);
+          } finally {
+            _blockAligning = false;
+          }
         }
+        // Memoize against the post-dispatch docs (failures too) so the next
+        // call on unchanged content returns in O(1).
+        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc, block, pred };
       }
 
       // Strip alignment gap lines from both panes (used when Block Diff is turned
@@ -1766,10 +1810,20 @@
         clearBtn.className = 'copy-clear-btn'; // Add class for easy selection
         clearBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
+          // Un-normalize first so the surviving pane goes back to (and persists)
+          // its real values, and the pristine snapshot can't resurrect the
+          // cleared side on the next save.
+          restoreIgnorePristine();
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: "" }
           });
-          
+
+          // Persist the cleared state right away instead of waiting for the
+          // debounced autosave — a refresh inside that window used to bring
+          // the cleared content back.
+          clearTimeout(window.autoSaveTimer);
+          saveContent();
+
           // Save cleared content to current branch
           const branchId = activeBranches[side];
           if (branchId && window.BranchManager) {
@@ -2622,9 +2676,9 @@
 
       // Update visibility of copy/clear buttons based on content
       function updatePaneButtonVisibility() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-        
+        const leftContent = !docIsBlank(mergeView.a.state.doc);
+        const rightContent = !docIsBlank(mergeView.b.state.doc);
+
         // Find all pane controls
         const paneControls = document.querySelectorAll('.pane-controls');
         
@@ -3235,6 +3289,14 @@
       const AUTOSAVE_MAX_BYTES = 4 * 1024 * 1024;        // 4 MB
       // Skip exact CSV/JSON detection (full parse/split) above this size.
       const DETECT_MAX_BYTES = 512 * 1024;               // 512 KB
+      // Full-text (trimmed) equality for the status pill is only computed below
+      // this combined size; larger docs defer to MergeView's chunk list, which
+      // is already computed and needs no multi-MB string materialization.
+      const TEXT_EQ_MAX_BYTES = 1024 * 1024;             // 1 MB
+      // Auto-format/sort on paste re-serializes the whole payload (and pretty-
+      // printing can triple its size); above this cap the raw text is inserted
+      // untouched instead of stalling the tab on parse+stringify.
+      const FORMAT_MAX_BYTES = 4 * 1024 * 1024;          // 4 MB
 
       // Remember the last raw CSV per side so "Convert all anyway" can re-run.
       const lastRawCsv = { left: null, right: null };
@@ -3405,8 +3467,11 @@
         let handled = false;
 
         // 1) JSON-first — only when it actually looks like JSON, so the
-        //    Python→JSON regex passes never run over a huge CSV blob.
-        if (!opts.forceCsv && (autoCSV || autoFormat || autoSort) && looksLikeJSONStart(rawText)) {
+        //    Python→JSON regex passes never run over a huge CSV blob. Above
+        //    FORMAT_MAX_BYTES the raw text is inserted as-is: parse+pretty-print
+        //    of a multi-MB payload is a guaranteed main-thread stall.
+        if (!opts.forceCsv && (autoCSV || autoFormat || autoSort)
+            && rawText.length <= FORMAT_MAX_BYTES && looksLikeJSONStart(rawText)) {
           try {
             const parsed = window.parseFlexibleJSON(rawText);
             content = buildJSONString(parsed, { autoSort });
@@ -3525,6 +3590,10 @@
       async function clearAll() {
         if (!confirm("Clear all content?")) return;
 
+        // Drop the pre-normalization snapshot up front so nothing downstream
+        // (autosave, export) can persist the old content back.
+        _ignorePristine = null;
+
         mergeView.a.dispatch({
           changes: { from: 0, to: mergeView.a.state.doc.length, insert: "" }
         });
@@ -3532,6 +3601,17 @@
         mergeView.b.dispatch({
           changes: { from: 0, to: mergeView.b.state.doc.length, insert: "" }
         });
+
+        // Persist the cleared state everywhere it may live (localStorage +
+        // IndexedDB fallback) and cancel the autosave the dispatches above just
+        // scheduled, so a refresh starts truly clean instead of re-saving stale
+        // state.
+        clearTimeout(window.autoSaveTimer);
+        try {
+          StorageManager.clearStorage();
+        } catch (err) {
+          console.warn('Failed to clear stored content:', err);
+        }
 
         // Save cleared content to both branches
         if (window.BranchManager) {
@@ -3616,6 +3696,18 @@
         updatePaneButtonVisibility();
       }
 
+      // True when the doc contains no non-whitespace character. Walks the doc's
+      // text chunks and exits at the first visible character, so typical content
+      // answers in O(1) instead of materializing + trimming a multi-MB string.
+      function docIsBlank(doc) {
+        if (doc.length === 0) return true;
+        const iter = doc.iter();
+        while (!iter.next().done) {
+          if (/\S/.test(iter.value)) return false;
+        }
+        return true;
+      }
+
       // Set the toolbar diff-summary pill: state drives the color, text the label.
       // state is one of: 'idle' | 'same' | 'diff' | 'busy'.
       function setDiffSummary(state, text) {
@@ -3648,16 +3740,23 @@
       // the number always matches the screen and we avoid a second full
       // diff_match_patch pass (and the >100KB web-worker round-trip) on every edit.
       function updateDiffStatus() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
+        const aDoc = mergeView.a.state.doc;
+        const bDoc = mergeView.b.state.doc;
 
-        if (!leftContent || !rightContent) {
+        if (docIsBlank(aDoc) || docIsBlank(bDoc)) {
           setDiffSummary('idle', 'Add content to both panels to compare');
           updateDiffNavState();
           return;
         }
 
-        if (leftContent === rightContent) {
+        // Equality without building throwaway strings on every debounced edit:
+        // small docs keep the exact trimmed comparison; above the cap the
+        // already-computed chunk list is authoritative (no chunks ⇔ MergeView
+        // found no difference).
+        const same = (aDoc.length + bDoc.length <= TEXT_EQ_MAX_BYTES)
+          ? aDoc.toString().trim() === bDoc.toString().trim()
+          : (mergeView.chunks?.length || 0) === 0;
+        if (same) {
           setDiffSummary('same', 'No differences');
           updateDiffNavState();
           return;
@@ -3690,13 +3789,9 @@
       function countVisibleChunks() {
         const chunks = mergeView?.chunks || [];
         if (!ignoreMatcher) return chunks.length;
-        let ignoredA, ignoredB;
-        try {
-          ignoredA = window.DiffIgnore.computeIgnoredLines(mergeView.a.state.doc.toString(), ignoreMatcher, ignoreScope);
-          ignoredB = window.DiffIgnore.computeIgnoredLines(mergeView.b.state.doc.toString(), ignoreMatcher, ignoreScope);
-        } catch (e) {
-          return chunks.length;
-        }
+        const ignoredA = getIgnoredLineSet(mergeView.a.state.doc);
+        const ignoredB = getIgnoredLineSet(mergeView.b.state.doc);
+        if (!ignoredA || !ignoredB) return chunks.length;
         // Every changed line a chunk spans on this side sits inside an excluded
         // key? (An empty span — pure add/remove on the other side — is handled
         // by the caller, not here.)
@@ -3735,10 +3830,8 @@
         const btnClearAll = document.getElementById("btn-clear-all");
         if (!btnClearAll) return;
 
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-
-        btnClearAll.style.display = (leftContent || rightContent) ? "inline-block" : "none";
+        const hasContent = !docIsBlank(mergeView.a.state.doc) || !docIsBlank(mergeView.b.state.doc);
+        btnClearAll.style.display = hasContent ? "inline-block" : "none";
       }
 
       // Initialize when DOM is ready
