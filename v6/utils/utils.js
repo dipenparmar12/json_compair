@@ -338,6 +338,28 @@
     simple: {
       left: JSON.stringify(
         {
+          name: "John Doe",
+          age: 30,
+          city: "New York",
+          status: "active"
+        },
+        null,
+        2
+      ),
+      right: JSON.stringify(
+        {
+          name: "John Doe",
+          age: 31,
+          city: "New York-2",
+          status: "active"
+        },
+        null,
+        2
+      )
+    },
+    user_profile: {
+      left: JSON.stringify(
+        {
           user_id: 10482,
           legacy_id: "USR-2021-994",
           username: "alex_developer",

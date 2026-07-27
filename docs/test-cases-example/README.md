@@ -20,6 +20,7 @@ Key design principles:
 
 | Case | Scenario | Description | Key Diff Features Demonstrated |
 |---|---|---|---|
+| [`00-quick-simple-example`](./00-quick-simple-example/) | Quick Start | Ultra-simple 5-line JSON with 3 easy diffs | 2 value edits (`age`, `city`), 1 key addition (`department`) |
 | [`01-user-profile-v1-vs-v2`](./01-user-profile-v1-vs-v2/) | User Profile Schema Migration | Upgrading a user profile object from API v1 to v2 schema | Field additions, deletions, type mutations, nested address updates |
 | [`02-api-response-pagination`](./02-api-response-pagination/) | REST API Response Evolution | REST API payload changes between microservice versions | Restructured pagination meta, object key additions, modified nested data |
 | [`03-array-item-reordering-and-mutation`](./03-array-item-reordering-and-mutation/) | Array Collection & Reordering | Server cluster node list with reordered elements and node updates | Array item reordering, item addition/removal, array element diffing |
