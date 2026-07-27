@@ -1,0 +1,28 @@
+{
+  "environment": "staging",
+  "app_name": "inventory-management-service",
+  "version": "2.4.0-rc1",
+  "server": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "workers": 2,
+    "cors_origins": ["https://staging.example.com", "http://localhost:3000"]
+  },
+  "database": {
+    "host": "db-staging.internal.example.com",
+    "port": 5432,
+    "name": "inventory_staging",
+    "pool_size": 5,
+    "ssl_enabled": false
+  },
+  "logging": {
+    "level": "debug",
+    "format": "text",
+    "output": "stdout"
+  },
+  "feature_flags": {
+    "enable_ai_search": true,
+    "enable_beta_checkout": true,
+    "enable_strict_rate_limit": false
+  }
+}

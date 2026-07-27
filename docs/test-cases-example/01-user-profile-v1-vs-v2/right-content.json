@@ -1,0 +1,42 @@
+{
+  "user_id": 10482,
+  "username": "alex_developer",
+  "status": "active",
+  "role": "admin",
+  "profile": {
+    "first_name": "Alexander",
+    "last_name": "Morgan",
+    "email": "alex.morgan@example.com",
+    "phone": "+1-555-019-2834",
+    "avatar_url": "https://cdn.example.com/avatars/v2/user-10482.webp",
+    "address": {
+      "street": "742 Evergreen Terrace",
+      "suite": "Building B, Suite 400",
+      "city": "Springfield",
+      "state": "IL",
+      "postal_code": "62704",
+      "country": "USA"
+    }
+  },
+  "preferences": {
+    "theme": "dark",
+    "language": "en-US",
+    "notifications": {
+      "email": true,
+      "push": false,
+      "sms": true
+    }
+  },
+  "account": {
+    "created_at": "2024-01-15T08:30:00Z",
+    "last_login": "2026-07-27T10:15:00Z",
+    "login_count": 87,
+    "email_verified": true,
+    "mfa_enabled": true
+  },
+  "roles": [
+    "content_creator",
+    "beta_tester",
+    "system_administrator"
+  ]
+}

@@ -338,128 +338,391 @@
     simple: {
       left: JSON.stringify(
         {
-          name: "John",
-          age: 30,
-          city: "New York",
+          user_id: 10482,
+          legacy_id: "USR-2021-994",
+          username: "alex_developer",
+          status: "pending_verification",
+          role: "editor",
+          profile: {
+            first_name: "Alex",
+            last_name: "Morgan",
+            email: "alex.morgan@example.com",
+            phone: "+1-555-019-2834",
+            avatar_url: "https://cdn.example.com/avatars/user-10482.jpg",
+            address: {
+              street: "742 Evergreen Terrace",
+              city: "Springfield",
+              state: "IL",
+              postal_code: "62704",
+              country: "USA"
+            }
+          },
+          account: {
+            created_at: "2024-01-15T08:30:00Z",
+            last_login: "2026-07-20T14:22:10Z",
+            login_count: 42,
+            email_verified: false
+          },
+          roles: ["content_creator", "beta_tester"]
         },
         null,
-        3
+        2
       ),
       right: JSON.stringify(
         {
-          name: "John",
-          age: 31,
-          city: "Boston",
+          user_id: 10482,
+          username: "alex_developer",
+          status: "active",
+          role: "admin",
+          profile: {
+            first_name: "Alexander",
+            last_name: "Morgan",
+            email: "alex.morgan@example.com",
+            phone: "+1-555-019-2834",
+            avatar_url: "https://cdn.example.com/avatars/v2/user-10482.webp",
+            address: {
+              street: "742 Evergreen Terrace",
+              suite: "Building B, Suite 400",
+              city: "Springfield",
+              state: "IL",
+              postal_code: "62704",
+              country: "USA"
+            }
+          },
+          preferences: {
+            theme: "dark",
+            language: "en-US",
+            notifications: {
+              email: true,
+              push: false,
+              sms: true
+            }
+          },
+          account: {
+            created_at: "2024-01-15T08:30:00Z",
+            last_login: "2026-07-27T10:15:00Z",
+            login_count: 87,
+            email_verified: true,
+            mfa_enabled: true
+          },
+          roles: ["content_creator", "beta_tester", "system_administrator"]
         },
         null,
-        3
-      ),
+        2
+      )
     },
-    complex: {
+    api: {
       left: JSON.stringify(
         {
-          users: [
-            makeUser(1, "Alice", true, "Paris2"),
-            makeUser(2, "Bob", false, "Boston"),
-            makeUser(3, "Charlie", true, "Chicago"),
-            makeUser(4, "David", false, "Paris2"), // identical
-            makeUser(5, "Eve", true, "Boston"),    // identical
-            makeUser(6, "Frank", false, "Chicago"),
-            makeUser(7, "Grace", true, "Paris2"),
-            makeUser(8, "Helen", false, "Boston"),
-            makeUser(9, "Ivy", true, "Chicago"),
-            makeUser(10, "Jack", false, "Paris2"),
-          ],
-          settings: {
-            theme: "dark",
-            notifications: true,
-            version: "1.0.0",
-            features: ["compare", "merge", "export", "import"],
-          },
+          status_code: 200,
+          message: "Success",
+          data_version: "1.0",
+          page: 1,
+          per_page: 2,
+          total_records: 4,
+          products: [
+            {
+              id: "PROD-101",
+              name: "Wireless Noise-Canceling Headphones",
+              category: "Audio",
+              price: 199.99,
+              in_stock: true,
+              tags: ["audio", "wireless", "bluetooth"]
+            },
+            {
+              id: "PROD-102",
+              name: "Ergonomic Mechanical Keyboard",
+              category: "Peripherals",
+              price: 129.50,
+              in_stock: false,
+              tags: ["office", "keyboard"]
+            }
+          ]
         },
         null,
-        3
+        2
       ),
       right: JSON.stringify(
         {
-          users: [
-            makeUser(1, "Alice", true, "Paris2"),      // identical
-            makeUser(2, "Bob", false, "Boston"),       // identical
-            makeUser(3, "Charlie", false, "Chicago"),  // diff: active
-            makeUser(4, "David", false, "Paris2"),     // identical
-            makeUser(5, "Eve", true, "Boston"),        // identical
-            makeUser(6, "Frank", true, "Chicago"),     // diff: active
-            makeUser(7, "Grace", true, "Rome"),        // diff: city
-            makeUser(8, "Helen", false, "Boston"),     // identical
-            makeUser(9, "Ivy", true, "Chicago"),       // identical
-            makeUser(10, "Jack", false, "Paris2"),     // identical
-          ],
-          settings: {
-            theme: "light",
-            notifications: false,
-            version: "1.1.0",
-            features: ["compare", "merge", "export", "import", "zip"],
+          status_code: 200,
+          message: "Operation completed successfully",
+          data_version: "2.0",
+          meta: {
+            pagination: {
+              current_page: 1,
+              per_page: 2,
+              total_records: 5,
+              total_pages: 3,
+              has_next: true
+            },
+            response_time_ms: 42
           },
+          products: [
+            {
+              id: "PROD-101",
+              name: "Wireless Noise-Canceling Headphones",
+              category: "Audio & Sound",
+              price: 179.99,
+              in_stock: true,
+              rating: 4.8,
+              tags: ["audio", "wireless", "bluetooth", "noise-canceling"]
+            },
+            {
+              id: "PROD-102",
+              name: "Ergonomic Mechanical Keyboard",
+              category: "Peripherals",
+              price: 129.50,
+              in_stock: true,
+              rating: 4.6,
+              tags: ["office", "keyboard", "rgb"]
+            }
+          ]
         },
         null,
-        3
-      ),
+        2
+      )
     },
     array: {
       left: JSON.stringify(
         [
-          makeUser(100, "Alice", true, "London"),
-          makeUser(101, "Bob", false, "Paris2"),
-          makeUser(102, "Charlie", true, "Berlin"),
-          makeUser(103, "David", false, "Dpn"),
-          makeUser(104, "Eve", true, "London"),    // identical
-          makeUser(105, "Frank", false, "Paris2"), // identical
-          makeUser(106, "Grace", true, "Berlin"),  // identical
-          makeUser(107, "Helen", false, "Dpn"),    // identical
-          makeUser(108, "Ivy", true, "London"),
-          makeUser(109, "Jack", false, "Paris2"),
-          makeUser(110, "Alice", true, "Berlin"),
-          makeUser(111, "Bob", false, "Dpn"),
-          makeUser(112, "Charlie", true, "London"),
-          makeUser(113, "David", false, "Paris2"),
-          makeUser(114, "Eve", true, "Berlin"),
-          makeUser(115, "Frank", false, "Dpn"),
-          makeUser(116, "Grace", true, "London"),
-          makeUser(117, "Helen", false, "Paris2"),
-          makeUser(118, "Ivy", true, "Berlin"),
-          makeUser(119, "Jack", false, "Dpn"),
+          {
+            node_id: "us-east-1a",
+            hostname: "node-01.east.internal",
+            role: "primary_db",
+            status: "healthy",
+            capacity: { cpu: 16, ram_gb: 64 },
+            services: ["postgres", "pgbouncer"]
+          },
+          {
+            node_id: "us-east-1b",
+            hostname: "node-02.east.internal",
+            role: "replica_db",
+            status: "healthy",
+            capacity: { cpu: 16, ram_gb: 64 },
+            services: ["postgres"]
+          },
+          {
+            node_id: "us-west-2a",
+            hostname: "node-03.west.internal",
+            role: "api_gateway",
+            status: "degraded",
+            capacity: { cpu: 8, ram_gb: 32 },
+            services: ["envoy", "rate_limiter"]
+          },
+          {
+            node_id: "eu-central-1a",
+            hostname: "node-04.eu.internal",
+            role: "cache",
+            status: "healthy",
+            capacity: { cpu: 8, ram_gb: 16 },
+            services: ["redis"]
+          }
         ],
         null,
-        3
+        2
       ),
       right: JSON.stringify(
         [
-          makeUser(100, "Alice", true, "London"),      // identical
-          makeUser(101, "Bob", false, "Paris"),        // diff: city
-          makeUser(102, "Charlie", true, "Berlin"),    // identical
-          makeUser(103, "David", false, "Rome"),       // diff: city
-          makeUser(104, "Eve", true, "London"),        // identical
-          makeUser(105, "Frank", false, "Paris2"),     // identical
-          makeUser(106, "Grace", true, "Berlin"),      // identical
-          makeUser(107, "Helen", false, "Dpn"),        // identical
-          makeUser(108, "Ivy", true, "London"),        // identical
-          makeUser(109, "Jack", false, "Paris2"),      // identical
-          makeUser(110, "Alice", true, "Berlin"),      // identical
-          makeUser(111, "Bob", false, "Rome"),         // diff: city
-          makeUser(112, "Charlie", true, "London"),    // identical
-          makeUser(113, "David", false, "Paris2"),     // identical
-          makeUser(114, "Eve", true, "Berlin"),        // identical
-          makeUser(115, "Frank", false, "Dpn"),        // identical
-          makeUser(116, "Grace", true, "London"),      // identical
-          makeUser(117, "Helen", false, "Paris"),      // diff: city
-          makeUser(118, "Ivy", true, "Berlin"),        // identical
-          makeUser(119, "Jack", false, "Rome"),        // diff: city
+          {
+            node_id: "us-east-1a",
+            hostname: "node-01.east.internal",
+            role: "primary_db",
+            status: "healthy",
+            capacity: { cpu: 32, ram_gb: 128 },
+            services: ["postgres", "pgbouncer", "metrics_exporter"]
+          },
+          {
+            node_id: "us-west-2a",
+            hostname: "node-03.west.internal",
+            role: "api_gateway",
+            status: "healthy",
+            capacity: { cpu: 16, ram_gb: 32 },
+            services: ["envoy", "rate_limiter"]
+          },
+          {
+            node_id: "us-east-1b",
+            hostname: "node-02.east.internal",
+            role: "replica_db",
+            status: "healthy",
+            capacity: { cpu: 16, ram_gb: 64 },
+            services: ["postgres"]
+          },
+          {
+            node_id: "ap-southeast-1a",
+            hostname: "node-05.asia.internal",
+            role: "cache",
+            status: "healthy",
+            capacity: { cpu: 8, ram_gb: 16 },
+            services: ["redis"]
+          }
         ],
         null,
-        3
-      ),
+        2
+      )
     },
+    config: {
+      left: JSON.stringify(
+        {
+          environment: "staging",
+          app_name: "inventory-management-service",
+          version: "2.4.0-rc1",
+          server: {
+            port: 8080,
+            host: "0.0.0.0",
+            workers: 2,
+            cors_origins: ["https://staging.example.com", "http://localhost:3000"]
+          },
+          database: {
+            host: "db-staging.internal.example.com",
+            port: 5432,
+            name: "inventory_staging",
+            pool_size: 5,
+            ssl_enabled: false
+          },
+          logging: {
+            level: "debug",
+            format: "text",
+            output: "stdout"
+          },
+          feature_flags: {
+            enable_ai_search: true,
+            enable_beta_checkout: true,
+            enable_strict_rate_limit: false
+          }
+        },
+        null,
+        2
+      ),
+      right: JSON.stringify(
+        {
+          environment: "production",
+          app_name: "inventory-management-service",
+          version: "2.4.0",
+          server: {
+            port: 8080,
+            host: "0.0.0.0",
+            workers: 16,
+            cors_origins: ["https://app.example.com"]
+          },
+          database: {
+            host: "db-prod-cluster.internal.example.com",
+            port: 5432,
+            name: "inventory_prod",
+            pool_size: 50,
+            ssl_enabled: true
+          },
+          logging: {
+            level: "info",
+            format: "json",
+            output: "cloudwatch"
+          },
+          feature_flags: {
+            enable_ai_search: false,
+            enable_beta_checkout: false,
+            enable_strict_rate_limit: true
+          }
+        },
+        null,
+        2
+      )
+    },
+    ecommerce: {
+      left: JSON.stringify(
+        {
+          order_id: "ORD-2026-88912",
+          status: "payment_confirmed",
+          created_at: "2026-07-27T09:00:00Z",
+          updated_at: "2026-07-27T09:02:15Z",
+          customer: {
+            customer_id: "CUST-4402",
+            name: "Samantha Reed",
+            email: "samantha.reed@example.com"
+          },
+          pricing: {
+            subtotal: 149.98,
+            discount: 0.00,
+            tax: 12.00,
+            shipping_fee: 5.99,
+            total: 167.97,
+            currency: "USD"
+          },
+          items: [
+            {
+              item_id: "ITEM-10",
+              name: "Smart Fitness Tracker",
+              quantity: 1,
+              unit_price: 99.99,
+              status: "allocated"
+            },
+            {
+              item_id: "ITEM-25",
+              name: "Stainless Steel Water Bottle",
+              quantity: 2,
+              unit_price: 24.995,
+              status: "allocated"
+            }
+          ],
+          fulfillment: {
+            warehouse_id: "WH-EAST-01",
+            carrier: null,
+            tracking_number: null,
+            shipped_at: null
+          }
+        },
+        null,
+        2
+      ),
+      right: JSON.stringify(
+        {
+          order_id: "ORD-2026-88912",
+          status: "shipped",
+          created_at: "2026-07-27T09:00:00Z",
+          updated_at: "2026-07-27T11:30:00Z",
+          customer: {
+            customer_id: "CUST-4402",
+            name: "Samantha Reed",
+            email: "samantha.reed@example.com"
+          },
+          pricing: {
+            subtotal: 149.98,
+            discount: 15.00,
+            tax: 10.80,
+            shipping_fee: 0.00,
+            total: 145.78,
+            currency: "USD",
+            promo_code: "SUMMER15"
+          },
+          items: [
+            {
+              item_id: "ITEM-10",
+              name: "Smart Fitness Tracker",
+              quantity: 1,
+              unit_price: 99.99,
+              status: "packed"
+            },
+            {
+              item_id: "ITEM-25",
+              name: "Stainless Steel Water Bottle",
+              quantity: 2,
+              unit_price: 24.995,
+              status: "packed"
+            }
+          ],
+          fulfillment: {
+            warehouse_id: "WH-EAST-01",
+            carrier: "FedEx Express",
+            tracking_number: "FX-994827103-US",
+            shipped_at: "2026-07-27T11:28:44Z"
+          }
+        },
+        null,
+        2
+      )
+    }
   };
+
+  // Backwards compatibility alias for 'complex'
+  DefaultTemplates.complex = DefaultTemplates.config;
 
   // Function to sort JSON object keys recursively
   function sortJSONKeys(obj) {

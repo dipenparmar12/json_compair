@@ -1,0 +1,41 @@
+{
+  "order_id": "ORD-2026-88912",
+  "status": "payment_confirmed",
+  "created_at": "2026-07-27T09:00:00Z",
+  "updated_at": "2026-07-27T09:02:15Z",
+  "customer": {
+    "customer_id": "CUST-4402",
+    "name": "Samantha Reed",
+    "email": "samantha.reed@example.com"
+  },
+  "pricing": {
+    "subtotal": 149.98,
+    "discount": 0.00,
+    "tax": 12.00,
+    "shipping_fee": 5.99,
+    "total": 167.97,
+    "currency": "USD"
+  },
+  "items": [
+    {
+      "item_id": "ITEM-10",
+      "name": "Smart Fitness Tracker",
+      "quantity": 1,
+      "unit_price": 99.99,
+      "status": "allocated"
+    },
+    {
+      "item_id": "ITEM-25",
+      "name": "Stainless Steel Water Bottle",
+      "quantity": 2,
+      "unit_price": 24.995,
+      "status": "allocated"
+    }
+  ],
+  "fulfillment": {
+    "warehouse_id": "WH-EAST-01",
+    "carrier": null,
+    "tracking_number": null,
+    "shipped_at": null
+  }
+}

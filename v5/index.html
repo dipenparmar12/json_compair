@@ -545,8 +545,12 @@
         const templateSelect = document.createElement("select");
         templateSelect.className = "toggle-button";
         templateSelect.innerHTML = `
-                <option value="simple">Simple Template</option>
-                <option value="complex">Complex Template</option>
+                <option value="">Choose example...</option>
+                <option value="simple">👤 User Profile (v1 vs v2)</option>
+                <option value="api">🚀 REST API Response (v1 vs v2)</option>
+                <option value="array">📋 Array Reordering & Collection Diff</option>
+                <option value="config">⚙️ Environment Config (Staging vs Prod)</option>
+                <option value="ecommerce">🛒 E-Commerce Order State</option>
             `;
         templateSelect.onchange = () => {
           const template = DefaultTemplates[templateSelect.value];

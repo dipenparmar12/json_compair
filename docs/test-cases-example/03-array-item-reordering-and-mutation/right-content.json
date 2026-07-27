@@ -1,0 +1,34 @@
+[
+  {
+    "node_id": "us-east-1a",
+    "hostname": "node-01.east.internal",
+    "role": "primary_db",
+    "status": "healthy",
+    "capacity": { "cpu": 32, "ram_gb": 128 },
+    "services": ["postgres", "pgbouncer", "metrics_exporter"]
+  },
+  {
+    "node_id": "us-west-2a",
+    "hostname": "node-03.west.internal",
+    "role": "api_gateway",
+    "status": "healthy",
+    "capacity": { "cpu": 16, "ram_gb": 32 },
+    "services": ["envoy", "rate_limiter"]
+  },
+  {
+    "node_id": "us-east-1b",
+    "hostname": "node-02.east.internal",
+    "role": "replica_db",
+    "status": "healthy",
+    "capacity": { "cpu": 16, "ram_gb": 64 },
+    "services": ["postgres"]
+  },
+  {
+    "node_id": "ap-southeast-1a",
+    "hostname": "node-05.asia.internal",
+    "role": "cache",
+    "status": "healthy",
+    "capacity": { "cpu": 8, "ram_gb": 16 },
+    "services": ["redis"]
+  }
+]

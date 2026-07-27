@@ -1,0 +1,35 @@
+{
+  "status_code": 200,
+  "message": "Operation completed successfully",
+  "data_version": "2.0",
+  "meta": {
+    "pagination": {
+      "current_page": 1,
+      "per_page": 2,
+      "total_records": 5,
+      "total_pages": 3,
+      "has_next": true
+    },
+    "response_time_ms": 42
+  },
+  "products": [
+    {
+      "id": "PROD-101",
+      "name": "Wireless Noise-Canceling Headphones",
+      "category": "Audio & Sound",
+      "price": 179.99,
+      "in_stock": true,
+      "rating": 4.8,
+      "tags": ["audio", "wireless", "bluetooth", "noise-canceling"]
+    },
+    {
+      "id": "PROD-102",
+      "name": "Ergonomic Mechanical Keyboard",
+      "category": "Peripherals",
+      "price": 129.50,
+      "in_stock": true,
+      "rating": 4.6,
+      "tags": ["office", "keyboard", "rgb"]
+    }
+  ]
+}

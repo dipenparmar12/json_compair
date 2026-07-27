@@ -1,0 +1,31 @@
+{
+  "user_id": 10482,
+  "legacy_id": "USR-2021-994",
+  "username": "alex_developer",
+  "status": "pending_verification",
+  "role": "editor",
+  "profile": {
+    "first_name": "Alex",
+    "last_name": "Morgan",
+    "email": "alex.morgan@example.com",
+    "phone": "+1-555-019-2834",
+    "avatar_url": "https://cdn.example.com/avatars/user-10482.jpg",
+    "address": {
+      "street": "742 Evergreen Terrace",
+      "city": "Springfield",
+      "state": "IL",
+      "postal_code": "62704",
+      "country": "USA"
+    }
+  },
+  "account": {
+    "created_at": "2024-01-15T08:30:00Z",
+    "last_login": "2026-07-20T14:22:10Z",
+    "login_count": 42,
+    "email_verified": false
+  },
+  "roles": [
+    "content_creator",
+    "beta_tester"
+  ]
+}

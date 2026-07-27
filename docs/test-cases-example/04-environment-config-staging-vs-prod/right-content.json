@@ -1,0 +1,28 @@
+{
+  "environment": "production",
+  "app_name": "inventory-management-service",
+  "version": "2.4.0",
+  "server": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "workers": 16,
+    "cors_origins": ["https://app.example.com"]
+  },
+  "database": {
+    "host": "db-prod-cluster.internal.example.com",
+    "port": 5432,
+    "name": "inventory_prod",
+    "pool_size": 50,
+    "ssl_enabled": true
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "output": "cloudwatch"
+  },
+  "feature_flags": {
+    "enable_ai_search": false,
+    "enable_beta_checkout": false,
+    "enable_strict_rate_limit": true
+  }
+}
