@@ -262,6 +262,29 @@
                   <div class="setting-desc">Tint excluded matches with a subdued gray background. Off = fully neutral (still no red/green).</div>
                 </div>
               </label>
+
+              <div class="settings-section-title settings-section-divided">Numeric tolerance</div>
+              <div class="ignore-desc">
+                Ignore tiny floating-point differences: two numbers count as equal
+                when their difference is within the tolerance (e.g. <code>0.001</code>
+                treats values matching to 3 decimal places as identical — no red/green,
+                not counted).
+              </div>
+              <label class="setting-row">
+                <input type="checkbox" id="numtol-enabled" />
+                <div class="setting-text">
+                  <div class="setting-title">Enable numeric tolerance</div>
+                  <div class="setting-desc">Treat near-equal numbers as the same value in the diff.</div>
+                </div>
+              </label>
+              <label class="setting-row row-inline">
+                <span class="setting-text">
+                  <span class="setting-title">Tolerance</span>
+                  <span class="setting-desc">Max ignored difference (must be &gt; 0)</span>
+                </span>
+                <input type="number" id="numtol-value" class="settings-input-num"
+                       value="0.001" min="0" step="0.001" inputmode="decimal" />
+              </label>
             </div>
           </div>
         </div>
@@ -453,6 +476,27 @@
 
       function ignoreActive() { return !!ignorePredicate; }
 
+      // ---- Numeric tolerance (treat near-equal numbers as identical) --------
+      // Same normalization trick as ignore: json_align copies the left number
+      // onto both sides when |a - b| <= tolerance, so MergeView sees no change
+      // (the field collapses, isn't counted, shows no red/green). Shares the
+      // _ignorePristine snapshot/restore + autosave machinery so real values are
+      // never persisted in place of the normalized view. See Diff Engine §7.
+      let numTolEnabled = false;  // enable/disable toggle (persisted)
+      let numTolValue = 0.001;    // max |a-b| ignored when enabled (persisted)
+
+      // Effective tolerance to feed json_align: a positive finite number, or
+      // null when the feature is off / mis-configured (null = zero overhead).
+      function numToleranceActive() {
+        return (numTolEnabled && typeof numTolValue === 'number' &&
+                isFinite(numTolValue) && numTolValue > 0) ? numTolValue : null;
+      }
+
+      // True when ANY transform (block align, ignore, tolerance) should run.
+      function transformActive() {
+        return blockDiffEnabled() || ignoreActive() || numToleranceActive() != null;
+      }
+
       // Coerce a stored value into a clean array of trimmed, de-duped, non-empty
       // pattern strings (tolerates arrays, a single string, or junk from URLs).
       function normalizeIgnorePatterns(val) {
@@ -580,10 +624,25 @@
         rebuildIgnoreMatcher();
         // Re-derive the view: normalize for the new set, or strip any leftover
         // gaps when nothing is active and block-diff is off.
-        if (blockDiffEnabled() || ignoreActive()) applyBlockAlignment();
+        if (transformActive()) applyBlockAlignment();
         else removeBlockAlignment();
         reconfigureIgnore();
         renderIgnoreList();
+        updateDiffStatus();
+      }
+
+      // Apply an enable/disable or value change to numeric tolerance: restore the
+      // real (pre-normalized) values first so a disable / lowered tolerance
+      // reveals those diffs again, persist, drop the align memo (tolerance is
+      // part of its key), then re-run the transform (or strip gaps if nothing is
+      // left active) and refresh the count.
+      function applyNumTolerance() {
+        restoreIgnorePristine();
+        SettingsManager.set('numToleranceEnabled', numTolEnabled);
+        SettingsManager.set('numTolerance', numTolValue);
+        _lastAlignMemo = null;
+        if (transformActive()) applyBlockAlignment();
+        else removeBlockAlignment();
         updateDiffStatus();
       }
 
@@ -696,6 +755,30 @@
             applyIgnorePatterns();  // re-derive the view for the new match scope
           });
         }
+
+        // Numeric tolerance: enable/disable checkbox + configurable value.
+        const tolChk = document.getElementById('numtol-enabled');
+        const tolInput = document.getElementById('numtol-value');
+        if (tolChk) {
+          tolChk.checked = numTolEnabled;
+          tolChk.addEventListener('change', () => {
+            numTolEnabled = tolChk.checked;
+            if (tolInput) tolInput.disabled = !numTolEnabled;
+            applyNumTolerance();
+          });
+        }
+        if (tolInput) {
+          tolInput.value = numTolValue;
+          tolInput.disabled = !numTolEnabled;
+          // 'change' (blur / Enter) not 'input', so we don't re-align on every
+          // keystroke. Ignore non-positive / non-numeric input (revert the box).
+          tolInput.addEventListener('change', () => {
+            const v = parseFloat(tolInput.value);
+            if (isFinite(v) && v > 0) { numTolValue = v; applyNumTolerance(); }
+            else { tolInput.value = numTolValue; }
+          });
+        }
+
         renderIgnoreList();
       }
 
@@ -847,6 +930,14 @@
         ignoreStyled = SettingsManager.get('ignoreStyled') !== false;
         rebuildIgnoreMatcher();
 
+        // Numeric tolerance state (used by applyBlockAlignment, which runs at the
+        // end of initializeBranches). No compartment/plugin, so no pre-build step.
+        numTolEnabled = SettingsManager.get('numToleranceEnabled') === true;
+        {
+          const t = parseFloat(SettingsManager.get('numTolerance'));
+          numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
+        }
+
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
         const mergeSettings = loadMergeSettings();
 
@@ -974,7 +1065,7 @@
         // content arrives via the editor `doc:` config, which does not fire the
         // change listener, so we trigger it explicitly here). When neither block
         // diff nor ignore is active, strip any gap lines a snapshot carried.
-        if (blockDiffEnabled() || ignoreActive()) applyBlockAlignment();
+        if (transformActive()) applyBlockAlignment();
         else removeBlockAlignment();
         updateDiffStatus();
       }
@@ -1542,9 +1633,10 @@
         }
 
         // Apply block-diff change: turning it on aligns now; turning it off
-        // restores raw (un-gapped) text — unless ignore is still active, which
-        // keeps normalizing (without gaps) so ignored fields stay collapsed.
-        if (newBlockDiff || ignoreActive()) {
+        // restores raw (un-gapped) text — unless ignore or numeric tolerance is
+        // still active, which keeps normalizing (without gaps) so those fields
+        // stay collapsed.
+        if (newBlockDiff || ignoreActive() || numToleranceActive() != null) {
           applyBlockAlignment();
         } else if (prevBlockDiff) {
           removeBlockAlignment();
@@ -1630,30 +1722,33 @@
       // here (debounced change timer, afterContentChanged, applyIgnorePatterns,
       // branch init), so re-running on untouched docs is pure waste — skipping
       // it avoids a full parse+align+stringify of both documents.
-      let _lastAlignMemo = null; // { docA, docB, block, pred }
+      let _lastAlignMemo = null; // { docA, docB, block, pred, tol }
 
       function applyBlockAlignment() {
         if (_blockAligning || !window.JSONAlign) return;
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
-        if (!block && !pred) return;
+        const tol = numToleranceActive();
+        if (!block && !pred && tol == null) return;
         const docA = mergeView.a.state.doc;
         const docB = mergeView.b.state.doc;
         if (_lastAlignMemo &&
             _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
-            _lastAlignMemo.block === block && _lastAlignMemo.pred === pred) return;
+            _lastAlignMemo.block === block && _lastAlignMemo.pred === pred &&
+            _lastAlignMemo.tol === tol) return;
         const L = docA.toString();
         const R = docB.toString();
         let res;
         try {
-          res = block ? window.JSONAlign.align(L, R, { ignore: pred })
-                      : window.JSONAlign.normalize(L, R, pred);
+          res = block ? window.JSONAlign.align(L, R, { ignore: pred, numTol: tol })
+                      : window.JSONAlign.normalize(L, R, pred, tol);
         } catch (e) { res = null; }
         if (res && res.ok) {
           // `changed` is true only while the input still holds un-normalized
-          // (differing) ignored values → it is "fresh" content. Snapshot the
-          // originals so ignore can be undone and autosave keeps real data.
-          if (pred && res.changed) _ignorePristine = { left: L, right: R };
+          // (differing) ignored / near-equal values → it is "fresh" content.
+          // Snapshot the originals so the transform can be undone and autosave
+          // keeps real data rather than the normalized (copied-left) view.
+          if ((pred || tol != null) && res.changed) _ignorePristine = { left: L, right: R };
           _blockAligning = true;
           try {
             setPaneIfChanged(mergeView.a, res.left);
@@ -1664,7 +1759,7 @@
         }
         // Memoize against the post-dispatch docs (failures too) so the next
         // call on unchanged content returns in O(1).
-        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc, block, pred };
+        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc, block, pred, tol };
       }
 
       // Strip alignment gap lines from both panes (used when Block Diff is turned

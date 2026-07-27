@@ -185,6 +185,8 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "ignorePatterns": [],          // Key names / /regex/ excluded from the diff (see Diff Engine §7)
   "ignoreScope": "both",         // What a pattern matches: 'key' | 'value' | 'both'
   "ignoreStyled": true,          // Tint excluded matches gray (off = neutral, still no red/green)
+  "numToleranceEnabled": false,  // Treat near-equal numbers as identical (see Diff Engine §8)
+  "numTolerance": 0.001,         // Max |a-b| ignored when enabled (e.g. 0.001 ≈ 3 decimals)
 
   // Auto-Processing
   "autoCsv": true,               // Auto-convert CSV
@@ -237,10 +239,10 @@ window.DiffIgnore
   .makePredicate()      // (matcher, scope) → (key,aVal,bVal)=>bool for json_align
   .computeIgnoredLines()// (text, matcher, scope) → Set<1-based line no.> (key + value block)
 
-// json_align.js (v6) — ignore-aware
+// json_align.js (v6) — ignore- and tolerance-aware
 window.JSONAlign
-  .align(l, r, {ignore})   // block-align + normalize matched values → {ok,left,right,changed}
-  .normalize(l, r, ignore) // normalize only (block-diff off) → {ok,left,right,changed}
+  .align(l, r, {ignore, numTol})  // block-align + normalize matched/near-equal → {ok,left,right,changed}
+  .normalize(l, r, ignore, numTol)// normalize only (block-diff off) → {ok,left,right,changed}
   .stripGaps(text)
 ```
 
@@ -694,6 +696,30 @@ Understand the split before touching diff/perf code:
   re-render → recount. Compartment mounted in both editors (initial + `recreateMergeView`).
 - **Setting:** `ignorePatterns` (string[]) + `ignoreScope` ('key'|'value'|'both') + `ignoreStyled`
   (bool). Empty list → predicate `null` → zero overhead. See memory [[v6-ignore-keys-diff]].
+
+### 8. Numeric tolerance for floating-point diffs — `json_align.js` (`numTol`)
+- **Why:** ignore tiny floating-point noise (`19.99` vs `19.9905`, rounding drift) so values that
+  are "equal enough" don't show as diffs. Same problem shape as ignore keys — CM6 owns the diff — so
+  the **same solution**: normalize. When `|a - b| <= numTol` the LEFT number is emitted on BOTH
+  sides, so MergeView sees no change (collapses, not counted, no red/green).
+- **Mechanism (`eqKind(a,b,tol)` in json_align.js):** replaced `deepEqual` with a 3-way `eqKind`
+  returning `0` (differ), `1` (exactly equal), `2` (equal ONLY via tolerance). Kind `2` flips
+  `ctx.changed` so the caller snapshots `_ignorePristine` — reusing the **exact same** pristine /
+  restore / autosave path as ignore, so storage/export keep real numbers, not the normalized view.
+  `deepEqual` is now `eqKind(a,b,null) !== 0` (unchanged exact semantics for the ignore path).
+- **Coverage:** works at every level via recursion — object props, array elements (the LCS in
+  `lcsMatches` is tolerance-aware, so near-equal items *align* instead of read as add+remove), and
+  nested. Both `align()` (block-diff on, `{numTol}`) and `normalize()` (block-diff off, 4th arg).
+- **Wiring (index.html):** `numTolEnabled` + `numTolValue` globals, `numToleranceActive()` →
+  effective tol or null, `transformActive()` (block OR ignore OR tol) gates
+  `applyBlockAlignment`/`removeBlockAlignment` everywhere. `applyNumTolerance()` mirrors
+  `applyIgnorePatterns()` (restore pristine → persist → drop `_lastAlignMemo` → re-transform →
+  recount). `_lastAlignMemo` key includes `tol`. UI: enable checkbox + number input in the **Ignore
+  dropdown** ("Numeric tolerance" section), wired in `initializeIgnorePanel()`.
+- **Setting:** `numToleranceEnabled` (bool, default false) + `numTolerance` (number, default 0.001).
+  Off / value ≤ 0 → `numTol` null → zero overhead. **Gotcha:** the boundary is IEEE754-fuzzy —
+  `|19.991 - 19.99|` is `0.001000…012 > 0.001`, so exactly-at-tolerance pairs may or may not match.
+  See memory [[v6-numeric-tolerance-diff]].
 
 ### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on

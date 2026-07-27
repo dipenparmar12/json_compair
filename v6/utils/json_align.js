@@ -23,6 +23,13 @@
    in the result reports whether any such normalization actually altered a
    value (used by the caller to snapshot the pre-normalized originals).
 
+   Numeric tolerance: an optional `numTol` (a positive number) makes two
+   numbers count as equal when |a - b| <= numTol — same normalization trick
+   (emit the LEFT value on both sides), so tiny floating-point differences
+   collapse, aren't counted, and show no red/green. Applies everywhere numbers
+   are compared (object props, array elements, nested), and near-equal array
+   items still align via the tolerance-aware LCS. `changed` covers this too.
+
    Pure + dependency-free. Exposes window.JSONAlign.
    ==================================================================== */
 (function () {
@@ -37,26 +44,52 @@
     return v !== null && typeof v === 'object' && !Array.isArray(v);
   }
 
-  function deepEqual(a, b) {
-    if (a === b) return true;
-    if (typeof a !== typeof b) return false;
-    if (a === null || b === null) return a === b;
-    if (typeof a !== 'object') return a === b;
+  // Structural equality with an OPTIONAL numeric tolerance `tol` (null = exact).
+  // Returns a kind so callers can tell a genuine match from a tolerated one:
+  //   0 = not equal
+  //   1 = exactly equal
+  //   2 = equal ONLY because tolerance bridged a numeric difference
+  // Kind 2 matters because emitting one side's value on both is then a real
+  // normalization — the caller flips ctx.changed and snapshots the originals
+  // (just like the ignore path) so storage/export keep the true values.
+  function eqKind(a, b, tol) {
+    if (a === b) return 1;
+    var ta = typeof a, tb = typeof b;
+    if (ta === 'number' && tb === 'number') {
+      if (tol != null && isFinite(a) && isFinite(b) && Math.abs(a - b) <= tol) return 2;
+      return 0; // a === b already ruled out above
+    }
+    if (ta !== tb) return 0;
+    if (a === null || b === null) return 0;
+    if (ta !== 'object') return 0; // unequal primitives (string/boolean)
     var aArr = Array.isArray(a), bArr = Array.isArray(b);
-    if (aArr !== bArr) return false;
+    if (aArr !== bArr) return 0;
+    var viaTol = false, r, i, k, key, ak, bk;
     if (aArr) {
-      if (a.length !== b.length) return false;
-      for (var i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
-      return true;
+      if (a.length !== b.length) return 0;
+      for (i = 0; i < a.length; i++) {
+        r = eqKind(a[i], b[i], tol);
+        if (r === 0) return 0;
+        if (r === 2) viaTol = true;
+      }
+      return viaTol ? 2 : 1;
     }
-    var ak = Object.keys(a), bk = Object.keys(b);
-    if (ak.length !== bk.length) return false;
-    for (var k = 0; k < ak.length; k++) {
-      var key = ak[k];
-      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
-      if (!deepEqual(a[key], b[key])) return false;
+    ak = Object.keys(a); bk = Object.keys(b);
+    if (ak.length !== bk.length) return 0;
+    for (k = 0; k < ak.length; k++) {
+      key = ak[k];
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return 0;
+      r = eqKind(a[key], b[key], tol);
+      if (r === 0) return 0;
+      if (r === 2) viaTol = true;
     }
-    return true;
+    return viaTol ? 2 : 1;
+  }
+
+  // Exact structural equality (tolerance off) — used by the ignore path's
+  // "did normalization actually change a value?" checks.
+  function deepEqual(a, b) {
+    return eqKind(a, b, null) !== 0;
   }
 
   // Serialize a value to lines matching JSON.stringify(v, null, 2), each
@@ -92,6 +125,14 @@
   // for any object property that `ignore` marks — so ignored props render
   // identically on both sides. Used by normalize() (no gap-padding path).
   function serWithSwap(v, cp, ctx, pad) {
+    // Numeric tolerance: when b's value (v) is within tolerance of a's value
+    // (cp) across this WHOLE subtree, emit a's value on both sides so MergeView
+    // sees no change. Partial matches (some field differs beyond tolerance) fall
+    // through and are resolved per-property/element by the recursion below.
+    if (ctx.numTol != null && cp !== undefined && eqKind(v, cp, ctx.numTol) === 2) {
+      ctx.changed = true;
+      return ser(cp, pad);
+    }
     if (!v || typeof v !== 'object') return [pad + JSON.stringify(v)];
     var out, i, l, sub;
     if (Array.isArray(v)) {
@@ -161,7 +202,11 @@
   // Align two values into equal-length line arrays { A, B }. `ctx` carries the
   // ignore predicate + a `changed` flag.
   function alignValue(a, b, pad, ctx) {
-    if (deepEqual(a, b)) {
+    var kind = eqKind(a, b, ctx.numTol);
+    if (kind !== 0) {
+      // Tolerated (kind 2) → emitting a's value on both sides is a real
+      // normalization; flag it so the caller snapshots the originals.
+      if (kind === 2) ctx.changed = true;
       var same = ser(a, pad);
       return { A: same.slice(), B: same.slice() };
     }
@@ -204,7 +249,7 @@
       }
     }
 
-    var matches = (n === 0 || m === 0 || n * m > MAX_LCS_CELLS) ? [] : lcsMatches(a, b);
+    var matches = (n === 0 || m === 0 || n * m > MAX_LCS_CELLS) ? [] : lcsMatches(a, b, ctx.numTol);
     var anchors = matches.concat([[n, m]]);
     var ai = 0, bj = 0;
     for (var t = 0; t < anchors.length; t++) {
@@ -231,15 +276,17 @@
     return { A: A, B: B };
   }
 
-  // Longest common subsequence over deep-equality → matched [i, j] pairs.
-  function lcsMatches(a, b) {
+  // Longest common subsequence over (tolerance-aware) deep-equality → matched
+  // [i, j] pairs. With `tol` set, elements that differ only within tolerance
+  // count as matches, so a near-equal item aligns instead of read as add+remove.
+  function lcsMatches(a, b, tol) {
     var n = a.length, m = b.length;
     var dp = [], i, j;
     for (i = 0; i <= n; i++) dp.push(new Uint32Array(m + 1));
     var eqCache = [];
     for (i = 0; i < n; i++) { eqCache.push(new Int8Array(m)); eqCache[i].fill(-1); }
     function equal(i, j) {
-      if (eqCache[i][j] === -1) eqCache[i][j] = deepEqual(a[i], b[j]) ? 1 : 0;
+      if (eqCache[i][j] === -1) eqCache[i][j] = (eqKind(a[i], b[j], tol) !== 0) ? 1 : 0;
       return eqCache[i][j] === 1;
     }
     for (i = n - 1; i >= 0; i--) {
@@ -315,17 +362,25 @@
     return padToEqual(A, B);
   }
 
-  // Normalize an opts.ignore argument into a { ignore, changed } ctx.
+  // Coerce a raw tolerance into a usable positive finite number, or null.
+  function coerceTol(t) {
+    return (typeof t === 'number' && isFinite(t) && t > 0) ? t : null;
+  }
+
+  // Normalize opts into a { ignore, changed, numTol } ctx.
   function makeCtx(opts) {
     return {
       ignore: (opts && typeof opts.ignore === 'function') ? opts.ignore : null,
-      changed: false
+      changed: false,
+      numTol: coerceTol(opts && opts.numTol)
     };
   }
 
   /**
-   * Align two JSON texts for block-level diffing (with optional ignore).
-   * @param {object} [opts] - { ignore?: (key,aVal,bVal)=>bool }
+   * Align two JSON texts for block-level diffing (with optional ignore + numeric
+   * tolerance). Ignored props and numbers within `numTol` are emitted as a's
+   * value on both sides so MergeView sees no change.
+   * @param {object} [opts] - { ignore?: (key,aVal,bVal)=>bool, numTol?: number }
    * @returns {{ok:true, left:string, right:string, changed:boolean} | {ok:false}}
    *          ok:false means "could not align" — caller should fall back to
    *          the raw text + CodeMirror's default diff.
@@ -347,21 +402,26 @@
   }
 
   /**
-   * Normalize ignored values WITHOUT structural gap-alignment (used when Block
-   * Diff is off but there are ignore patterns). Left is pretty-printed a; right
-   * is pretty-printed b with ignored props swapped to a's value.
+   * Normalize ignored / within-tolerance values WITHOUT structural gap-alignment
+   * (used when Block Diff is off but there are ignore patterns and/or a numeric
+   * tolerance). Left is pretty-printed a; right is pretty-printed b with ignored
+   * props and near-equal numbers swapped to a's value.
+   * @param {function} [ignore] - (key,aVal,bVal)=>bool predicate, or null
+   * @param {number}   [numTol] - numeric tolerance (>0), or null/omitted
    * @returns {{ok:true, left:string, right:string, changed:boolean} | {ok:false}}
    */
-  function normalize(leftText, rightText, ignore) {
+  function normalize(leftText, rightText, ignore, numTol) {
     try {
-      if (typeof ignore !== 'function') return { ok: false };
+      var hasIgnore = typeof ignore === 'function';
+      var tol = coerceTol(numTol);
+      if (!hasIgnore && tol == null) return { ok: false };
       if (typeof leftText !== 'string' || typeof rightText !== 'string') return { ok: false };
       if (!leftText.trim() || !rightText.trim()) return { ok: false };
       if (leftText.length + rightText.length > MAX_BYTES) return { ok: false };
       var a, b;
       try { a = JSON.parse(leftText); b = JSON.parse(rightText); }
       catch (e) { return { ok: false }; }
-      var ctx = { ignore: ignore, changed: false };
+      var ctx = { ignore: hasIgnore ? ignore : null, changed: false, numTol: tol };
       var left = ser(a, '').join('\n');
       var right = serWithSwap(b, a, ctx, '').join('\n');
       return { ok: true, left: left, right: right, changed: ctx.changed };

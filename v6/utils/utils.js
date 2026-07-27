@@ -261,6 +261,8 @@
       ignorePatterns: [],   // Key names / /regex/ excluded from the diff (grayed out)
       ignoreScope: "both",  // What patterns match: 'key' | 'value' | 'both'
       ignoreStyled: true,   // Show excluded matches with a subdued gray tint
+      numToleranceEnabled: false, // Treat near-equal numbers as identical in the diff
+      numTolerance: 0.001,  // Max |a-b| ignored when numToleranceEnabled (e.g. 0.001 ≈ 3 dp)
 
       orientation: "a-b",
       revertControls: "none",
