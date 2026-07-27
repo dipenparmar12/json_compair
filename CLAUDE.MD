@@ -41,6 +41,8 @@ json_compair/
 │       ├── utils_zip.js    # ZIP snapshot import/export
 │       ├── utils_branch.js # Git-like branching for panels
 │       ├── viewport_diff.js # ViewportDiffManager, PerformanceMode, LargeFileDetector, PerformanceToast
+│       ├── json_align.js   # Block-level JSON aligner (window.JSONAlign) — gap-pads matching items/keys
+│       ├── diff_ignore.js  # Exclude keys/patterns from the diff (window.DiffIgnore) — key-name matcher + line-scan
 │       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
 ├── v5/                     # Legacy CodeMirror 5 version
@@ -89,7 +91,7 @@ Loaded via ES Module Import Maps from unpkg.com:
 Loaded separately via `<script>` (cdnjs), exposed as globals:
 - `pako` 2.1.0 — gzip compression for URL sharing
 - `JSZip` 3.10.1 — ZIP snapshot import/export
-- `diff_match_patch` 1.0.5 — used **only for the status-bar diff count**, not for rendering (rendering is CM6 MergeView's own diff)
+- `diff_match_patch` 1.0.5 — still loaded, but **no longer used for the live status-bar count**. The count now comes from `mergeView.chunks.length` (see `updateDiffStatus()`); DMP/the count worker are effectively dormant. Rendering has always been CM6 MergeView's own diff.
 
 ### Dependencies (CodeMirror 5 - v5/)
 
@@ -173,12 +175,16 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "theme": "light",              // light|dark|oneDark|default
 
   // Diff Settings
+  "blockDiff": true,             // Object-aware (block-level) JSON diff (see Diff Engine §6)
   "highlightChanges": true,      // Red/green highlighting
   "gutter": true,                // Diff gutter markers
   "collapseUnchanged": false,    // Auto-collapse identical blocks
   "orientation": "a-b",          // a-b (side-by-side) or a-b-merge
   "revertControls": "a-to-b",    // a-to-b|b-to-a|none
-  "scanLimit": 10000,            // Max lines to diff
+  "scanLimit": 6000,             // Max LCS scan effort (auto-capped by content size)
+  "ignorePatterns": [],          // Key names / /regex/ excluded from the diff (see Diff Engine §7)
+  "ignoreScope": "both",         // What a pattern matches: 'key' | 'value' | 'both'
+  "ignoreStyled": true,          // Tint excluded matches gray (off = neutral, still no red/green)
 
   // Auto-Processing
   "autoCsv": true,               // Auto-convert CSV
@@ -222,6 +228,20 @@ window.BranchManager
   .saveBranch()
   .createBranch()
   .deleteBranch()
+
+// diff_ignore.js (v6)
+window.DiffIgnore
+  .parseOne()           // "/re/flags" → regex descriptor, else plain match
+  .parsePatterns()
+  .makeMatcher()        // → { testKey, testValueStr, testValue } (null when none)
+  .makePredicate()      // (matcher, scope) → (key,aVal,bVal)=>bool for json_align
+  .computeIgnoredLines()// (text, matcher, scope) → Set<1-based line no.> (key + value block)
+
+// json_align.js (v6) — ignore-aware
+window.JSONAlign
+  .align(l, r, {ignore})   // block-align + normalize matched values → {ok,left,right,changed}
+  .normalize(l, r, ignore) // normalize only (block-diff off) → {ok,left,right,changed}
+  .stripGaps(text)
 ```
 
 ### Loading Pattern
@@ -235,6 +255,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/utils_zip.js"></script>
 <script src="./utils/utils_branch.js"></script>
 <script src="./utils/viewport_diff.js"></script>  <!-- v6 only: performance managers -->
+<script src="./utils/diff_ignore.js"></script>    <!-- v6 only: exclude keys/patterns from diff -->
 ```
 
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
@@ -264,8 +285,10 @@ OOM the tab (the old failure mode on medium/large CSV). It:
 
 Supporting size guards: `updateConversionButtons()` skips full `isCSV`/`isConvertibleToCSV`
 parsing above `DETECT_MAX_BYTES`; `saveContent()` skips the synchronous localStorage stringify
-above `AUTOSAVE_MAX_BYTES` (use Export snapshot instead). Tuning constants live near the top of
-the ingest block in `index.html`.
+above `AUTOSAVE_MAX_BYTES` (use Export snapshot instead); the JSON auto-format/sort step in
+`ingestContent()` is skipped above `FORMAT_MAX_BYTES` (raw text is inserted as-is — parse +
+pretty-print of a multi-MB paste is a guaranteed main-thread stall). Tuning constants live near
+the top of the ingest block in `index.html`.
 
 ## CodeMirror 6 Integration (v6/)
 
@@ -419,7 +442,10 @@ node server.js
 
 ### 2. Settings Apply Methods
 - **Word wrap, theme**: Applied via `Compartment.reconfigure()` (no reload)
-- **Diff settings**: Require `recreateMergeView()` (destroys and rebuilds)
+- **Diff settings** (highlight, gutter, collapse, revertControls, scanLimit): Applied
+  in place via `mergeView.reconfigure(buildReconfigureConfig(...))` when CM6 merge ≥ 6.7
+  (`canReconfigure()`). Full `recreateMergeView()` is now reserved for the one case
+  reconfigure can't handle: an **orientation flip** (which can reorder the panes).
 
 ### 3. CSV Auto-Detection Entry Points
 - Drag & drop
@@ -463,9 +489,9 @@ Two sections:
 2. **Full Settings**: All configuration options
 
 ### Status Bar
-Shows diff count and current mode:
-- "No differences found"
-- "Found X difference(s)"
+Shows diff count and current mode (count = `mergeView.chunks.length`):
+- "No differences"
+- "N changed blocks"
 - "Add content to both panels to compare"
 
 ## Testing
@@ -562,27 +588,114 @@ The project uses a special terminal protocol for Copilot:
 
 ## Diff Engine Architecture (v6) — IMPORTANT
 
-There are **two independent diff computations** in v6. Confusing them is the #1 source of
-bugs and wasted work, so understand the split before touching diff/perf code:
+v6 has **one diff that matters** — CodeMirror's MergeView — plus a dormant legacy counter.
+Understand the split before touching diff/perf code:
 
 ### 1. Rendering diff — CodeMirror 6 `MergeView` (the real one)
-- Computes the **visible** line + character diff and draws the gutters/highlights.
+- Computes the line + character diff and draws the gutters/highlights.
 - Configured in `MergeView({...})` at `v6/index.html` (`initializeApp`, ~line 500) and
-  rebuilt in `recreateMergeView()` (~line 1071).
+  rebuilt in `recreateMergeView()` (~line 1255).
 - Key knobs: `highlightChanges`, `gutter`, `collapseUnchanged`, `revertControls`,
   `orientation`, and `diffConfig.scanLimit` (UI default **6000**, set via the Scan Limit input).
 - Recomputes automatically on every `dispatch` — you do NOT need to recreate the view to
   refresh the diff after a content change.
 - The authoritative chunk list lives at `mergeView.chunks`.
 
-### 2. Status-bar count diff — `diff_match_patch` (display only)
-- `updateDiffStatus()` (`v6/index.html` ~line 2933) runs a **separate full DMP diff** purely
-  to print "Found N differences". This is `diff_cleanupSemantic` + chunk counting.
-- For content > **100 KB** it offloads counting to the Web Worker (`diff-worker.js`).
-- ⚠️ This is a *second* diff over the same text and counts **character** chunks, while the
-  MergeView renders **line** chunks — so the displayed number can disagree with the screen.
+### 2. Status-bar count — `mergeView.chunks.length` (NOT a second diff anymore)
+- `updateDiffStatus()` (`v6/index.html` ~line 3230) just reads `mergeView.chunks.length`
+  and prints "N changed blocks". No separate DMP pass, no worker round-trip.
+- The old `diff_match_patch` full-diff count (and its >100 KB worker offload) was **removed**;
+  `diff_match_patch` is still `<script>`-loaded but effectively unused. This also fixed the
+  old count/render mismatch (DMP counted char chunks; MergeView renders line chunks).
 
-### 3. Performance managers (`viewport_diff.js`)
+### 3. Adaptive scanLimit cap — prevents main-thread freezes (~line 1060)
+- CM6's MergeView diff is **synchronous** and grows ~O(scanLimit²) on dissimilar docs, so a
+  large `scanLimit` on big/different inputs freezes the tab (60000 measured ~66× slower than
+  6000 for *identical* diff detail). CM6 merge 6.7.2 has no diff `timeout`, so scanLimit is
+  the only lever (the stored `timeout` setting is inert).
+- `clampScanLimit()` caps the *applied* scanLimit by combined content size, independent of the
+  user/snapshot/URL value (`DIFF_SCAN_CAPS`): ≤256 KB trust the user · ≤2 MB → 10000 ·
+  ≤8 MB → 6000 · >8 MB → 4000. `buildDiffConfig()` wires this into every config build.
+- See memory [[v6-scanlimit-freeze]].
+
+### 4. In-place reconfigure + forced re-collapse (no more teardown on edit)
+- `canReconfigure()` gates on CM6 merge ≥ 6.7. When true, settings/edits call
+  `mergeView.reconfigure(buildReconfigureConfig(...))` instead of full DOM teardown.
+  `recreateMergeView()` now runs only for an **orientation flip**.
+- `refreshMergeViewIfNeeded()` (called after format/sort/paste/CSV ingest and debounced edits,
+  only while Collapse-Unchanged is on) reconfigures in place, then calls `forceRecollapse()`.
+- `forceRecollapse()` works around CM6's collapse being a singleton StateField that only folds
+  in its `init`: it reconfigures `collapseUnchanged: undefined` then back on, forcing a re-fold
+  against the latest chunks. Cheap (two state-effect dispatches, no DOM rebuild). See memory
+  [[v6-collapse-needs-reinit]].
+
+### 6. Block-level (object-aware) JSON alignment — `json_align.js` + `applyBlockAlignment()`
+- **Why:** CM6's diff is char/line based and can't be replaced (`MergeView.chunks` is
+  read-only; no custom-diff hook). On arrays of objects it greedily matches shared boilerplate
+  (`{`, `},`, `"id": `) ACROSS element boundaries, so a removed item shows as stray half-matched
+  lines + a "comma" artifact instead of one clean block.
+- **How:** `window.JSONAlign.align(leftText, rightText)` (in `json_align.js`) parses both sides,
+  structurally aligns them (arrays by element via LCS over deep-equality with positional pairing
+  of "changed" items; objects by key), and returns BOTH sides re-serialized as pretty JSON with
+  blank **gap lines** where an item/key exists on only one side. Blank lines are insignificant
+  JSON whitespace, so the result parses to the identical value — the editors keep holding valid
+  JSON and all ~50 `mergeView.a/b.state.doc` readers keep working. MergeView then diffs an
+  already-aligned document → clean whole-block adds/removes (Proxyman-style), equal line counts
+  (so no `cm-mergeSpacer` in this mode), and the gap renders as calm empty `cm-changedLine`s
+  (neutral `--diff-changed-line`).
+- **Wiring (kept minimal):** `applyBlockAlignment()` (near `forceRecollapse`) runs at startup
+  (end of `initializeBranches`) and on the existing debounced change timer in `autoSaveExtension`
+  — but **skipped while the user is typing** (`tr.isUserEvent('input.type'|'delete')`) so it never
+  reformats mid-edit. Paste/format/sort/branch/snapshot all dispatch programmatically → re-align
+  automatically. Idempotent (re-aligning aligned content is a no-op), guarded by `_blockAligning`,
+  and **memoized by doc identity** (`_lastAlignMemo`: CM6 `Text` objects are immutable, so
+  same-docs + same-mode + same-predicate ⇒ skip the whole parse/align/stringify, failures included).
+- **Setting:** `blockDiff` (default **true**, toggle in settings panel). Off → `removeBlockAlignment()`
+  strips gaps (only when the result is valid JSON) and CM6's default diff returns.
+- **Fallback:** any parse failure / non-JSON / >3 MB combined → `align()` returns `{ok:false}` →
+  no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
+
+### 7. Exclude keys/patterns from the diff — `diff_ignore.js` + normalization + `.cm-ignoredLine`
+- **Why:** ignore noisy fields (db `created_on`/`updated_at`, ids, hashes) that differ on every
+  record. CM6 owns the diff and won't drop keys, so a matched property is made to **look identical
+  on both sides** — then MergeView genuinely sees no change: the record **collapses**, is **not
+  counted**, and shows **no red/green**. (My first cut only re-skinned lines; that left every record
+  "changed" so nothing collapsed — normalization is what actually delivers "treat as same content".)
+- **Normalization (the mechanism):** `applyBlockAlignment()` runs when Block Diff **or** ignore is
+  active. It passes an `ignore(key,aVal,bVal)` predicate to `JSONAlign.align(...,{ignore})`
+  (block-diff on) or `JSONAlign.normalize(left,right,ignore)` (block-diff off). For a matched
+  property present on **both** sides, json_align emits the **left ("a") value on both sides**. Since
+  this rewrites the right pane's value, the pre-normalized text is snapshotted in `_ignorePristine`
+  (captured when `res.changed` is true = input still un-normalized); removing a pattern / turning
+  ignore off calls `restoreIgnorePristine()`, and **`saveContent()` persists `_ignorePristine`**, so
+  storage/export keep real data, not the normalized view. Any **external** doc change (typing,
+  paste, clear — anything not guarded by `_blockAligning`) invalidates `_ignorePristine` in the
+  autosave listener, so autosave persists what's on screen until the next re-normalization
+  recaptures a fresh pair — a stale pristine can no longer resurrect replaced/cleared content
+  (this was the "cleared data reappears after refresh" bug). Clear All persists the cleared
+  state immediately via `StorageManager.clearStorage()` (empty pair in localStorage + deletes the
+  IndexedDB fallback record); per-pane Clear calls `restoreIgnorePristine()` first (surviving
+  pane keeps its real values) and then saves synchronously.
+- **Match scope (`ignoreScope`, default `both`):** `window.DiffIgnore.makePredicate(matcher, scope)`
+  — `'key'` tests the key name, `'value'` tests the property's primitive value, `'both'` either.
+  Plain pattern = exact match; `/regex/flags` = RegExp. Selector lives in the ignore dropdown.
+- **Decoration (grey skin, safety net):** a per-pane `ViewPlugin` in `ignoreCompartment` decorates
+  matched lines (`computeIgnoredLines(text, matcher, scope)` → key line + whole value block) with
+  `.cm-ignoredLine`. CSS (two-class selectors + `!important`) overrides any residual red/green
+  (e.g. a matched key present on only one side, which can't be normalized): transparent/dimmed by
+  default, subdued gray when the container has `.ignore-styled` (setting `ignoreStyled`, default on).
+- **Count:** `countVisibleChunks()` still skips chunks lying entirely inside ignored keys — mostly a
+  no-op now (normalized props aren't chunks) but covers the structural-only case.
+- **Caching:** ignored-line sets are computed once per doc version via `getIgnoredLineSet(doc)`
+  (WeakMap keyed on the immutable `Text` object + `_ignoreGen` bumped in `rebuildIgnoreMatcher`);
+  the decoration ViewPlugin and `countVisibleChunks()` share the same scan.
+- **Wiring:** `applyIgnorePatterns()` (add/remove/scope change) → `restoreIgnorePristine()` first →
+  persist `ignorePatterns`/`ignoreScope` → recompile → re-run transform → `reconfigureIgnore()` →
+  re-render → recount. Compartment mounted in both editors (initial + `recreateMergeView`).
+- **Setting:** `ignorePatterns` (string[]) + `ignoreScope` ('key'|'value'|'both') + `ignoreStyled`
+  (bool). Empty list → predicate `null` → zero overhead. See memory [[v6-ignore-keys-diff]].
+
+### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on
   scroll (debounced). NOTE: it currently affects only the status text, NOT what MergeView renders.
 - `PerformanceMode` — bundles settings (auto-enables `collapseUnchanged`) for faster rendering.
@@ -590,28 +703,27 @@ bugs and wasted work, so understand the split before touching diff/perf code:
   (thresholds: 300 KB large, 500 KB warning, 2 MB critical).
 - `PerformanceToast` — transient notifications.
 
-### Known inefficiencies / where to optimize
-- **Double diffing**: DMP recomputes a full diff just to count; the count could come from
-  `mergeView.chunks.length` instead (removes the duplicate pass and fixes count/render mismatch).
-- **Full teardown on edit**: `refreshMergeViewIfNeeded()` calls `recreateMergeView()` (full DOM
-  rebuild) every 500 ms while typing *when Collapse-Unchanged is on*. Prefer
-  `mergeView.reconfigure({...})` for options that support it (CM6 merge ≥ 6.7).
+### Remaining inefficiencies / where to optimize
 - **Viewport mode is cosmetic** for rendering — MergeView still diffs the whole document.
-- **No memoization** — identical content re-diffs from scratch on every recreate.
-- The genuinely effective CM6 lever for large files is **`collapseUnchanged` + an adaptive
-  `scanLimit`**, not the viewport counter.
+- **MergeView itself has no memoization** — identical content re-diffs from scratch on every
+  recreate. (The json_align transform IS memoized now — `_lastAlignMemo`, see §6 — and the
+  status pill / button-visibility helpers no longer materialize full doc strings: `docIsBlank()`
+  iterates chunks, and above `TEXT_EQ_MAX_BYTES` equality defers to `mergeView.chunks`.)
+- The genuinely effective CM6 lever for large files is **`collapseUnchanged` + the adaptive
+  `scanLimit` cap**, not the viewport counter.
 
 ## Performance Considerations
 
 ### Large content handling
 - IndexedDB fallback for localStorage quota (StorageManager)
 - ZIP compression for snapshots (JSZip)
-- Web Worker (`diff-worker.js`) keeps the >100 KB count off the main thread
+- Web Worker (`diff-worker.js`) handles off-thread CSV→JSON ingest (its diff-count role is retired)
 - `collapseUnchanged` reduces rendered DOM size dramatically
 - (NOTE: v6 does NOT use Oboe.js — that streaming parser is v5 only)
 
 ### Diff Performance levers
-- `scanLimit` (`diffConfig.scanLimit`) bounds the LCS scan for the rendering diff
+- `scanLimit` (`diffConfig.scanLimit`) bounds the LCS scan for the rendering diff; the applied
+  value is auto-capped by content size via `clampScanLimit()` (see Diff Engine Architecture §3)
 - `collapseUnchanged: { margin: 3, minSize: 4 }` folds identical regions
 - Performance Mode auto-enables collapse for very large inputs
 
@@ -625,13 +737,15 @@ bugs and wasted work, so understand the split before touching diff/perf code:
 ## Future Enhancements
 
 Potential improvements (check `todo.md` for current priorities):
-- Derive status count from `mergeView.chunks` (kill the duplicate DMP diff)
 - Make Viewport Diff actually limit rendering (not just the count)
-- Replace full `recreateMergeView()` with `mergeView.reconfigure()` on edits
 - Memoize diff results by content hash
-- Optional semantic JSON mode (canonicalize keys/whitespace before diffing)
 - Virtualized rendering for very large files
 - More CodeMirror 6 themes / better mobile UI / PWA / offline v6
+
+> Done (was on this list): status count now derives from `mergeView.chunks.length`
+> (no more duplicate DMP diff); edits/settings reconfigure the live view in place
+> instead of full `recreateMergeView()` teardown; **object-aware (block-level) JSON
+> diff** via `json_align.js` (was "Optional semantic JSON mode") — see Diff Engine §6.
 
 ## Getting Help
 
@@ -649,6 +763,6 @@ Potential improvements (check `todo.md` for current priorities):
 
 ---
 
-**Last Updated**: 2026-05-28
+**Last Updated**: 2026-06-06
 **Current Version**: v6 (CodeMirror 6) is primary, v5 (CodeMirror 5) is legacy
 **Status**: Active development on `main` branch

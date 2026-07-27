@@ -39,6 +39,18 @@
     --diff-del-text: #ffc1ba;
     --diff-gutter: #ffd33d;
 
+    /* Alignment gap (the empty .cm-mergeSpacer CM6 draws opposite an
+       add/remove). Kept faint + neutral so it reads as "no content here"
+       without grabbing attention — the block on the other pane stands out. */
+    --diff-gap-fill: rgba(130, 130, 130, 0.07);
+    --diff-changed-line: rgba(130, 130, 130, 0.07);   /* calm neutral: gap lines + modified lines */
+
+    /* Ignored (excluded from diff) — subdued gray so matches read as "not
+       compared" without the pull of red/green. Reduced-opacity fill + dimmed
+       text keep them present but minimally noticeable. */
+    --diff-ignore-line: rgba(128, 128, 128, 0.14);
+    --diff-ignore-text: rgba(120, 120, 120, 0.55);
+
     /* Spacing scale */
     --space-1: 4px;
     --space-2: 8px;
@@ -76,6 +88,12 @@
     --diff-del-line: #3a1618;
     --diff-del-text: #6e2b28;
     --diff-gutter: #b9933a;
+
+    --diff-gap-fill: rgba(255, 255, 255, 0.045);
+    --diff-changed-line: rgba(255, 255, 255, 0.045);
+
+    --diff-ignore-line: rgba(180, 180, 180, 0.12);
+    --diff-ignore-text: rgba(200, 200, 200, 0.35);
 }
 
 * {
@@ -263,9 +281,11 @@ button:disabled {
          Matches modern Git/GitHub diff visualization
          ==================================================================== */
 
-/* Changed line container - light background */
+/* Changed (modified-but-present) line — faint tint so a value/key edit is
+   visible even with character highlighting off. Pure insert/delete lines
+   override this with their own full-width red/green via <ins>/<del>. */
 .cm-changedLine {
-    background-color: transparent !important;
+    background-color: var(--diff-changed-line) !important;
 }
 
 /* Deleted lines (left side) - Red background */
@@ -343,6 +363,67 @@ ins {
     background-color: var(--diff-gutter) !important;
     width: 3px !important;
     margin-left: 2px !important;
+}
+
+/* Per-side gutter tint: left pane (a) marks removals/edits in red,
+   right pane (b) marks additions/edits in green — mirrors the line colors. */
+.cm-merge-a .cm-changedLineGutter {
+    background-color: var(--diff-del-text) !important;
+}
+
+.cm-merge-b .cm-changedLineGutter {
+    background-color: var(--diff-add-text) !important;
+}
+
+/* ====================================================================
+   ALIGNMENT GAP ("no content here")
+   When a whole array item / object exists on only one side, CM6 keeps
+   the panes aligned by inserting a blank .cm-mergeSpacer on the side
+   that lacks those lines. We give it only a faint neutral fill so the
+   region reads as intentionally empty without grabbing attention — the
+   added/removed block on the OTHER pane is what should stand out.
+   ==================================================================== */
+.cm-mergeSpacer {
+    background-color: var(--diff-gap-fill);
+}
+
+/* ====================================================================
+   IGNORED KEYS (excluded from diff)
+   Lines belonging to an excluded key get the .cm-ignoredLine line
+   decoration. It must WIN over the red/green diff classes, so every rule
+   here is more specific (two classes) and/or !important. The char-level
+   .cm-changedText highlight is flattened so nothing red/green shows.
+   Two skins:
+     • neutral (default off-tint) — background removed, just dimmed text
+     • .ignore-styled (toggle on) — subdued gray fill so it's clearly "ignored"
+   ==================================================================== */
+.cm-ignoredLine,
+.cm-changedLine.cm-ignoredLine,
+.cm-deletedLine.cm-ignoredLine,
+.cm-insertedLine.cm-ignoredLine {
+    background-color: transparent !important;
+}
+
+/* Kill the character-level red/green inside ignored lines. */
+.cm-ignoredLine .cm-changedText,
+.cm-ignoredLine .cm-deletedText,
+.cm-ignoredLine .cm-insertedText {
+    background-color: transparent !important;
+    font-weight: normal !important;
+    color: var(--diff-ignore-text) !important;
+}
+
+/* Dim the whole ignored line so it recedes from the compared content. */
+.cm-ignoredLine {
+    color: var(--diff-ignore-text) !important;
+}
+
+/* Optional subdued gray skin (checkbox "Show grayed-out style"). */
+.ignore-styled .cm-ignoredLine,
+.ignore-styled .cm-changedLine.cm-ignoredLine,
+.ignore-styled .cm-deletedLine.cm-ignoredLine,
+.ignore-styled .cm-insertedLine.cm-ignoredLine {
+    background-color: var(--diff-ignore-line) !important;
 }
 
 /* Status bar removed (was #diff-status) */
@@ -1915,6 +1996,139 @@ button:disabled,
     background: var(--accent-soft);
     border: 1px solid var(--accent);
     border-radius: var(--radius);
+}
+
+/* ---- Ignore keys / patterns dropdown ---- */
+.ignore-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    padding: 0 4px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 999px;
+}
+
+.ignore-panel {
+    min-width: 320px;
+}
+
+.ignore-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.ignore-desc code {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 4px;
+}
+
+.ignore-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.ignore-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 8px;
+}
+
+.ignore-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.ignore-input-row .btn {
+    flex: 0 0 auto;
+}
+
+.ignore-error {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #d14343;
+}
+
+.ignore-list {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.ignore-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 6px 5px 10px;
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.ignore-item-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    word-break: break-all;
+}
+
+.ignore-item-regex {
+    color: var(--accent);
+}
+
+.ignore-remove {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.ignore-remove:hover {
+    color: #fff;
+    background: #d14343;
+}
+
+.ignore-empty {
+    margin-top: 12px;
+    font-size: 11px;
+    color: var(--text-faint);
+    font-style: italic;
 }
 
 /* ---- Footer ---- */

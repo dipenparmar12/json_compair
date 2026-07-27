@@ -35,3 +35,6 @@ node_modules/
 
 .github/todo.md
 todo.md
+
+
+/.claude/launch.json

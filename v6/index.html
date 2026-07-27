@@ -41,6 +41,8 @@
     <script src="./utils/utils_zip.js"></script>
     <script src="./utils/utils_branch.js"></script>
     <script src="./utils/viewport_diff.js"></script>
+    <script src="./utils/json_align.js"></script>
+    <script src="./utils/diff_ignore.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -138,13 +140,21 @@
               <div class="settings-section-title settings-section-divided">DIFF VIEW SETTINGS</div>
               
               <label class="setting-row">
+                <input type="checkbox" id="setting-block-diff" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Block Diff (JSON)</div>
+                  <div class="setting-desc">Align whole array items / object keys so added &amp; removed blocks read cleanly. Falls back to text diff for non-JSON.</div>
+                </div>
+              </label>
+
+              <label class="setting-row">
                 <input type="checkbox" id="setting-highlight-changes" checked />
                 <div class="setting-text">
                   <div class="setting-title">Highlight Changes</div>
                   <div class="setting-desc">Show character-level diffs in chunks</div>
                 </div>
               </label>
-              
+
               <label class="setting-row">
                 <input type="checkbox" id="setting-gutter" checked />
                 <div class="setting-text">
@@ -209,6 +219,49 @@
               <div id="performance-status" class="perf-status" style="display: none;">
                 <strong>📊 Performance active:</strong> <span id="performance-status-text"></span>
               </div>
+            </div>
+          </div>
+
+          <!-- Ignore keys / patterns dropdown (excludes matches from the diff) -->
+          <div class="ignore-dropdown menu-anchor">
+            <button id="btn-ignore" class="btn" title="Exclude keys/patterns from the diff comparison">
+              🚫 Ignore<span id="ignore-count-badge" class="ignore-badge" style="display: none;">0</span>
+            </button>
+            <div id="ignore-panel" class="dropdown-panel settings-panel settings-panel-left ignore-panel" style="display: none;">
+              <div class="settings-section-title">Exclude from diff</div>
+              <div class="ignore-desc">
+                Matches are treated as identical on both sides — the field collapses,
+                isn't counted, and shows no red/green (e.g. <code>created_on</code> /
+                <code>updated_at</code> columns). Use plain text for an exact match, or
+                <code>/regex/flags</code> for a pattern — e.g. <code>/_id$/i</code>.
+              </div>
+
+              <label class="setting-row row-inline" style="padding-left: 0; padding-right: 0;">
+                <span class="setting-title">Match against</span>
+                <select id="ignore-scope" class="settings-select">
+                  <option value="both">Key or value</option>
+                  <option value="key">Key name</option>
+                  <option value="value">Value</option>
+                </select>
+              </label>
+
+              <div class="ignore-input-row">
+                <input type="text" id="ignore-input" class="ignore-input"
+                       placeholder="Key name / value, or /regex/flags" autocomplete="off" spellcheck="false" />
+                <button id="ignore-add" class="btn btn-primary">Add</button>
+              </div>
+              <div id="ignore-error" class="ignore-error" style="display: none;"></div>
+
+              <ul id="ignore-list" class="ignore-list"></ul>
+              <div id="ignore-empty" class="ignore-empty">No patterns yet — matches will be diffed normally.</div>
+
+              <label class="setting-row" style="margin-top: 10px;">
+                <input type="checkbox" id="ignore-styled" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Show grayed-out style</div>
+                  <div class="setting-desc">Tint excluded matches with a subdued gray background. Off = fully neutral (still no red/green).</div>
+                </div>
+              </label>
             </div>
           </div>
         </div>
@@ -296,6 +349,8 @@
         highlightActiveLine,
         keymap,
         placeholder,
+        Decoration,
+        ViewPlugin,
       } from "@codemirror/view";
       import {
         foldGutter,
@@ -323,20 +378,34 @@
       import { lintKeymap } from "@codemirror/lint";
 
       // Import Compartment for dynamic configuration
-      import { Compartment } from "@codemirror/state";
+      import { Compartment, RangeSetBuilder } from "@codemirror/state";
 
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
         if (update.docChanged) {
+          // Any doc change that is NOT our own normalization dispatch invalidates
+          // the pre-normalization snapshot: the docs no longer correspond to it,
+          // and persisting the stale pair would resurrect replaced/cleared content
+          // on the next reload. Re-alignment recaptures a fresh pair when
+          // normalization applies again.
+          if (!_blockAligning) _ignorePristine = null;
+
+          // Skip block re-alignment while the user is actively typing/deleting so
+          // we never reformat mid-edit; paste/drop/programmatic changes re-align.
+          // (Our own alignment dispatch is guarded by _blockAligning.)
+          const userTyping = !_blockAligning && update.transactions.some(
+            tr => tr.isUserEvent('input.type') || tr.isUserEvent('delete'));
+
           // Debounce saves to avoid excessive localStorage writes
           clearTimeout(window.autoSaveTimer);
           window.autoSaveTimer = setTimeout(() => {
             saveContent();
           }, 300);
-          
+
           // Debounce merge view refresh for diff recalculation
           clearTimeout(window.diffRefreshTimer);
           window.diffRefreshTimer = setTimeout(() => {
+            if (!userTyping) applyBlockAlignment();
             refreshMergeViewIfNeeded();
           }, 500);
           
@@ -355,7 +424,277 @@
       
       // Theme compartment for dynamic theme switching
       const themeCompartment = new Compartment();
-      
+
+      // ---- Ignore keys / patterns (exclude matches from the diff) -----------
+      // Two cooperating mechanisms make an "ignored" property vanish from the
+      // diff (see Diff Engine §7):
+      //   1. NORMALIZE — json_align copies the left value onto both sides for a
+      //      matched property, so MergeView sees NO change: the record collapses,
+      //      is not counted, and shows no red/green. Because this rewrites the
+      //      right pane's value, we snapshot the pre-normalized originals
+      //      (`_ignorePristine`) so removing a pattern / turning ignore off can
+      //      restore them, and autosave persists the originals, not the view.
+      //   2. DECORATE — a per-pane ViewPlugin tints the matched lines grey
+      //      (optional) and, as a safety net, overrides any residual red/green
+      //      (e.g. a key present on only one side, which can't be normalized).
+      // Pure matching + line-scan logic lives in utils/diff_ignore.js.
+      const ignoreCompartment = new Compartment();
+      const ignoredLineDeco = Decoration.line({ class: 'cm-ignoredLine' });
+      let ignorePatterns = [];    // raw pattern strings, persisted in settings
+      let ignoreScope = 'both';   // 'key' | 'value' | 'both' — what a pattern tests
+      let ignoreMatcher = null;   // compiled matcher (null when no usable patterns)
+      let ignorePredicate = null; // (key,aVal,bVal)=>bool for json_align (null when empty)
+      let ignoreStyled = true;    // gray tint on (optional) vs. fully neutral
+      let _ignorePristine = null; // { left, right } originals captured before normalization
+
+      function ignoreActive() { return !!ignorePredicate; }
+
+      // Coerce a stored value into a clean array of trimmed, de-duped, non-empty
+      // pattern strings (tolerates arrays, a single string, or junk from URLs).
+      function normalizeIgnorePatterns(val) {
+        let arr;
+        if (Array.isArray(val)) arr = val;
+        else if (typeof val === 'string' && val.trim()) arr = [val];
+        else return [];
+        const seen = new Set(), out = [];
+        for (const item of arr) {
+          if (typeof item !== 'string') continue;
+          const s = item.trim();
+          if (s && !seen.has(s)) { seen.add(s); out.push(s); }
+        }
+        return out;
+      }
+
+      function rebuildIgnoreMatcher() {
+        try {
+          const parsed = window.DiffIgnore.parsePatterns(ignorePatterns);
+          ignoreMatcher = window.DiffIgnore.makeMatcher(parsed);
+          ignorePredicate = window.DiffIgnore.makePredicate(ignoreMatcher, ignoreScope);
+        } catch (e) {
+          ignoreMatcher = null;
+          ignorePredicate = null;
+        }
+        _ignoreGen++; // invalidate cached ignored-line sets computed for the old matcher/scope
+      }
+
+      // Ignored-line sets are cached per doc version: CM6's Text is immutable,
+      // so the doc object is a perfect cache key. Both consumers (the per-pane
+      // decoration plugin and the chunk counter) share one full-text line scan
+      // per doc change instead of each re-running it.
+      let _ignoreGen = 0;
+      const _ignoredLineCache = new WeakMap(); // Text doc → { gen, set }
+      function getIgnoredLineSet(doc) {
+        if (!ignoreMatcher) return null;
+        const hit = _ignoredLineCache.get(doc);
+        if (hit && hit.gen === _ignoreGen) return hit.set;
+        let set;
+        try {
+          set = window.DiffIgnore.computeIgnoredLines(doc.toString(), ignoreMatcher, ignoreScope);
+        } catch (e) {
+          set = new Set();
+        }
+        _ignoredLineCache.set(doc, { gen: _ignoreGen, set });
+        return set;
+      }
+
+      // Build the ViewPlugin extension for the *current* matcher. Returns [] when
+      // nothing is excluded so there is zero overhead in the common case.
+      function buildIgnoreExtension() {
+        if (!ignoreMatcher) return [];
+        // Reads the shared per-doc cache (getIgnoredLineSet); the extension is
+        // rebuilt whenever the matcher/scope change, so the current globals are
+        // always the ones this plugin instance should use.
+        function computeSet(view) {
+          return getIgnoredLineSet(view.state.doc) || new Set();
+        }
+        function buildDecos(view, set) {
+          const b = new RangeSetBuilder();
+          if (set && set.size) {
+            for (const { from, to } of view.visibleRanges) {
+              let pos = from;
+              while (pos <= to) {
+                const line = view.state.doc.lineAt(pos);
+                if (set.has(line.number)) b.add(line.from, line.from, ignoredLineDeco);
+                pos = line.to + 1;
+              }
+            }
+          }
+          return b.finish();
+        }
+        return ViewPlugin.fromClass(class {
+          constructor(view) { this.set = computeSet(view); this.decorations = buildDecos(view, this.set); }
+          update(u) {
+            // Recompute the ignored-line set only when the doc changes; on pure
+            // scroll just rebuild the (cheap) viewport decorations from the cache.
+            if (u.docChanged) { this.set = computeSet(u.view); this.decorations = buildDecos(u.view, this.set); }
+            else if (u.viewportChanged) { this.decorations = buildDecos(u.view, this.set); }
+          }
+        }, { decorations: v => v.decorations });
+      }
+
+      // Push the current matcher into both live panes (in place, no rebuild).
+      function reconfigureIgnore() {
+        if (!mergeView) return;
+        const ext = buildIgnoreExtension();
+        try {
+          mergeView.a.dispatch({ effects: ignoreCompartment.reconfigure(ext) });
+          mergeView.b.dispatch({ effects: ignoreCompartment.reconfigure(ext) });
+        } catch (e) { /* view may be mid-recreate */ }
+      }
+
+      // Toggle the "gray tint" skin on the container (optional subdued style).
+      function updateIgnoreStyleClass() {
+        const c = document.getElementById('view-container');
+        if (c) c.classList.toggle('ignore-styled', !!ignoreStyled);
+      }
+
+      // Restore the pre-normalization originals into both panes (undoes the
+      // "copy left value onto right" that ignore-normalization performs). Guarded
+      // by _blockAligning so it does not re-trigger the transform mid-restore.
+      function restoreIgnorePristine() {
+        if (!_ignorePristine || !mergeView) { _ignorePristine = null; return; }
+        const orig = _ignorePristine;
+        _ignorePristine = null;
+        _blockAligning = true;
+        try {
+          setPaneIfChanged(mergeView.a, orig.left);
+          setPaneIfChanged(mergeView.b, orig.right);
+        } finally {
+          _blockAligning = false;
+        }
+      }
+
+      // Apply a change to the pattern list / scope: restore originals first (so a
+      // removed pattern un-normalizes), persist, recompile, re-run the transform
+      // with the new set, re-skin panes, and refresh the UI + count.
+      function applyIgnorePatterns() {
+        // Bring back the real values before recomputing, so dropping a pattern
+        // reveals that field's diff again instead of leaving it normalized.
+        restoreIgnorePristine();
+        SettingsManager.set('ignorePatterns', ignorePatterns);
+        SettingsManager.set('ignoreScope', ignoreScope);
+        rebuildIgnoreMatcher();
+        // Re-derive the view: normalize for the new set, or strip any leftover
+        // gaps when nothing is active and block-diff is off.
+        if (blockDiffEnabled() || ignoreActive()) applyBlockAlignment();
+        else removeBlockAlignment();
+        reconfigureIgnore();
+        renderIgnoreList();
+        updateDiffStatus();
+      }
+
+      // Add one raw pattern. Returns an error string, or null on success.
+      function addIgnorePattern(raw) {
+        const s = (raw || '').trim();
+        if (!s) return 'Enter a key name or /regex/.';
+        if (ignorePatterns.indexOf(s) !== -1) return 'That pattern is already in the list.';
+        const parsed = window.DiffIgnore.parseOne(s);
+        if (parsed && parsed.kind === 'invalid') return 'Invalid regex: ' + parsed.error;
+        ignorePatterns.push(s);
+        applyIgnorePatterns();
+        return null;
+      }
+
+      function removeIgnorePattern(raw) {
+        const idx = ignorePatterns.indexOf(raw);
+        if (idx === -1) return;
+        ignorePatterns.splice(idx, 1);
+        applyIgnorePatterns();
+      }
+
+      // Render the pattern chips, empty-state message, and the toolbar badge.
+      function renderIgnoreList() {
+        const list = document.getElementById('ignore-list');
+        const empty = document.getElementById('ignore-empty');
+        const badge = document.getElementById('ignore-count-badge');
+        if (!list) return;
+        list.innerHTML = '';
+        ignorePatterns.forEach((p) => {
+          const parsed = window.DiffIgnore.parseOne(p);
+          const isRegex = parsed && parsed.kind === 'regex';
+          const li = document.createElement('li');
+          li.className = 'ignore-item';
+          const label = document.createElement('span');
+          label.className = 'ignore-item-label' + (isRegex ? ' ignore-item-regex' : '');
+          label.textContent = p;
+          label.title = isRegex ? 'Regular expression' : 'Exact match';
+          const btn = document.createElement('button');
+          btn.className = 'ignore-remove';
+          btn.type = 'button';
+          btn.setAttribute('aria-label', 'Remove ' + p);
+          btn.textContent = '×';
+          btn.addEventListener('click', () => removeIgnorePattern(p));
+          li.appendChild(label);
+          li.appendChild(btn);
+          list.appendChild(li);
+        });
+        if (empty) empty.style.display = ignorePatterns.length ? 'none' : 'block';
+        if (badge) {
+          badge.textContent = String(ignorePatterns.length);
+          badge.style.display = ignorePatterns.length ? 'inline-flex' : 'none';
+        }
+      }
+
+      function showIgnoreError(msg) {
+        const el = document.getElementById('ignore-error');
+        if (!el) return;
+        if (msg) { el.textContent = msg; el.style.display = 'block'; }
+        else { el.textContent = ''; el.style.display = 'none'; }
+      }
+
+      // Wire up the ignore dropdown: open/close, add/remove, and the style toggle.
+      function initializeIgnorePanel() {
+        const btn = document.getElementById('btn-ignore');
+        const panel = document.getElementById('ignore-panel');
+        const input = document.getElementById('ignore-input');
+        const addBtn = document.getElementById('ignore-add');
+        const styled = document.getElementById('ignore-styled');
+        if (!btn || !panel) return;
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = panel.style.display !== 'none';
+          panel.style.display = open ? 'none' : 'block';
+          if (!open && input) setTimeout(() => input.focus(), 0);
+        });
+        document.addEventListener('click', (e) => {
+          if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            panel.style.display = 'none';
+          }
+        });
+
+        const submit = () => {
+          const err = addIgnorePattern(input ? input.value : '');
+          if (err) { showIgnoreError(err); return; }
+          showIgnoreError('');
+          if (input) input.value = '';
+        };
+        if (addBtn) addBtn.addEventListener('click', submit);
+        if (input) {
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); submit(); }
+          });
+          input.addEventListener('input', () => showIgnoreError(''));
+        }
+        if (styled) {
+          styled.checked = ignoreStyled;
+          styled.addEventListener('change', () => {
+            ignoreStyled = styled.checked;
+            SettingsManager.set('ignoreStyled', ignoreStyled);
+            updateIgnoreStyleClass();
+          });
+        }
+        const scopeSel = document.getElementById('ignore-scope');
+        if (scopeSel) {
+          scopeSel.value = ignoreScope;
+          scopeSel.addEventListener('change', () => {
+            ignoreScope = scopeSel.value;
+            applyIgnorePatterns();  // re-derive the view for the new match scope
+          });
+        }
+        renderIgnoreList();
+      }
+
       // Define theme extensions
       const lightTheme = EditorView.theme({
         "&": {
@@ -495,7 +834,15 @@
         scrollLocked = SettingsManager.get('scrollLock');
         currentTheme = SettingsManager.get('theme');
         syncDocumentTheme(currentTheme);
-        
+
+        // Ignore-patterns must be compiled before the MergeView is built, since
+        // each pane mounts the ignore ViewPlugin via ignoreCompartment.of(...).
+        ignorePatterns = normalizeIgnorePatterns(SettingsManager.get('ignorePatterns'));
+        ignoreScope = ['key', 'value', 'both'].includes(SettingsManager.get('ignoreScope'))
+          ? SettingsManager.get('ignoreScope') : 'both';
+        ignoreStyled = SettingsManager.get('ignoreStyled') !== false;
+        rebuildIgnoreMatcher();
+
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
         const mergeSettings = loadMergeSettings();
 
@@ -507,10 +854,11 @@
           a: {
             doc: initialContent.left,
             extensions: [
-              basicSetup, 
-              json(), 
-              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), 
-              themeCompartment.of(getThemeExtension(currentTheme)), 
+              basicSetup,
+              json(),
+              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
+              themeCompartment.of(getThemeExtension(currentTheme)),
+              ignoreCompartment.of(buildIgnoreExtension()),
               autoSaveExtension,
               placeholder(leftPlaceholderText)
             ],
@@ -518,10 +866,11 @@
           b: {
             doc: initialContent.right,
             extensions: [
-              basicSetup, 
-              json(), 
-              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []), 
-              themeCompartment.of(getThemeExtension(currentTheme)), 
+              basicSetup,
+              json(),
+              wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
+              themeCompartment.of(getThemeExtension(currentTheme)),
+              ignoreCompartment.of(buildIgnoreExtension()),
               autoSaveExtension,
               placeholder(rightPlaceholderText)
             ],
@@ -536,7 +885,10 @@
           allowEditingOriginals: true,
           revertControls: mergeSettings.revertControls === "none" ? undefined : mergeSettings.revertControls,
           collapseUnchanged: mergeSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
-          diffConfig: { scanLimit: mergeSettings.scanLimit },
+          diffConfig: buildDiffConfig(
+            mergeSettings.scanLimit,
+            (initialContent.left ? initialContent.left.length : 0) + (initialContent.right ? initialContent.right.length : 0)
+          ),
         });
 
         // Add per-pane control buttons
@@ -569,7 +921,9 @@
         initializeQuickToggles();
         initializeExtraSettingsPanel();
         initializeInfoDropdown();
-        
+        initializeIgnorePanel();
+        updateIgnoreStyleClass();
+
         // Initialize branch system - load active branches if they exist
         await initializeBranches();
       }
@@ -612,6 +966,12 @@
         
         // Update branch selectors
         updateBranchSelectors();
+        // Align / normalize panes once initial content has settled (initial
+        // content arrives via the editor `doc:` config, which does not fire the
+        // change listener, so we trigger it explicitly here). When neither block
+        // diff nor ignore is active, strip any gap lines a snapshot carried.
+        if (blockDiffEnabled() || ignoreActive()) applyBlockAlignment();
+        else removeBlockAlignment();
         updateDiffStatus();
       }
 
@@ -639,9 +999,18 @@
         document.getElementById('setting-highlight-changes').checked = settings.highlightChanges;
         document.getElementById('setting-gutter').checked = settings.gutter;
         document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
+        { const bd = document.getElementById('setting-block-diff'); if (bd) bd.checked = settings.blockDiff !== false; }
         document.getElementById('setting-orientation').value = settings.orientation;
         document.getElementById('setting-revert-controls').value = settings.revertControls;
-        document.getElementById('setting-scan-limit').value = settings.scanLimit;
+        // Show the value honestly within the input's allowed range. Legacy
+        // snapshots/URLs can carry a huge scanLimit (e.g. 60000) that we cap at
+        // diff time anyway; reflecting the clamped max avoids a misleading box
+        // and migrates the stored value on the next Apply.
+        {
+          const scanInput = document.getElementById('setting-scan-limit');
+          const inputMax = parseInt(scanInput.max, 10) || 10000;
+          scanInput.value = Math.min(parseInt(settings.scanLimit, 10) || 6000, inputMax);
+        }
         // Sync quick toggles
         const quickCollapse = document.getElementById('quick-collapse-unchanged');
         const quickHighlight = document.getElementById('quick-highlight-changes');
@@ -666,6 +1035,7 @@
         document.getElementById('setting-scroll-lock').addEventListener('change', applyScrollLock);
         document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-block-diff').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-collapse-unchanged').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
@@ -1046,6 +1416,60 @@
         updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
       }
 
+      // ---- Adaptive diff effort (prevents main-thread freezes) ---------------
+      // CM6's MergeView runs its line+character diff SYNCHRONOUSLY on the main
+      // thread, and its cost grows ~O(scanLimit^2) on the deepest Myers
+      // segments. So a large scanLimit on large, *dissimilar* documents locks
+      // the tab. Measured here on a ~1MB / ~20k-line pair of completely
+      // different JSON (the docs/test-cases-example snapshot):
+      //     scanLimit  6000 -> ~35ms    (155 chunks)
+      //     scanLimit 10000 -> ~48ms    (155 chunks)
+      //     scanLimit 25000 -> ~2360ms
+      //     scanLimit 60000 -> ~3200ms+ (155 chunks  <- same detail, ~66x slower)
+      // Diff DETAIL is already maxed out by ~6000 (identical chunk count), so a
+      // higher scanLimit buys only freezes. We therefore clamp the *applied*
+      // scanLimit by combined content size, independent of the (possibly
+      // imported via snapshot/URL, or hand-typed) user setting. Small documents
+      // still honor the user's value, where a thorough scan is cheap anyway.
+      // Note: CM6 merge 6.7.2 has no diff `timeout` option, so scanLimit is the
+      // only lever — the stored `timeout` setting is inert.
+      const DIFF_SCAN_CAPS = [
+        // [ maxCombinedBytes, scanLimitCap ]  — first matching row wins.
+        [ 256 * 1024,        Infinity ],  // <=256KB: trust the user (cheap anyway)
+        [ 2 * 1024 * 1024,   10000 ],     // <=2MB
+        [ 8 * 1024 * 1024,   6000 ],      // <=8MB
+      ];
+      const DIFF_SCAN_CAP_HUGE = 4000;    // >8MB: bail to a crude diff quickly
+
+      function clampScanLimit(userScanLimit, combinedLen) {
+        let u = parseInt(userScanLimit, 10);
+        if (!Number.isFinite(u) || u <= 0) u = 6000;
+        let cap = DIFF_SCAN_CAP_HUGE;
+        for (const [bytes, c] of DIFF_SCAN_CAPS) {
+          if (combinedLen <= bytes) { cap = c; break; }
+        }
+        const applied = cap === Infinity ? u : Math.min(u, cap);
+        if (applied < u && !clampScanLimit._warned) {
+          clampScanLimit._warned = true;
+          console.info(`[perf] scanLimit capped ${u} -> ${applied} for ${(combinedLen/1024/1024).toFixed(1)}MB of content to keep the diff responsive.`);
+        }
+        return applied;
+      }
+
+      // Combined length of both panels right now — used when we don't already
+      // hold the content strings (e.g. reconfiguring the live view in place).
+      function currentCombinedDocLen() {
+        try { return mergeView.a.state.doc.length + mergeView.b.state.doc.length; }
+        catch (_) { return 0; }
+      }
+
+      // Build the MergeView diffConfig with a size-appropriate effort cap.
+      // Pass combinedLen when the content strings are already in hand.
+      function buildDiffConfig(userScanLimit, combinedLen) {
+        if (combinedLen == null) combinedLen = currentCombinedDocLen();
+        return { scanLimit: clampScanLimit(userScanLimit, combinedLen) };
+      }
+
       // True when the live MergeView supports in-place reconfiguration
       // (CodeMirror merge >= 6.7). Falls back to a full rebuild otherwise.
       function canReconfigure() {
@@ -1060,7 +1484,7 @@
           gutter: s.gutter,
           revertControls: s.revertControls === 'none' ? undefined : s.revertControls,
           collapseUnchanged: s.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
-          diffConfig: { scanLimit: s.scanLimit },
+          diffConfig: buildDiffConfig(s.scanLimit),
         };
       }
 
@@ -1085,6 +1509,9 @@
         wordWrapEnabled = newWordWrap;
         scrollLocked = newScrollLock;
         
+        const prevBlockDiff = SettingsManager.get('blockDiff') !== false;
+        const newBlockDiff = document.getElementById('setting-block-diff')?.checked ?? true;
+
         // Save all settings to localStorage
         SettingsManager.set('wordWrap', newWordWrap);
         SettingsManager.set('scrollLock', newScrollLock);
@@ -1094,6 +1521,7 @@
         SettingsManager.set('orientation', newSettings.orientation);
         SettingsManager.set('revertControls', newSettings.revertControls);
         SettingsManager.set('scanLimit', newSettings.scanLimit);
+        SettingsManager.set('blockDiff', newBlockDiff);
         
         // Sync quick toggles
         const quickCollapse = document.getElementById('quick-collapse-unchanged');
@@ -1107,6 +1535,15 @@
           mergeView.reconfigure(buildReconfigureConfig(newSettings));
         } else {
           recreateMergeView(newSettings, newWordWrap);
+        }
+
+        // Apply block-diff change: turning it on aligns now; turning it off
+        // restores raw (un-gapped) text — unless ignore is still active, which
+        // keeps normalizing (without gaps) so ignored fields stay collapsed.
+        if (newBlockDiff || ignoreActive()) {
+          applyBlockAlignment();
+        } else if (prevBlockDiff) {
+          removeBlockAlignment();
         }
 
         updateStatus('Settings applied');
@@ -1136,8 +1573,113 @@
 
         if (canReconfigure()) {
           mergeView.reconfigure(buildReconfigureConfig(currentSettings));
+          // CM6's collapse is a singleton StateField that only computes folds in
+          // its `init`; a same-value reconfigure preserves the old field value and
+          // never re-folds the newly-unchanged regions (that's why only a manual
+          // off/on toggle worked). Force a re-init by dropping the collapse
+          // extension and immediately re-adding it, so it recomputes from the
+          // current diff chunks (already updated synchronously on the edit).
+          forceRecollapse(currentSettings);
         } else {
           recreateMergeView(currentSettings, wordWrapEnabled);
+        }
+      }
+
+      // Re-fold unchanged regions after a programmatic content change while
+      // Collapse Unchanged is on. Toggling the collapse compartment off→on forces
+      // CM6 to re-run buildCollapsedRanges against the latest chunks. Cheap: two
+      // state-effect dispatches, no DOM teardown.
+      function forceRecollapse(settings) {
+        if (!canReconfigure()) return;
+        if (!settings.collapseUnchanged) return;
+        mergeView.reconfigure({ collapseUnchanged: undefined });
+        mergeView.reconfigure({ collapseUnchanged: { margin: 3, minSize: 4 } });
+      }
+
+      // ---- Block-level (object-aware) JSON diff ------------------------------
+      // CM6's MergeView can't take a custom diff, so instead of replacing the
+      // engine we feed it a structurally-aligned version of both documents:
+      // matching array items / object keys land on matching lines, and blank
+      // "gap" lines mark where an item exists on only one side. Blank lines are
+      // insignificant JSON whitespace, so the docs still parse to the exact same
+      // value and every existing reader keeps working. See utils/json_align.js.
+      let _blockAligning = false;
+
+      function blockDiffEnabled() {
+        try { return SettingsManager.get('blockDiff') !== false; } catch (e) { return false; }
+      }
+
+      // Replace one pane's content only if it actually changes (avoids needless
+      // dispatches / autosave churn / cursor jumps). _blockAligning guards reentry.
+      function setPaneIfChanged(view, text) {
+        if (view.state.doc.toString() === text) return;
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+      }
+
+      // Transform both panes for diffing. Runs when Block Diff and/or ignore
+      // patterns are active. Block Diff → structural gap-alignment; ignore →
+      // normalize matched values so MergeView sees no change. No-op (raw text +
+      // CM6's default diff) when neither is active, either side isn't valid JSON,
+      // or on any error. (Kept the name applyBlockAlignment: ~10 call sites.)
+      // Memo of the last transform run, keyed by the (immutable) doc versions
+      // and the exact mode. The transform is idempotent and several paths funnel
+      // here (debounced change timer, afterContentChanged, applyIgnorePatterns,
+      // branch init), so re-running on untouched docs is pure waste — skipping
+      // it avoids a full parse+align+stringify of both documents.
+      let _lastAlignMemo = null; // { docA, docB, block, pred }
+
+      function applyBlockAlignment() {
+        if (_blockAligning || !window.JSONAlign) return;
+        const block = blockDiffEnabled();
+        const pred = ignorePredicate;
+        if (!block && !pred) return;
+        const docA = mergeView.a.state.doc;
+        const docB = mergeView.b.state.doc;
+        if (_lastAlignMemo &&
+            _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
+            _lastAlignMemo.block === block && _lastAlignMemo.pred === pred) return;
+        const L = docA.toString();
+        const R = docB.toString();
+        let res;
+        try {
+          res = block ? window.JSONAlign.align(L, R, { ignore: pred })
+                      : window.JSONAlign.normalize(L, R, pred);
+        } catch (e) { res = null; }
+        if (res && res.ok) {
+          // `changed` is true only while the input still holds un-normalized
+          // (differing) ignored values → it is "fresh" content. Snapshot the
+          // originals so ignore can be undone and autosave keeps real data.
+          if (pred && res.changed) _ignorePristine = { left: L, right: R };
+          _blockAligning = true;
+          try {
+            setPaneIfChanged(mergeView.a, res.left);
+            setPaneIfChanged(mergeView.b, res.right);
+          } finally {
+            _blockAligning = false;
+          }
+        }
+        // Memoize against the post-dispatch docs (failures too) so the next
+        // call on unchanged content returns in O(1).
+        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc, block, pred };
+      }
+
+      // Strip alignment gap lines from both panes (used when Block Diff is turned
+      // off, or for content arriving already-aligned) so the raw text and CM6's
+      // default diff return. Only strips when the result is valid JSON, so plain
+      // text with intentional blank lines is never mangled.
+      function removeBlockAlignment() {
+        if (!window.JSONAlign) return;
+        _blockAligning = true;
+        try {
+          [mergeView.a, mergeView.b].forEach(view => {
+            const cur = view.state.doc.toString();
+            const stripped = window.JSONAlign.stripGaps(cur);
+            if (stripped === cur) return;
+            try { JSON.parse(stripped); } catch (e) { return; } // not JSON → leave as-is
+            view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: stripped } });
+          });
+        } finally {
+          _blockAligning = false;
         }
       }
 
@@ -1156,10 +1698,11 @@
           a: {
             doc: leftContent,
             extensions: [
-              basicSetup, 
-              json(), 
-              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), 
-              themeCompartment.of(getThemeExtension(currentTheme)), 
+              basicSetup,
+              json(),
+              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []),
+              themeCompartment.of(getThemeExtension(currentTheme)),
+              ignoreCompartment.of(buildIgnoreExtension()),
               autoSaveExtension,
               placeholder(leftPlaceholderText)
             ],
@@ -1167,10 +1710,11 @@
           b: {
             doc: rightContent,
             extensions: [
-              basicSetup, 
-              json(), 
-              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []), 
-              themeCompartment.of(getThemeExtension(currentTheme)), 
+              basicSetup,
+              json(),
+              wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []),
+              themeCompartment.of(getThemeExtension(currentTheme)),
+              ignoreCompartment.of(buildIgnoreExtension()),
               autoSaveExtension,
               placeholder(rightPlaceholderText)
             ],
@@ -1184,9 +1728,9 @@
           allowEditingOriginals: true,
           revertControls: newSettings.revertControls === "none" ? undefined : newSettings.revertControls,
           collapseUnchanged: newSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
-          diffConfig: { scanLimit: newSettings.scanLimit },
+          diffConfig: buildDiffConfig(newSettings.scanLimit, leftContent.length + rightContent.length),
         });
-        
+
         // Re-add pane controls
         addPaneControls();
         
@@ -1266,10 +1810,20 @@
         clearBtn.className = 'copy-clear-btn'; // Add class for easy selection
         clearBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
+          // Un-normalize first so the surviving pane goes back to (and persists)
+          // its real values, and the pristine snapshot can't resurrect the
+          // cleared side on the next save.
+          restoreIgnorePristine();
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: "" }
           });
-          
+
+          // Persist the cleared state right away instead of waiting for the
+          // debounced autosave — a refresh inside that window used to bring
+          // the cleared content back.
+          clearTimeout(window.autoSaveTimer);
+          saveContent();
+
           // Save cleared content to current branch
           const branchId = activeBranches[side];
           if (branchId && window.BranchManager) {
@@ -2122,9 +2676,9 @@
 
       // Update visibility of copy/clear buttons based on content
       function updatePaneButtonVisibility() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-        
+        const leftContent = !docIsBlank(mergeView.a.state.doc);
+        const rightContent = !docIsBlank(mergeView.b.state.doc);
+
         // Find all pane controls
         const paneControls = document.querySelectorAll('.pane-controls');
         
@@ -2277,6 +2831,7 @@
 
           updateStatus("Formatted successfully");
           updateDiffStatus();
+          refreshMergeViewIfNeeded();
         } catch (e) {
           updateStatus("Error formatting: " + e.message);
         }
@@ -2312,6 +2867,7 @@
 
           updateStatus("Sorted successfully");
           updateDiffStatus();
+          refreshMergeViewIfNeeded();
         } catch (e) {
           updateStatus("Error sorting: " + e.message);
         }
@@ -2733,6 +3289,14 @@
       const AUTOSAVE_MAX_BYTES = 4 * 1024 * 1024;        // 4 MB
       // Skip exact CSV/JSON detection (full parse/split) above this size.
       const DETECT_MAX_BYTES = 512 * 1024;               // 512 KB
+      // Full-text (trimmed) equality for the status pill is only computed below
+      // this combined size; larger docs defer to MergeView's chunk list, which
+      // is already computed and needs no multi-MB string materialization.
+      const TEXT_EQ_MAX_BYTES = 1024 * 1024;             // 1 MB
+      // Auto-format/sort on paste re-serializes the whole payload (and pretty-
+      // printing can triple its size); above this cap the raw text is inserted
+      // untouched instead of stalling the tab on parse+stringify.
+      const FORMAT_MAX_BYTES = 4 * 1024 * 1024;          // 4 MB
 
       // Remember the last raw CSV per side so "Convert all anyway" can re-run.
       const lastRawCsv = { left: null, right: null };
@@ -2787,6 +3351,8 @@
           updateDiffStatus();
           updatePaneButtonVisibility();
           updateClearButtonVisibility();
+          // Re-fold unchanged regions for paste/drag/CSV ingest while Collapse is on.
+          refreshMergeViewIfNeeded();
           if (opts.checkSize) checkContentSizeAndSuggest();
         }, 50);
       }
@@ -2901,8 +3467,11 @@
         let handled = false;
 
         // 1) JSON-first — only when it actually looks like JSON, so the
-        //    Python→JSON regex passes never run over a huge CSV blob.
-        if (!opts.forceCsv && (autoCSV || autoFormat || autoSort) && looksLikeJSONStart(rawText)) {
+        //    Python→JSON regex passes never run over a huge CSV blob. Above
+        //    FORMAT_MAX_BYTES the raw text is inserted as-is: parse+pretty-print
+        //    of a multi-MB payload is a guaranteed main-thread stall.
+        if (!opts.forceCsv && (autoCSV || autoFormat || autoSort)
+            && rawText.length <= FORMAT_MAX_BYTES && looksLikeJSONStart(rawText)) {
           try {
             const parsed = window.parseFlexibleJSON(rawText);
             content = buildJSONString(parsed, { autoSort });
@@ -3021,6 +3590,10 @@
       async function clearAll() {
         if (!confirm("Clear all content?")) return;
 
+        // Drop the pre-normalization snapshot up front so nothing downstream
+        // (autosave, export) can persist the old content back.
+        _ignorePristine = null;
+
         mergeView.a.dispatch({
           changes: { from: 0, to: mergeView.a.state.doc.length, insert: "" }
         });
@@ -3028,6 +3601,17 @@
         mergeView.b.dispatch({
           changes: { from: 0, to: mergeView.b.state.doc.length, insert: "" }
         });
+
+        // Persist the cleared state everywhere it may live (localStorage +
+        // IndexedDB fallback) and cancel the autosave the dispatches above just
+        // scheduled, so a refresh starts truly clean instead of re-saving stale
+        // state.
+        clearTimeout(window.autoSaveTimer);
+        try {
+          StorageManager.clearStorage();
+        } catch (err) {
+          console.warn('Failed to clear stored content:', err);
+        }
 
         // Save cleared content to both branches
         if (window.BranchManager) {
@@ -3086,8 +3670,11 @@
           }
         } else {
           window.__autosaveSkipNotified = false;
-          const leftContent = mergeView.a.state.doc.toString();
-          const rightContent = mergeView.b.state.doc.toString();
+          // When ignore-normalization is active the right pane shows the left's
+          // value for ignored fields — persist the pre-normalized originals so a
+          // reload / export keeps real data rather than the normalized view.
+          const leftContent = _ignorePristine ? _ignorePristine.left : mergeView.a.state.doc.toString();
+          const rightContent = _ignorePristine ? _ignorePristine.right : mergeView.b.state.doc.toString();
           try {
             StorageManager.saveToStorage(leftContent, rightContent);
           } catch (e) {
@@ -3107,6 +3694,18 @@
         updateClearButtonVisibility();
         updateDiffStatus();
         updatePaneButtonVisibility();
+      }
+
+      // True when the doc contains no non-whitespace character. Walks the doc's
+      // text chunks and exits at the first visible character, so typical content
+      // answers in O(1) instead of materializing + trimming a multi-MB string.
+      function docIsBlank(doc) {
+        if (doc.length === 0) return true;
+        const iter = doc.iter();
+        while (!iter.next().done) {
+          if (/\S/.test(iter.value)) return false;
+        }
+        return true;
       }
 
       // Set the toolbar diff-summary pill: state drives the color, text the label.
@@ -3141,16 +3740,23 @@
       // the number always matches the screen and we avoid a second full
       // diff_match_patch pass (and the >100KB web-worker round-trip) on every edit.
       function updateDiffStatus() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
+        const aDoc = mergeView.a.state.doc;
+        const bDoc = mergeView.b.state.doc;
 
-        if (!leftContent || !rightContent) {
+        if (docIsBlank(aDoc) || docIsBlank(bDoc)) {
           setDiffSummary('idle', 'Add content to both panels to compare');
           updateDiffNavState();
           return;
         }
 
-        if (leftContent === rightContent) {
+        // Equality without building throwaway strings on every debounced edit:
+        // small docs keep the exact trimmed comparison; above the cap the
+        // already-computed chunk list is authoritative (no chunks ⇔ MergeView
+        // found no difference).
+        const same = (aDoc.length + bDoc.length <= TEXT_EQ_MAX_BYTES)
+          ? aDoc.toString().trim() === bDoc.toString().trim()
+          : (mergeView.chunks?.length || 0) === 0;
+        if (same) {
           setDiffSummary('same', 'No differences');
           updateDiffNavState();
           return;
@@ -3166,13 +3772,52 @@
           }
         }
 
-        const chunkCount = mergeView?.chunks?.length || 0;
+        const chunkCount = countVisibleChunks();
         if (chunkCount === 0) {
-          setDiffSummary('same', 'No differences');
+          const ignoredHere = !!ignoreMatcher && (mergeView?.chunks?.length || 0) > 0;
+          setDiffSummary('same', ignoredHere ? 'No differences (excluded matches ignored)' : 'No differences');
         } else {
           setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }
         updateDiffNavState();
+      }
+
+      // Count diff chunks, skipping any whose changed lines lie entirely within
+      // excluded (ignored) keys. With normalization most ignored props are no
+      // longer chunks at all; this still catches the residual case of a matched
+      // key present on only one side (a structural add/remove we can't normalize).
+      function countVisibleChunks() {
+        const chunks = mergeView?.chunks || [];
+        if (!ignoreMatcher) return chunks.length;
+        const ignoredA = getIgnoredLineSet(mergeView.a.state.doc);
+        const ignoredB = getIgnoredLineSet(mergeView.b.state.doc);
+        if (!ignoredA || !ignoredB) return chunks.length;
+        // Every changed line a chunk spans on this side sits inside an excluded
+        // key? (An empty span — pure add/remove on the other side — is handled
+        // by the caller, not here.)
+        const spanAllIgnored = (doc, from, to, set) => {
+          let pos = from;
+          while (pos < to) {
+            const line = doc.lineAt(pos);
+            if (!set.has(line.number)) return false;
+            pos = line.to + 1;
+          }
+          return true;
+        };
+        let count = 0;
+        for (const ch of chunks) {
+          const spanA = ch.toA > ch.fromA, spanB = ch.toB > ch.fromB;
+          let fullyIgnored = false;
+          try {
+            // Fully ignored = has changed lines, and every changed line (on the
+            // side(s) that actually changed) falls inside an excluded key.
+            fullyIgnored = (spanA || spanB)
+              && (!spanA || spanAllIgnored(mergeView.a.state.doc, ch.fromA, ch.toA, ignoredA))
+              && (!spanB || spanAllIgnored(mergeView.b.state.doc, ch.fromB, ch.toB, ignoredB));
+          } catch (e) { fullyIgnored = false; }
+          if (!fullyIgnored) count++;
+        }
+        return count;
       }
 
       // Update status message (transient, neutral styling).
@@ -3185,10 +3830,8 @@
         const btnClearAll = document.getElementById("btn-clear-all");
         if (!btnClearAll) return;
 
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-
-        btnClearAll.style.display = (leftContent || rightContent) ? "inline-block" : "none";
+        const hasContent = !docIsBlank(mergeView.a.state.doc) || !docIsBlank(mergeView.b.state.doc);
+        btnClearAll.style.display = hasContent ? "inline-block" : "none";
       }
 
       // Initialize when DOM is ready

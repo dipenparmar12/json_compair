@@ -1,0 +1,23 @@
+{
+  "autoCsv": true,
+  "autoFormatJson": true,
+  "autoSortKeys": false,
+  "showOnlyDiffs": false,
+  "wordWrap": true,
+  "scrollLock": true,
+  "theme": "oneDark",
+  "highlightChanges": false,
+  "gutter": true,
+  "collapseUnchanged": true,
+  "orientation": "a-b",
+  "revertControls": "none",
+  "scanLimit": 60000,
+  "timeout": 3000,
+  "performanceMode": true,
+  "viewportDiff": true,
+  "leftPanelName": "test",
+  "rightPanelName": "test",
+  "leftBranch": "test",
+  "rightBranch": "test-1",
+  "autoFormat": false
+}
