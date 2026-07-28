@@ -911,6 +911,136 @@
       // Global reference to merge view
       let mergeView = null;
 
+      // ---- Progressive disclosure: ⓘ info icons + on-demand tooltips ---------
+      // Verbose descriptions clutter the panels. InfoTips hides each description
+      // and shows it in a small popover on hover/focus (desktop) or tap (touch),
+      // triggered by a subtle ⓘ icon next to the title. One shared popover is
+      // portaled to <body> so a scrolling panel's overflow never clips it.
+      const InfoTips = (() => {
+        let pop = null, current = null, hideTimer = null;
+
+        function ensurePop() {
+          if (pop) return pop;
+          pop = document.createElement('div');
+          pop.className = 'info-tip';
+          pop.setAttribute('role', 'tooltip');
+          pop.style.display = 'none';
+          // Keep it open while the pointer is over the popover itself.
+          pop.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+          pop.addEventListener('mouseleave', hideSoon);
+          // Don't let clicks inside the tip bubble up to the panels'
+          // outside-click close handlers (the tip lives outside those panels).
+          pop.addEventListener('mousedown', (e) => e.stopPropagation());
+          pop.addEventListener('click', (e) => e.stopPropagation());
+          document.body.appendChild(pop);
+          return pop;
+        }
+
+        function position(icon) {
+          const r = icon.getBoundingClientRect();
+          const p = pop.getBoundingClientRect();
+          const vw = window.innerWidth || document.documentElement.clientWidth || 1024;
+          const vh = window.innerHeight || document.documentElement.clientHeight || 768;
+          let left = r.left;
+          let top = r.bottom + 6;
+          if (left + p.width > vw - 8) left = vw - 8 - p.width;
+          if (left < 8) left = 8;
+          if (top + p.height > vh - 8) top = r.top - 6 - p.height; // flip above
+          pop.style.left = Math.round(left) + 'px';
+          pop.style.top = Math.round(Math.max(8, top)) + 'px';
+        }
+
+        function show(icon) {
+          ensurePop();
+          const desc = icon._desc;
+          if (!desc) return;
+          clearTimeout(hideTimer);
+          pop.innerHTML = desc.innerHTML;
+          pop.style.visibility = 'hidden';
+          pop.style.display = 'block';
+          position(icon);                 // measure then place
+          pop.style.visibility = 'visible';
+          if (current && current !== icon) current.setAttribute('aria-expanded', 'false');
+          current = icon;
+          icon.setAttribute('aria-expanded', 'true');
+        }
+
+        function hide() {
+          if (pop) pop.style.display = 'none';
+          if (current) current.setAttribute('aria-expanded', 'false');
+          current = null;
+        }
+        function hideSoon() { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 120); }
+
+        function attach(icon, desc) {
+          icon._desc = desc;
+          icon.addEventListener('mouseenter', () => { clearTimeout(hideTimer); show(icon); });
+          icon.addEventListener('mouseleave', hideSoon);
+          icon.addEventListener('focus', () => show(icon));
+          icon.addEventListener('blur', hide);
+          // Tap / click toggles (touch has no hover) and must not toggle the
+          // surrounding <label>'s checkbox — hence preventDefault.
+          icon.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            (current === icon) ? hide() : show(icon);
+          });
+        }
+
+        // Global dismiss: Escape, scroll (any container), resize, outside click.
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+        window.addEventListener('scroll', () => { if (current) hide(); }, true);
+        window.addEventListener('resize', () => { if (current) hide(); });
+        document.addEventListener('click', (e) => {
+          if (current && e.target !== current && !current.contains(e.target) &&
+              (!pop || !pop.contains(e.target))) hide();
+        });
+
+        return { attach };
+      })();
+
+      function makeInfoIcon() {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'info-icon';
+        b.textContent = 'i';
+        b.setAttribute('aria-label', 'More information');
+        b.setAttribute('aria-expanded', 'false');
+        return b;
+      }
+
+      // Convert verbose descriptions into ⓘ tooltips within `root`. Idempotent
+      // (guarded per element), so it is safe to call once over the whole document.
+      //   • .setting-desc  → ⓘ appended to the row's .setting-title
+      //   • .ignore-desc   → ⓘ appended to the preceding .settings-section-title
+      function enhanceInfoTips(root) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+
+        root.querySelectorAll('.setting-desc').forEach((desc) => {
+          if (desc.dataset.tipDone) return;
+          const text = desc.closest('.setting-text') || desc.parentElement;
+          const title = text ? text.querySelector('.setting-title') : null;
+          if (!title) return;
+          const icon = makeInfoIcon();
+          title.appendChild(icon);
+          desc.classList.add('is-tip-source');
+          desc.dataset.tipDone = '1';
+          InfoTips.attach(icon, desc);
+        });
+
+        root.querySelectorAll('.ignore-desc').forEach((desc) => {
+          if (desc.dataset.tipDone) return;
+          let sib = desc.previousElementSibling;
+          while (sib && !sib.classList.contains('settings-section-title')) sib = sib.previousElementSibling;
+          const icon = makeInfoIcon();
+          if (sib) sib.appendChild(icon);
+          else desc.parentElement.insertBefore(icon, desc);
+          desc.classList.add('is-tip-source');
+          desc.dataset.tipDone = '1';
+          InfoTips.attach(icon, desc);
+        });
+      }
+
       // Initialize the application
       async function initializeApp() {
         // Initialize BranchManager first
@@ -1039,6 +1169,10 @@
         initializeInfoDropdown();
         initializeIgnorePanel();
         updateIgnoreStyleClass();
+
+        // Progressive disclosure: move verbose descriptions into ⓘ tooltips so
+        // the panels show titles + controls by default (details on hover/tap).
+        enhanceInfoTips(document);
 
         // Initialize branch system - load active branches if they exist
         await initializeBranches();

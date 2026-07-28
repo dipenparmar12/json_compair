@@ -1964,6 +1964,83 @@ button:disabled,
     margin-top: 2px;
 }
 
+/* ====================================================================
+   Progressive disclosure — ⓘ info icon + on-demand tooltip
+   --------------------------------------------------------------------
+   Verbose descriptions (.setting-desc / .ignore-desc) are hidden and
+   revealed on hover/focus (desktop) or tap (touch) via a subtle info
+   icon next to the title. The popover is portaled to <body>, so a
+   scrolling panel (overflow-y:auto) never clips it. See enhanceInfoTips().
+   ==================================================================== */
+.is-tip-source { display: none !important; }
+
+.info-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    margin-left: 6px;
+    padding: 0;
+    flex: 0 0 auto;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 10px;
+    font-weight: 700;
+    font-style: italic;
+    line-height: 1;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    cursor: help;
+    vertical-align: middle;
+    opacity: .55;
+    transition: opacity .15s, color .15s, box-shadow .15s;
+}
+
+.info-icon:hover,
+.info-icon:focus-visible,
+.info-icon[aria-expanded="true"] {
+    opacity: 1;
+    color: var(--accent);
+    outline: none;
+}
+
+.info-icon:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Keep the icon on the title's baseline within a section-title bar. */
+.settings-section-title .info-icon {
+    color: var(--text-muted);
+    vertical-align: -1px;
+}
+
+.info-tip {
+    position: fixed;
+    z-index: 2000;
+    width: max-content;
+    max-width: 300px;
+    padding: 9px 11px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.info-tip code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 4px;
+}
+
 .settings-select,
 .settings-input-num {
     font-family: var(--font-ui);
