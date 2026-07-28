@@ -496,6 +496,26 @@ Two sections:
 1. **Quick Toggles**: Collapse Unchanged, Highlight Changes
 2. **Full Settings**: All configuration options
 
+### Progressive-disclosure info tooltips (v6)
+To keep panels uncluttered, verbose descriptions are hidden and revealed on demand
+behind a subtle ⓘ icon (progressive disclosure). Implemented generically in
+`v6/index.html`:
+- **`enhanceInfoTips(root)`** runs once over the document at the end of `initializeApp`.
+  It finds every `.setting-desc` (→ ⓘ appended to the row's `.setting-title`) and every
+  `.ignore-desc` (→ ⓘ appended to the preceding `.settings-section-title`), tags the
+  description `.is-tip-source` (CSS `display:none !important`), and wires the icon.
+  Idempotent (`dataset.tipDone`), so authors keep writing `.setting-desc`/`.ignore-desc`
+  as before and new ones auto-convert — no per-row markup.
+- **`InfoTips`** (IIFE) manages ONE shared `.info-tip` popover portaled to `<body>` so a
+  scrolling panel's `overflow-y:auto` never clips it. Shows on hover/focus (desktop) and
+  tap/click (touch); dismisses on mouseleave/blur/Escape/scroll/resize/outside-click. Icon
+  click does `preventDefault` (so an ⓘ inside a `<label>` doesn't toggle its checkbox) and
+  the popover `stopPropagation`s its own clicks (so it doesn't trip panels' outside-click
+  close). `position()` places below the icon, flips above / clamps to `window.innerWidth`.
+- **CSS** (`app.css`): `.info-icon` (subtle bordered circle "i"), `.info-tip`
+  (`position:fixed; width:max-content; max-width:300px`), `.is-tip-source`. Font size
+  unchanged — this is presentation/hierarchy only. See memory [[v6-info-tooltips]].
+
 ### Status Bar
 Shows diff count and current mode (count = `mergeView.chunks.length`):
 - "No differences"
