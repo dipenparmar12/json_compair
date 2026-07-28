@@ -210,7 +210,9 @@ window.SettingsManager
 
 // json_utils.js
 window.parseFlexibleJSON()
-window.sortJSONKeys()
+window.sortJSONKeys()          // alphabetize keys recursively (crude value-sort of object arrays)
+window.parseSortSpec(str)      // "category ASC, amount DESC" → [{field,dir,path}] (dot-notation nesting)
+window.sortJSONByFields(data, specs) // stable value-sort of a top-level array of objects by field(s)
 
 // utils_csv.js
 window.CSVUtils
@@ -470,7 +472,11 @@ if (CSVUtils.isCSV(text) && settings.autoCsv) {
 
 ### Header Controls
 - Format JSON
-- Sort JSON keys
+- **Sort ▾ dropdown** (v6): "Sort by field value" — a text input taking a spec like
+  `category ASC, amount DESC` (comma-separated keys, per-key ASC/DESC default ASC, dot-notation
+  for nested keys) that value-sorts the **top-level array of objects in both panes** (ideal for
+  aligning two arrays before diffing); empty spec falls back to "Sort keys A→Z". Pure logic in
+  `utils.js` (`parseSortSpec` / `sortJSONByFields`); UI in `initializeSortPanel()` + `sortByFields()`.
 - Clear All
 - Theme selector (v6 only)
 - Settings panel toggle (⚙️)

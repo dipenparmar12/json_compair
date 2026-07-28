@@ -793,11 +793,84 @@
     });
   }
 
+  // ---- Sort array items by field value(s) --------------------------------
+  // Parse a sort spec like "category ASC, amount DESC" or "state, city, zipCode"
+  // into descriptors [{ field, dir, path }]. Direction defaults to ascending;
+  // a trailing " ASC" / " DESC" (case-insensitive) sets it. Dot-notation in a
+  // field name addresses nested values ("address.city"). Returns [] for junk.
+  function parseSortSpec(spec) {
+    if (typeof spec !== 'string') return [];
+    const out = [];
+    spec.split(',').forEach((raw) => {
+      const token = raw.trim();
+      if (!token) return;
+      let field = token, dir = 1;
+      const m = token.match(/^(.+?)\s+(asc|desc)$/i);
+      if (m) { field = m[1].trim(); dir = m[2].toLowerCase() === 'desc' ? -1 : 1; }
+      if (!field) return;
+      out.push({ field, dir, path: field.split('.').map((p) => p.trim()).filter(Boolean) });
+    });
+    return out;
+  }
+
+  // Read a (possibly nested) value by path array. undefined if any hop missing.
+  function getByPath(obj, path) {
+    let v = obj;
+    for (let i = 0; i < path.length; i++) {
+      if (v === null || typeof v !== 'object') return undefined;
+      v = v[path[i]];
+    }
+    return v;
+  }
+
+  // Compare two non-null primitives (numbers numeric, else locale/numeric-aware
+  // case-insensitive string compare; objects/arrays fall back to JSON string).
+  function compareScalar(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return a === b ? 0 : (a < b ? -1 : 1);
+    if (typeof a === 'boolean' && typeof b === 'boolean') return a === b ? 0 : (a ? 1 : -1);
+    const as = (a !== null && typeof a === 'object') ? JSON.stringify(a) : String(a);
+    const bs = (b !== null && typeof b === 'object') ? JSON.stringify(b) : String(b);
+    return as.localeCompare(bs, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  // Build a multi-key comparator from parsed specs. null/undefined always sort
+  // last (independent of direction); ties fall through to the next key.
+  function makeFieldComparator(specs) {
+    return function (x, y) {
+      for (let i = 0; i < specs.length; i++) {
+        const s = specs[i];
+        const a = getByPath(x, s.path);
+        const b = getByPath(y, s.path);
+        const aNull = a === undefined || a === null;
+        const bNull = b === undefined || b === null;
+        if (aNull || bNull) {
+          if (aNull && bNull) continue;
+          return aNull ? 1 : -1;  // missing values last, either direction
+        }
+        const c = compareScalar(a, b);
+        if (c !== 0) return c * s.dir;
+      }
+      return 0;
+    };
+  }
+
+  // Sort a top-level array of objects by the given specs (parsed or a raw spec
+  // string). Returns a NEW array; non-arrays and empty specs return the input
+  // unchanged. Array.prototype.sort is stable, so equal items keep their order.
+  function sortJSONByFields(data, specs) {
+    if (typeof specs === 'string') specs = parseSortSpec(specs);
+    if (!Array.isArray(specs) || specs.length === 0) return data;
+    if (!Array.isArray(data)) return data;
+    return data.slice().sort(makeFieldComparator(specs));
+  }
+
   // Expose utilities on the global window for compatibility
   window.URLManager = URLManager;
   window.StorageManager = StorageManager;
   window.DefaultTemplates = DefaultTemplates;
   window.sortJSONKeys = sortJSONKeys;
   window.sortJSONArray = sortJSONArray;
+  window.parseSortSpec = parseSortSpec;
+  window.sortJSONByFields = sortJSONByFields;
   window.SettingsManager = SettingsManager;
 })();

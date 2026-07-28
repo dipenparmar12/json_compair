@@ -79,7 +79,28 @@
       <div class="intro">
         <div class="intro-left">
           <button id="btn-format" class="btn btn-primary">Format JSON</button>
-          <button id="btn-sort" class="btn">Sort Keys</button>
+
+          <!-- Sort dropdown: sort array items by field value(s), or sort keys A→Z -->
+          <div class="sort-dropdown menu-anchor">
+            <button id="btn-sort" class="btn" title="Sort JSON data">Sort ▾</button>
+            <div id="sort-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
+              <div class="settings-section-title">Sort by field value</div>
+              <div class="ignore-desc">
+                Reorder the top-level array of objects by one or more keys. Comma-separate
+                keys and add <code>ASC</code>/<code>DESC</code> per key (ascending by default).
+                Dot-notation for nested keys (<code>address.city</code>). Applies to both panels.
+                <br />e.g. <code>date DESC</code> · <code>category ASC, amount DESC</code>
+              </div>
+              <div class="ignore-input-row">
+                <input type="text" id="sort-input" class="ignore-input"
+                       placeholder="e.g. category ASC, amount DESC" autocomplete="off" spellcheck="false" />
+                <button id="sort-apply" class="btn btn-primary">Sort</button>
+              </div>
+              <div id="sort-error" class="ignore-error" style="display: none;"></div>
+              <div class="settings-section-title settings-section-divided">Other</div>
+              <button id="btn-sort-keys" class="dropdown-item">🔤 Sort keys A→Z (all levels)</button>
+            </div>
+          </div>
 
           <span class="toolbar-divider"></span>
 
@@ -2829,7 +2850,6 @@
       // Setup button handlers
       function setupButtons() {
         const btnFormat = document.getElementById("btn-format");
-        const btnSort = document.getElementById("btn-sort");
   const btnShare = document.getElementById("btn-share");
   const btnImport = document.getElementById("btn-import");
         const fileImport = document.getElementById("file-import");
@@ -2838,8 +2858,8 @@
         const autoCSV = document.getElementById("auto-csv-conversion");
 
         btnFormat.onclick = formatJSON;
-        btnSort.onclick = sortJSON;
-        
+        initializeSortPanel();  // wires btn-sort (toggle), sort-apply, btn-sort-keys
+
         btnShare.onclick = shareURL;
         
         // Import snapshot
@@ -2970,6 +2990,88 @@
         } catch (e) {
           updateStatus("Error sorting: " + e.message);
         }
+      }
+
+      // Sort the top-level array of objects in BOTH panes by a field spec such as
+      // "category ASC, amount DESC" (see utils.parseSortSpec). Empty spec falls
+      // back to the default key sort. Each pane is handled independently: a pane
+      // that isn't a top-level array (or won't parse) is left untouched. Returns
+      // an error string to surface in the panel, or null on success.
+      function sortByFields(spec) {
+        const specs = window.parseSortSpec(spec || '');
+        if (specs.length === 0) { sortJSON(); return null; }  // no criteria → app default
+
+        const panes = [
+          { view: mergeView.a, text: mergeView.a.state.doc.toString().trim() },
+          { view: mergeView.b, text: mergeView.b.state.doc.toString().trim() },
+        ];
+        if (!panes.some((p) => p.text)) return 'Add content to a panel to sort.';
+
+        let parsedAny = false, sortedAny = false;
+        const results = panes.map((p) => {
+          if (!p.text) return null;
+          let parsed;
+          try { parsed = window.parseFlexibleJSON(p.text); }
+          catch (e) { return null; }            // leave an unparseable pane untouched
+          parsedAny = true;
+          if (!Array.isArray(parsed)) return null;
+          sortedAny = true;
+          return { view: p.view, out: JSON.stringify(window.sortJSONByFields(parsed, specs), null, 3) };
+        });
+
+        if (!parsedAny) return 'Could not parse JSON — fix it and try again.';
+        if (!sortedAny) return 'Sort by field needs a top-level array of objects.';
+
+        results.forEach((r) => {
+          if (r) r.view.dispatch({ changes: { from: 0, to: r.view.state.doc.length, insert: r.out } });
+        });
+        updateStatus('Sorted by ' + specs.map((s) => s.field + (s.dir < 0 ? ' ↓' : ' ↑')).join(', '));
+        updateDiffStatus();
+        refreshMergeViewIfNeeded();
+        return null;
+      }
+
+      // Wire the Sort dropdown: toggle open/close, the field-sort input/Apply, and
+      // the "Sort keys A→Z" fallback item.
+      function initializeSortPanel() {
+        const btn = document.getElementById('btn-sort');
+        const panel = document.getElementById('sort-panel');
+        const input = document.getElementById('sort-input');
+        const applyBtn = document.getElementById('sort-apply');
+        const keysBtn = document.getElementById('btn-sort-keys');
+        if (!btn || !panel) return;
+
+        const showErr = (msg) => {
+          const el = document.getElementById('sort-error');
+          if (!el) return;
+          if (msg) { el.textContent = msg; el.style.display = 'block'; }
+          else { el.textContent = ''; el.style.display = 'none'; }
+        };
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = panel.style.display !== 'none';
+          panel.style.display = open ? 'none' : 'block';
+          if (!open) { showErr(''); if (input) setTimeout(() => input.focus(), 0); }
+        });
+        document.addEventListener('click', (e) => {
+          if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            panel.style.display = 'none';
+          }
+        });
+
+        const runSort = () => {
+          const err = sortByFields(input ? input.value : '');
+          if (err) { showErr(err); return; }
+          showErr('');
+          panel.style.display = 'none';
+        };
+        if (applyBtn) applyBtn.addEventListener('click', runSort);
+        if (input) {
+          input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runSort(); } });
+          input.addEventListener('input', () => showErr(''));
+        }
+        if (keysBtn) keysBtn.addEventListener('click', () => { sortJSON(); panel.style.display = 'none'; });
       }
 
       function buildJSONString(data, options = {}) {
