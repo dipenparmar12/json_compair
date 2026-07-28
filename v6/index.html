@@ -1879,6 +1879,45 @@
       // it avoids a full parse+align+stringify of both documents.
       let _lastAlignMemo = null; // { docA, docB, block, pred, tol }
 
+      // Core: align/normalize the given left/right TEXT and write both panes.
+      // Returns true if it transformed & dispatched (caller can then skip a raw
+      // dispatch). Used by applyBlockAlignment (aligns the live panes) and by the
+      // ingest pipeline (aligns the incoming content against the other pane
+      // *before* the first render, so CM6 never diffs the unaligned text). Sets
+      // the pristine snapshot + memo exactly like the original single function.
+      function transformAndDispatch(L, R) {
+        const block = blockDiffEnabled();
+        const pred = ignorePredicate;
+        const tol = numToleranceActive();
+        let dispatched = false;
+        if (window.JSONAlign && (block || pred || tol != null)) {
+          let res;
+          try {
+            res = block ? window.JSONAlign.align(L, R, { ignore: pred, numTol: tol })
+                        : window.JSONAlign.normalize(L, R, pred, tol);
+          } catch (e) { res = null; }
+          if (res && res.ok) {
+            // `changed` is true only while the input still holds un-normalized
+            // (differing) ignored / near-equal values → it is "fresh" content.
+            // Snapshot the originals so the transform can be undone and autosave
+            // keeps real data rather than the normalized (copied-left) view.
+            if ((pred || tol != null) && res.changed) _ignorePristine = { left: L, right: R };
+            _blockAligning = true;
+            try {
+              setPaneIfChanged(mergeView.a, res.left);
+              setPaneIfChanged(mergeView.b, res.right);
+            } finally {
+              _blockAligning = false;
+            }
+            dispatched = true;
+          }
+        }
+        // Memoize against the post-dispatch docs (failures too) so the next call
+        // on unchanged content returns in O(1).
+        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc, block, pred, tol };
+        return dispatched;
+      }
+
       function applyBlockAlignment() {
         if (_blockAligning || !window.JSONAlign) return;
         const block = blockDiffEnabled();
@@ -1891,30 +1930,7 @@
             _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
             _lastAlignMemo.block === block && _lastAlignMemo.pred === pred &&
             _lastAlignMemo.tol === tol) return;
-        const L = docA.toString();
-        const R = docB.toString();
-        let res;
-        try {
-          res = block ? window.JSONAlign.align(L, R, { ignore: pred, numTol: tol })
-                      : window.JSONAlign.normalize(L, R, pred, tol);
-        } catch (e) { res = null; }
-        if (res && res.ok) {
-          // `changed` is true only while the input still holds un-normalized
-          // (differing) ignored / near-equal values → it is "fresh" content.
-          // Snapshot the originals so the transform can be undone and autosave
-          // keeps real data rather than the normalized (copied-left) view.
-          if ((pred || tol != null) && res.changed) _ignorePristine = { left: L, right: R };
-          _blockAligning = true;
-          try {
-            setPaneIfChanged(mergeView.a, res.left);
-            setPaneIfChanged(mergeView.b, res.right);
-          } finally {
-            _blockAligning = false;
-          }
-        }
-        // Memoize against the post-dispatch docs (failures too) so the next
-        // call on unchanged content returns in O(1).
-        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc, block, pred, tol };
+        transformAndDispatch(docA.toString(), docB.toString());
       }
 
       // Strip alignment gap lines from both panes (used when Block Diff is turned
@@ -3614,7 +3630,11 @@
       // Cap on rendered "cells" (~object keys × rows) per panel. Wide CSVs
       // (many columns) sample fewer rows; narrow CSVs sample many. This keeps
       // the MergeView responsive instead of trying to render millions of lines.
-      const MAX_RENDER_CELLS_PER_PANEL = 150000;
+      // Cap raised from 150k after block-alignment made large, mostly-identical
+      // datasets cheap to diff (aligned content collapses; CM6 renders only the
+      // viewport). 220k cells covers ~6.2k rows at ~35 columns — enough to show
+      // both example parcel datasets (6,111 rows) in full without sampling.
+      const MAX_RENDER_CELLS_PER_PANEL = 220000;
       // Raw CSV larger than this is always parsed in the worker.
       const OFFTHREAD_CSV_THRESHOLD = 100 * 1024;        // 100 KB
       // Combined content above this turns on collapse-unchanged before render.
@@ -3838,8 +3858,27 @@
         await applyProactivePosture(content, side);
         await nextPaint();
 
-        // 4) One dispatch.
-        editor.dispatch({ changes: { from, to, insert: content } });
+        // 4) Dispatch. When a transform (block-diff / ignore / tolerance) is
+        //    active and the OTHER pane already holds content, align BOTH sides
+        //    *before* the first render so CM6 never diffs the unaligned text. For
+        //    CSV-derived JSON whose columns differ only in order, the raw text
+        //    differs on ~98% of lines while the records are the same — diffing
+        //    that (and re-diffing it through the collapse/count cascade below)
+        //    is what locks the main thread. Aligning first collapses it to the
+        //    handful of genuinely-changed fields. Only for a full-doc replace;
+        //    range/partial pastes dispatch normally and re-align on the debounce.
+        const fullReplace = (from === 0 && to === editor.state.doc.length);
+        const otherPane = side === 'left' ? mergeView.b : mergeView.a;
+        const otherText = otherPane.state.doc.toString();
+        let dispatched = false;
+        if (fullReplace && transformActive() && content.trim() && otherText.trim()) {
+          const L = side === 'left' ? content : otherText;
+          const R = side === 'left' ? otherText : content;
+          dispatched = transformAndDispatch(L, R);
+        }
+        if (!dispatched) {
+          editor.dispatch({ changes: { from, to, insert: content } });
+        }
 
         // 5) Coalesced follow-up.
         afterContentChanged({ checkSize: true });

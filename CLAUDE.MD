@@ -680,8 +680,35 @@ Understand the split before touching diff/perf code:
   same-docs + same-mode + same-predicate ⇒ skip the whole parse/align/stringify, failures included).
 - **Setting:** `blockDiff` (default **true**, toggle in settings panel). Off → `removeBlockAlignment()`
   strips gaps (only when the result is valid JSON) and CM6's default diff returns.
-- **Fallback:** any parse failure / non-JSON / >3 MB combined → `align()` returns `{ok:false}` →
-  no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
+- **Fallback:** any parse failure / non-JSON / >`MAX_BYTES` (24 MB) combined → `align()` returns
+  `{ok:false}` → no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
+
+### 9. Large-array performance — compact mode + pre-align (the "browser freeze" fix)
+- **Symptom:** two ~6k-row CSVs (→ CSV-derived JSON) froze the tab. Root cause (profiled, not
+  guessed): CM6's MergeView **line diff does not scale past ~100k lines**. Pretty-printed JSON of
+  6,111 records = ~226k lines/side; the two files differed on ~98% of lines *purely from column
+  order* (records were identical). CM6 either produces a crude single "everything changed" block
+  (low scanLimit) or **freezes** (high scanLimit) — the line *count* is the wall, and no scanLimit
+  value wins at that size. See memory [[v6-large-array-perf]].
+- **Fix A — compact one-line-per-record (`alignArrayOneLine` in json_align.js).** When the top-level
+  values are arrays and combined input >`COMPACT_MIN_BYTES` (1 MB) **or** total elements
+  >`COMPACT_MIN_ELEMENTS` (1000), each element is serialized on **one line** with a **canonical key
+  order** (`mergeKeyOrder`: a's keys then b-only). Line count ≈ record count (226k → 6.1k, 37×), so
+  CM6 diffs it in ~25 ms; changed fields still show via **character-level** highlighting, equal
+  records → byte-identical lines → collapse. Column-order noise disappears (canonical order).
+  Ignore/tolerance are honored per field (`compactPair`/`compactSingle`), and **ignored keys are
+  dropped from both sides** (so a one-sided noisy column like `created_on` stops making every record
+  differ). Small arrays stay **pretty** (readable). Shared element-matching walk = `walkArrayMatches`.
+- **Fix B — pre-align in the ingest pipeline (`transformAndDispatch`).** `applyBlockAlignment` used
+  to run 500 ms *after* the raw content was dispatched, so CM6 diffed the unaligned mega-text first
+  (the freeze). `ingestContent` now aligns the incoming content against the other pane **before the
+  first dispatch** (full-doc replace + transform active + other pane non-empty), so CM6 only ever
+  diffs already-aligned/compact content. `transformAndDispatch(L,R)` is the shared core (also used by
+  `applyBlockAlignment`); it sets `_ignorePristine` + `_lastAlignMemo` exactly as before.
+- **Also:** `MAX_RENDER_CELLS_PER_PANEL` 150k → **220k** (shows all 6,111 rows unsampled, cheap once
+  compact); `json_align` `MAX_BYTES` 3 MB → **24 MB** (align is O(n) via positional pairing — LCS is
+  skipped for large arrays — so ~0.3–0.4 s even at ~15 MB, vs. a guaranteed CM6 freeze otherwise).
+- **Regression dataset:** `docs/test-cases-example/bwoser-tabs-freezed-on-this-data/*.csv`.
 
 ### 7. Exclude keys/patterns from the diff — `diff_ignore.js` + normalization + `.cm-ignoredLine`
 - **Why:** ignore noisy fields (db `created_on`/`updated_at`, ids, hashes) that differ on every

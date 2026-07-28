@@ -36,9 +36,24 @@
   'use strict';
 
   var INDENT = '  ';
-  var MAX_BYTES = 3000000;     // skip alignment above this combined size (safety)
-  var MAX_LCS_CELLS = 1000000; // skip element LCS for very large arrays
+  // Skip alignment above this combined size. Kept generous on purpose: for large
+  // arrays the O(n·m) element LCS is skipped (see MAX_LCS_CELLS) so align falls
+  // back to positional pairing — O(n) parse + serialize, ~0.4s for ~15MB — which
+  // is the difference between a clean, collapsible diff and CM6 choking on a
+  // ~98%-"changed" raw text diff (e.g. CSV-derived JSON whose only real
+  // difference is key order). See the "Performance" notes in CLAUDE.md.
+  var MAX_BYTES = 24000000;    // ~24MB combined
+  var MAX_LCS_CELLS = 1000000; // skip element LCS for very large arrays (-> positional pairing)
   var PAIR_KEY_RATIO = 0.5;    // min shared-key ratio to treat two objects as "the same item changed"
+  // Above either threshold, a top-level array is aligned in COMPACT mode: each
+  // element on ONE line instead of pretty-printed across many. Pretty-printing an
+  // array of a few thousand objects explodes into hundreds of thousands of lines,
+  // which CM6's line-diff cannot resolve (it falls back to one crude "everything
+  // changed" block, or freezes at a high scanLimit). One line per record keeps the
+  // line count ≈ the record count, so CM6 diffs it instantly and still shows the
+  // changed fields via character-level highlighting. See CLAUDE.md Performance.
+  var COMPACT_MIN_BYTES = 1000000; // ~1MB combined input, or…
+  var COMPACT_MIN_ELEMENTS = 1000; // …this many top-level array elements → compact
 
   function isPlainObject(v) {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -221,6 +236,37 @@
     return { A: A, B: B };
   }
 
+  // Walk the element matches of arrays a,b (LCS where affordable, else positional)
+  // and call emit(i,j) for each output position: (i,j) a paired/positional match,
+  // (i,null) an a-only element, (null,j) a b-only element. Shared by the pretty
+  // (alignArray) and compact (alignArrayOneLine) emitters.
+  function walkArrayMatches(a, b, tol, emit) {
+    var n = a.length, m = b.length;
+    var matches = (n === 0 || m === 0 || n * m > MAX_LCS_CELLS) ? [] : lcsMatches(a, b, tol);
+    var anchors = matches.concat([[n, m]]);
+    var ai = 0, bj = 0;
+    for (var t = 0; t < anchors.length; t++) {
+      var ti = anchors[t][0], tj = anchors[t][1];
+      // unmatched block before this anchor: pair positionally
+      var dels = [], inss = [], i, j;
+      for (i = ai; i < ti; i++) dels.push(i);
+      for (j = bj; j < tj; j++) inss.push(j);
+      var len = Math.max(dels.length, inss.length);
+      for (var k = 0; k < len; k++) {
+        var di = k < dels.length ? dels[k] : null;
+        var ij = k < inss.length ? inss[k] : null;
+        if (di !== null && ij !== null && !shouldPair(a[di], b[ij])) {
+          emit(di, null);
+          emit(null, ij);
+        } else {
+          emit(di, ij);
+        }
+      }
+      if (ti < n && tj < m) { emit(ti, tj); ai = ti + 1; bj = tj + 1; }
+      else { ai = ti; bj = tj; }
+    }
+  }
+
   function alignArray(a, b, pad, ctx) {
     var child = pad + INDENT;
     var n = a.length, m = b.length;
@@ -249,31 +295,95 @@
       }
     }
 
-    var matches = (n === 0 || m === 0 || n * m > MAX_LCS_CELLS) ? [] : lcsMatches(a, b, ctx.numTol);
-    var anchors = matches.concat([[n, m]]);
-    var ai = 0, bj = 0;
-    for (var t = 0; t < anchors.length; t++) {
-      var ti = anchors[t][0], tj = anchors[t][1];
-      // unmatched block before this anchor: pair positionally
-      var dels = [], inss = [], i, j;
-      for (i = ai; i < ti; i++) dels.push(i);
-      for (j = bj; j < tj; j++) inss.push(j);
-      var len = Math.max(dels.length, inss.length);
-      for (var k = 0; k < len; k++) {
-        var di = k < dels.length ? dels[k] : null;
-        var ij = k < inss.length ? inss[k] : null;
-        if (di !== null && ij !== null && !shouldPair(a[di], b[ij])) {
-          emit(di, null);
-          emit(null, ij);
-        } else {
-          emit(di, ij);
-        }
-      }
-      if (ti < n && tj < m) { emit(ti, tj); ai = ti + 1; bj = tj + 1; }
-      else { ai = ti; bj = tj; }
-    }
+    walkArrayMatches(a, b, ctx.numTol, emit);
     A.push(pad + ']'); B.push(pad + ']');
     return { A: A, B: B };
+  }
+
+  // Canonical key order for a record = a's keys, then any b-only keys. Applied to
+  // BOTH sides so two equal records serialize to byte-identical lines (which CM6
+  // then collapses); changed records differ only where a field actually differs.
+  function mergeKeyOrder(o1, o2) {
+    var order = [], seen = Object.create(null), k;
+    for (k in o1) if (Object.prototype.hasOwnProperty.call(o1, k) && !seen[k]) { seen[k] = 1; order.push(k); }
+    for (k in o2) if (Object.prototype.hasOwnProperty.call(o2, k) && !seen[k]) { seen[k] = 1; order.push(k); }
+    return order;
+  }
+
+  var hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+
+  // Compact line for a single added/removed record. Ignored keys are dropped so
+  // noisy columns don't clutter add/remove blocks either.
+  function compactSingle(obj, ctx) {
+    if (!isPlainObject(obj)) return JSON.stringify(obj);
+    var parts = [], keys = Object.keys(obj);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (ctx && ctx.ignore && ctx.ignore(k, obj[k], undefined)) continue;
+      parts.push(JSON.stringify(k) + ':' + JSON.stringify(obj[k]));
+    }
+    return '{' + parts.join(',') + '}';
+  }
+
+  // Build the two compact lines for a matched record pair, keys in canonical
+  // order. Ignored keys are DROPPED from BOTH sides (so a noisy column — even one
+  // present on only one side, like a db `created_on` — never shows as a diff);
+  // near-equal numbers emit a's value on both. Equal records → identical lines.
+  function compactPair(ra, rb, ctx, out) {
+    var order = mergeKeyOrder(ra, rb), laP = [], lbP = [];
+    for (var idx = 0; idx < order.length; idx++) {
+      var k = order[idx];
+      var inA = hasOwn(ra, k), inB = hasOwn(rb, k);
+      var av = inA ? ra[k] : undefined, bv = inB ? rb[k] : undefined;
+      if (ctx.ignore && ctx.ignore(k, av, bv)) {
+        if (inA && inB && !deepEqual(av, bv)) ctx.changed = true;
+        continue; // drop ignored key from both sides
+      }
+      var bOut = bv;
+      if (inA && inB && ctx.numTol != null && typeof av === 'number' && typeof bv === 'number'
+          && eqKind(av, bv, ctx.numTol) === 2) { ctx.changed = true; bOut = av; }
+      if (inA) laP.push(JSON.stringify(k) + ':' + JSON.stringify(av));
+      if (inB) lbP.push(JSON.stringify(k) + ':' + JSON.stringify(bOut));
+    }
+    out.a = '{' + laP.join(',') + '}';
+    out.b = '{' + lbP.join(',') + '}';
+  }
+
+  // Compact top-level array alignment: each element on ONE line. Keeps the line
+  // count ≈ element count so CM6 stays fast on very large arrays. Gap (blank) lines
+  // still mark added/removed elements; changed fields show via CM6's char diff.
+  function alignArrayOneLine(a, b, ctx) {
+    var n = a.length, m = b.length;
+    var A = ['['], B = ['['];
+    var buf = {};
+    function emit(i, j) {
+      var commaA = i !== null && i < n - 1;
+      var commaB = j !== null && j < m - 1;
+      if (i !== null && j !== null) {
+        if (isPlainObject(a[i]) && isPlainObject(b[j])) {
+          compactPair(a[i], b[j], ctx, buf);
+          A.push(buf.a + (commaA ? ',' : ''));
+          B.push(buf.b + (commaB ? ',' : ''));
+        } else {
+          A.push(JSON.stringify(a[i]) + (commaA ? ',' : ''));
+          B.push(JSON.stringify(b[j]) + (commaB ? ',' : ''));
+        }
+      } else if (i !== null) {
+        A.push(compactSingle(a[i], ctx) + (commaA ? ',' : ''));
+        B.push('');
+      } else {
+        A.push('');
+        B.push(compactSingle(b[j], ctx) + (commaB ? ',' : ''));
+      }
+    }
+    walkArrayMatches(a, b, ctx.numTol, emit);
+    A.push(']'); B.push(']');
+    return padToEqual(A, B);
+  }
+
+  function shouldCompact(a, b, combinedLen) {
+    return Array.isArray(a) && Array.isArray(b) &&
+      (combinedLen > COMPACT_MIN_BYTES || (a.length + b.length) > COMPACT_MIN_ELEMENTS);
   }
 
   // Longest common subsequence over (tolerance-aware) deep-equality → matched
@@ -394,7 +504,11 @@
       try { a = JSON.parse(leftText); b = JSON.parse(rightText); }
       catch (e) { return { ok: false }; }
       var ctx = makeCtx(opts);
-      var res = alignValue(a, b, '', ctx);
+      // Large top-level arrays → compact (one line per element) so CM6's line diff
+      // scales; everything else → pretty (readable) alignment.
+      var res = shouldCompact(a, b, leftText.length + rightText.length)
+        ? alignArrayOneLine(a, b, ctx)
+        : alignValue(a, b, '', ctx);
       return { ok: true, left: res.A.join('\n'), right: res.B.join('\n'), changed: ctx.changed };
     } catch (e) {
       return { ok: false, error: e && e.message };
