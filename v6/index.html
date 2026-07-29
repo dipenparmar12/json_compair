@@ -1780,6 +1780,20 @@
       // applies. `alignedRender` records which case we are in.
       const SCAN_LIMIT_FLOOR = 6000;
       const SCAN_LIMIT_MAX = 250000;      // beyond this, cost outweighs detail
+      // Raising scanLimit is only safe on a BOUNDED document. Past this size no
+      // scanLimit is both accurate and affordable, so a high one just buys the
+      // expensive middle band (crudeMatch's repeated indexOf over megabytes) or
+      // full Myers on a pair that cannot finish. Above it we keep the low
+      // protective cap, which makes CM6 bail out immediately and cheaply.
+      //
+      // This matters for transient states as much as final ones: writing the two
+      // panes is two dispatches, so there is a moment where one side is the new
+      // ~300 KB window and the other is still the old multi-MB document. CM6
+      // re-diffs on every dispatch, and a scanLimit raised for the *previous*
+      // content turned that moment into full Myers on 300 KB vs 10 MB — a hard
+      // main-thread lock. Keeping large content on the low cap makes every
+      // intermediate state bail instantly instead.
+      const SCAN_RAISE_MAX_BYTES = 3 * 1024 * 1024;
       const RAW_SCAN_CAPS = [
         // [ maxCombinedBytes, scanLimitCap ] for unaligned text — first row wins.
         [ 256 * 1024,        Infinity ],
@@ -1803,7 +1817,7 @@
         let u = parseInt(userScanLimit, 10);
         if (!Number.isFinite(u) || u <= 0) u = SCAN_LIMIT_FLOOR;
 
-        if (!_alignedRender) {
+        if (!_alignedRender || combinedLen > SCAN_RAISE_MAX_BYTES) {
           let cap = RAW_SCAN_CAP_HUGE;
           for (const [bytes, c] of RAW_SCAN_CAPS) {
             if (combinedLen <= bytes) { cap = c; break; }
@@ -2027,6 +2041,11 @@
       let recordView = 'auto';     // 'auto' (page when large) | 'full' (never page)
       let recordPageFrom = 0;      // first item index rendered
       let recordPageSize = null;   // null = size it from the data
+      // Reusable JSONAlign handle (parsed pair + match + model) for the content
+      // currently being shown. Paging renders a different window from this
+      // instead of re-parsing the whole document, which on a ~20 MB pair is the
+      // difference between an instant page turn and several seconds.
+      let _alignHandle = null;
 
       function recordPageCount() {
         if (!diffStats || !diffStats.itemsTotal) return 1;
@@ -2042,10 +2061,26 @@
         const size = Math.max(1, (diffStats.to - diffStats.from) || diffStats.pageSize || 1);
         const max = Math.max(0, diffStats.itemsTotal - 1);
         recordPageFrom = Math.max(0, Math.min(from, max));
-        const src = _ignorePristine;
-        const L = src ? src.left : mergeView.a.state.doc.toString();
-        const R = src ? src.right : mergeView.b.state.doc.toString();
-        transformAndDispatch(L, R);
+
+        if (_alignHandle) {
+          // Cheap path: same documents, different window.
+          const res = _alignHandle.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
+          diffModel = res.model; diffStats = res.stats;
+          _blockAligning = true;
+          try {
+            setPaneIfChanged(mergeView.a, res.left);
+            setPaneIfChanged(mergeView.b, res.right);
+          } finally { _blockAligning = false; }
+          _alignedRender = true;
+          _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
+                             block: blockDiffEnabled(), pred: ignorePredicate,
+                             tol: numToleranceActive(), page: recordPageFrom, view: recordView };
+          syncDiffConfig();
+        } else {
+          const src = _ignorePristine;
+          transformAndDispatch(src ? src.left : mergeView.a.state.doc.toString(),
+                               src ? src.right : mergeView.b.state.doc.toString());
+        }
         refreshMergeViewIfNeeded();
         updateDiffStatus();
         const pageNo = Math.floor(recordPageFrom / size) + 1;
@@ -2064,14 +2099,23 @@
         const tol = numToleranceActive();
         let dispatched = false;
         _alignedRender = false;
+        _alignHandle = null;
         if (window.JSONAlign && (block || pred || tol != null)) {
           let res;
           try {
-            res = block ? window.JSONAlign.align(L, R, {
-                            ignore: pred, numTol: tol,
-                            view: recordView, from: recordPageFrom, size: recordPageSize
-                          })
-                        : window.JSONAlign.normalize(L, R, pred, tol);
+            if (block) {
+              // prepare() parses + matches + models once; the handle is kept so
+              // paging only has to re-render (see gotoRecordPage).
+              const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol });
+              if (h && h.ok) {
+                _alignHandle = h;
+                res = h.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
+              } else {
+                res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
+              }
+            } else {
+              res = window.JSONAlign.normalize(L, R, pred, tol);
+            }
           } catch (e) { res = null; }
           if (res && res.ok) {
             // The item/field model is exact regardless of how much got rendered —
@@ -4233,7 +4277,17 @@
 
       // Save content to storage (called by auto-save extension)
       function saveContent() {
-        const total = mergeView.a.state.doc.length + mergeView.b.state.doc.length;
+        // What gets WRITTEN is the pristine pair when one exists (ignore /
+        // tolerance normalization, or a windowed render of a large collection),
+        // otherwise the panes. Size the guard against that, not against the
+        // panes: with a window showing, the panes are a ~300 KB page while the
+        // pristine pair is the whole multi-MB document, so measuring the panes
+        // waved a 20 MB synchronous write straight past the 4 MB limit and
+        // stalled the tab on every debounced change.
+        const pristine = _ignorePristine;
+        const total = pristine
+          ? pristine.left.length + pristine.right.length
+          : mergeView.a.state.doc.length + mergeView.b.state.doc.length;
 
         if (total > AUTOSAVE_MAX_BYTES) {
           // Too large for localStorage. Skip the synchronous multi-MB
@@ -4250,11 +4304,11 @@
           }
         } else {
           window.__autosaveSkipNotified = false;
-          // When ignore-normalization is active the right pane shows the left's
-          // value for ignored fields — persist the pre-normalized originals so a
-          // reload / export keeps real data rather than the normalized view.
-          const leftContent = _ignorePristine ? _ignorePristine.left : mergeView.a.state.doc.toString();
-          const rightContent = _ignorePristine ? _ignorePristine.right : mergeView.b.state.doc.toString();
+          // Materialized only once we know it is small enough to write — the
+          // whole point of the guard above is to skip this toString() on
+          // multi-MB content.
+          const leftContent = pristine ? pristine.left : mergeView.a.state.doc.toString();
+          const rightContent = pristine ? pristine.right : mergeView.b.state.doc.toString();
           try {
             StorageManager.saveToStorage(leftContent, rightContent);
           } catch (e) {

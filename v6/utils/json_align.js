@@ -958,6 +958,62 @@
   }
 
   /**
+   * Parse + match + model ONCE, and hand back a renderer that can be called
+   * repeatedly with different windows.
+   *
+   * Paging must not re-do the expensive half. Re-running align() per page meant
+   * re-parsing both documents (~20 MB of text into ~2×10⁵ objects) and
+   * rebuilding the match and model every time the user pressed Next — several
+   * seconds a page. None of that depends on which window is rendered.
+   *
+   * @returns {{ok:true, model, render:(o)=>({left,right,changed,stats})} | {ok:false}}
+   */
+  function prepare(leftText, rightText, opts) {
+    try {
+      var p = parsePair(leftText, rightText);
+      if (!p) return { ok: false };
+      if (!Array.isArray(p.a) || !Array.isArray(p.b)) return { ok: false, reason: 'not-arrays' };
+      var baseCtx = makeCtx(opts);
+      var model = buildModel(p.a, p.b, baseCtx);
+      var combined = leftText.length + rightText.length;
+      var pageSize = pageSizeFor(p.a, p.b, (opts && opts.budget) || EXPAND_CHAR_BUDGET);
+
+      return {
+        ok: true,
+        model: model,
+        render: function (o) {
+          o = o || {};
+          // Fresh ctx per render: `changed` reports what THIS render normalized.
+          var ctx = makeCtx(opts);
+          var view = o.view || 'auto';
+          if (view === 'auto') view = combined <= PRETTY_MAX_BYTES ? 'pretty' : 'window';
+          var res, stats;
+          if (view === 'pretty') {
+            res = alignArrayPretty(p.a, p.b, '', ctx);
+            stats = {
+              view: 'pretty', from: 0, to: model.items.length, shown: model.items.length,
+              itemsTotal: model.items.length, expanded: model.totals.changed, compacted: 0,
+              changedTotal: model.totals.changed, truncated: false, budgetHit: false
+            };
+          } else {
+            res = renderArray(p.a, p.b, model, ctx, {
+              view: view, from: o.from, size: o.size, budget: o.budget
+            });
+            stats = res.stats;
+          }
+          stats.pageSize = pageSize;
+          return {
+            ok: true, left: res.A.join('\n'), right: res.B.join('\n'),
+            changed: ctx.changed, model: model, stats: stats
+          };
+        }
+      };
+    } catch (e) {
+      return { ok: false, error: e && e.message };
+    }
+  }
+
+  /**
    * Align two JSON texts for block-level diffing (with optional ignore + numeric
    * tolerance). Ignored props and numbers within `numTol` are emitted as a's
    * value on both sides so MergeView sees no change.
@@ -981,33 +1037,8 @@
       if (Array.isArray(p.a) && Array.isArray(p.b)) {
         // The model is always computed: item and field counts must not depend
         // on how much of the document we choose to render.
-        var model = buildModel(p.a, p.b, ctx);
-        var combined = leftText.length + rightText.length;
-        var res, stats;
-        // `view` defaults to 'auto': render everything while that still fits,
-        // otherwise page through it. Explicit 'full' keeps the whole collection
-        // in the panes even when CM6's own diff will degrade on it.
-        var view = o.view || 'auto';
-        if (view === 'auto') view = combined <= PRETTY_MAX_BYTES ? 'pretty' : 'window';
-
-        if (view === 'pretty') {
-          res = alignArrayPretty(p.a, p.b, '', ctx);
-          stats = {
-            view: 'pretty', from: 0, to: model.items.length, shown: model.items.length,
-            itemsTotal: model.items.length, expanded: model.totals.changed, compacted: 0,
-            changedTotal: model.totals.changed, truncated: false, budgetHit: false
-          };
-        } else {
-          res = renderArray(p.a, p.b, model, ctx, {
-            view: view, from: o.from, size: o.size, budget: o.budget
-          });
-          stats = res.stats;
-        }
-        stats.pageSize = pageSizeFor(p.a, p.b, o.budget == null ? EXPAND_CHAR_BUDGET : o.budget);
-        return {
-          ok: true, left: res.A.join('\n'), right: res.B.join('\n'),
-          changed: ctx.changed, model: model, stats: stats
-        };
+        var h = prepare(leftText, rightText, opts);
+        if (h.ok) return h.render(o);
       }
 
       var v = alignValue(p.a, p.b, '', ctx);
@@ -1051,6 +1082,7 @@
 
   window.JSONAlign = {
     align: align,
+    prepare: prepare,
     diffModel: diffModel,
     normalize: normalize,
     stripGaps: stripGaps,
