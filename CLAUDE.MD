@@ -692,9 +692,21 @@ Understand the split before touching diff/perf code:
   every large input straight into that second branch. That was the "large collections show a
   single large diff" bug: measured, a 50-record pretty-printed pair already collapsed to 1
   change at the default 6000, while 6 records worked — matching the original report exactly.
-- The fix is to bound the **text** (§10 renders a page of records) and then raise scanLimit to
-  whatever that bounded document needs: `floor = minSide/21`, comfortably clear of the `*64`
-  cliff. The user's value is a **minimum**, never a cap that breaks the diff.
+- The fix is to bound the **text** (§9/10 renders a page of records) and then raise scanLimit to
+  whatever that bounded document needs. Three things matter, each learned the hard way:
+  - **Aim past BOTH thresholds.** Clearing only the `*64` cliff leaves CM6 in `crudeMatch`, whose
+    repeated `indexOf` over the whole range is wildly variable — measured 148 ms for a 4,800-line
+    page but **12 s** for a 2,400-line one. Full Myers needs `min(lenA,lenB) <= scanLimit*8`, so
+    the floor is `minSide/7`. On line-aligned content Myers is cheap and predictable: its cost
+    tracks the NUMBER of differences, not document size. This took page turns 2–6.7 s → ~100 ms.
+  - **Only raise on a bounded document** (`SCAN_RAISE_MAX_BYTES`, 3 MB). Past that no scanLimit is
+    both accurate and affordable, so the low protective cap stays and CM6 bails out cheaply.
+  - **Keep it low across the two-dispatch transition.** Writing both panes is two dispatches and
+    CM6 re-diffs on each, so one side is briefly the new window while the other is still the old
+    multi-MB document. A limit raised for the FINAL size turned that moment into full Myers on
+    300 KB vs 10 MB — a hard lock. `transformAndDispatch`/`gotoRecordPage` lower it before the
+    writes and raise it after; CM6 re-diffs on the reconfigure, so one cheap diff is wasted.
+  The user's value is a **minimum**, never a cap that breaks the diff.
 - The old ceiling still applies to **unaligned** content (`_alignedRender === false`: non-JSON,
   or Block Diff off), where Myers really is quadratic and the crude fallback is protective.
 - `syncDiffConfig()` must run after **any content change**, not just settings changes —
@@ -782,10 +794,21 @@ Understand the split before touching diff/perf code:
   windowed, and a **Details** panel (`#diff-details`) lists the complete breakdown — field
   histogram + every changed/added/removed/moved item, filterable, click to jump to that record.
   Both read the model, so they describe the whole dataset, not the visible page.
-- **Paging safety:** while a window is showing, `_ignorePristine` holds the untransformed pair.
-  `applyBlockAlignment()` and `gotoRecordPage()` re-align **from that**, never from the panes —
-  re-aligning a window would window a window and lose the rest of the data. `saveContent()`
-  already persists `_ignorePristine`, so autosave/export keep the full document.
+- **`prepare()` — parse once, render many windows.** `JSONAlign.prepare(l, r, opts)` returns a
+  handle holding the parsed pair + match + model; `handle.render({from, size})` emits a window
+  from it. Paging must use this: re-running `align()` per page re-parsed ~20 MB and rebuilt the
+  match and model on every Next press. Measured 41 ms initial, 3 ms per subsequent page.
+- **Paging safety — two invariants, both violated at first:**
+  - While a window is showing, `_ignorePristine` holds the untransformed pair.
+    `applyBlockAlignment()` and `gotoRecordPage()` re-align **from that**, never from the panes —
+    re-aligning a window would window a window and lose the rest of the data.
+  - **Never persist a truncated view.** The autosave listener drops `_ignorePristine` on any doc
+    change that is not ours (including the user typing while a page is displayed), after which
+    `saveContent()` would happily write 61 records over a 2,000-record document. It now refuses
+    to save when the panes are truncated and no complete snapshot exists. Its size guard also has
+    to measure what will actually be WRITTEN (the pristine pair), not the panes — a ~600 KB
+    window guarding a 20 MB synchronous write sailed past `AUTOSAVE_MAX_BYTES` and stalled the
+    tab on every debounced change.
 - **`MAX_RENDER_CELLS_PER_PANEL` 220k → 2M.** It used to bound what MergeView had to *render*,
   which meant dropping rows — a 2,000-row × 158-column export was silently cut to ~1,390 rows and
   those rows were never compared at all. Rendering is now bounded by the record window, so this

@@ -1770,8 +1770,14 @@
       //
       // What actually keeps things fast is bounding the TEXT (json_align renders
       // a page of records; see json_align.js "SCALE"). Given a bounded document,
-      // scanLimit must then be raised to whatever that document needs:
-      //   floor = minSide/21  -> comfortably clear of the *64 cliff
+      // scanLimit is then raised to whatever that document needs — aiming past
+      // BOTH thresholds, not just the second one:
+      //   floor = minSide/7  ->  min(lenA,lenB) <= scanLimit*8  ->  full Myers
+      // Clearing only the *64 cliff would leave CM6 in crudeMatch, whose repeated
+      // indexOf over the whole range is wildly variable: measured 148 ms for a
+      // 4,800-line page but 12 s for a 2,400-line one. Full Myers on ALIGNED
+      // content is cheap and predictable, because its cost is driven by the
+      // NUMBER of differences rather than by document size.
       // The user's value acts as a minimum, never as a cap that breaks the diff.
       //
       // The exception is UNALIGNED content — non-JSON, or Block Diff off — which
@@ -1827,11 +1833,13 @@
 
         // Aligned: raise to whatever this document needs to stay out of the
         // "one giant change" branch, and never below what the user asked for.
-        const needed = Math.ceil((combinedLen / 2) / 21);
+        // /7 keeps min(lenA,lenB) under scanLimit*8 → full Myers, skipping the
+        // erratic crudeMatch band entirely.
+        const needed = Math.ceil((combinedLen / 2) / 7);
         const applied = Math.min(SCAN_LIMIT_MAX, Math.max(u, needed));
         if (applied > u && !clampScanLimit._warnedUp) {
           clampScanLimit._warnedUp = true;
-          console.info(`[diff] scanLimit raised ${u} -> ${applied}; below ~${Math.ceil((combinedLen/2)/32)} CM6 collapses this document into a single change.`);
+          console.info(`[diff] scanLimit raised ${u} -> ${applied} so CM6 runs a full diff on this document (below ~${Math.ceil((combinedLen/2)/32)} it would collapse it into a single change).`);
         }
         return applied;
       }
@@ -1856,9 +1864,14 @@
       // scanLimit is a function of document length, and a value left over from
       // smaller content makes CM6 abandon the diff and report one change
       // covering everything (see the cliff described above).
-      function syncDiffConfig() {
+      // Pass `combinedLen` when the text that is ABOUT to be dispatched is
+      // already in hand: CM6 re-diffs on the dispatch itself, so setting the
+      // limit afterwards means the new content was diffed with the previous
+      // document's value.
+      function syncDiffConfig(combinedLen) {
         if (!mergeView || !canReconfigure()) return;
-        const want = clampScanLimit(SettingsManager.get('scanLimit'), currentCombinedDocLen());
+        const want = clampScanLimit(SettingsManager.get('scanLimit'),
+                                    combinedLen == null ? currentCombinedDocLen() : combinedLen);
         if (want === _appliedScanLimit) return;
         _appliedScanLimit = want;
         try { mergeView.reconfigure({ diffConfig: { scanLimit: want } }); }
@@ -2066,12 +2079,17 @@
           // Cheap path: same documents, different window.
           const res = _alignHandle.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
           diffModel = res.model; diffStats = res.stats;
+          // Low across the two-dispatch transition, raised for the settled
+          // content — same reasoning as transformAndDispatch.
+          _alignedRender = false;
+          syncDiffConfig(Number.MAX_SAFE_INTEGER);
           _blockAligning = true;
           try {
             setPaneIfChanged(mergeView.a, res.left);
             setPaneIfChanged(mergeView.b, res.right);
           } finally { _blockAligning = false; }
           _alignedRender = true;
+          syncDiffConfig(res.left.length + res.right.length);
           _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
                              block: blockDiffEnabled(), pred: ignorePredicate,
                              tol: numToleranceActive(), page: recordPageFrom, view: recordView };
@@ -2131,6 +2149,15 @@
             if (normalized || (res.stats && res.stats.truncated)) {
               _ignorePristine = { left: L, right: R };
             }
+            // Writing the panes is two dispatches and CM6 re-diffs on each, so
+            // there is an unavoidable moment where one side is the new window
+            // and the other is still the old document. Keep the limit LOW across
+            // that transition so the mismatched pair bails out instantly, then
+            // raise it once for the settled content — CM6 re-diffs on the
+            // reconfigure, so the final result is computed at the right effort
+            // and only one cheap diff is wasted.
+            _alignedRender = false;
+            syncDiffConfig(Number.MAX_SAFE_INTEGER);
             _blockAligning = true;
             try {
               setPaneIfChanged(mergeView.a, res.left);
@@ -2139,6 +2166,7 @@
               _blockAligning = false;
             }
             _alignedRender = true;
+            syncDiffConfig(res.left.length + res.right.length);
             dispatched = true;
           } else {
             diffModel = null; diffStats = null;
@@ -2146,7 +2174,8 @@
         } else {
           diffModel = null; diffStats = null;
         }
-        // The panes just changed size — re-derive the diff effort for them.
+        // Covers the paths that did NOT dispatch aligned text (normalize-only,
+        // alignment unavailable): the panes still changed, so re-derive.
         syncDiffConfig();
         // Memoize against the post-dispatch docs (failures too) so the next call
         // on unchanged content returns in O(1).
@@ -4285,6 +4314,20 @@
         // waved a 20 MB synchronous write straight past the 4 MB limit and
         // stalled the tab on every debounced change.
         const pristine = _ignorePristine;
+
+        // Never write a partial document over the user's data. While a large
+        // collection is paged, the panes hold ONE WINDOW of it; the whole thing
+        // lives in `pristine`. If that snapshot is gone (an edit invalidated it)
+        // we have nothing complete to save, and persisting the panes would drop
+        // every record outside the current page — on reload the file would come
+        // back as just those 60 records.
+        if (diffStats && diffStats.truncated && !pristine) {
+          updateClearButtonVisibility();
+          updateDiffStatus();
+          updatePaneButtonVisibility();
+          return;
+        }
+
         const total = pristine
           ? pristine.left.length + pristine.right.length
           : mergeView.a.state.doc.length + mergeView.b.state.doc.length;
