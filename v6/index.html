@@ -316,6 +316,14 @@
             <button id="btn-diff-next" class="btn btn-icon" title="Next difference (Alt+Down)" disabled>↓</button>
           </div>
           <div id="diff-summary" data-state="idle">Ready to compare JSON</div>
+          <!-- Record pager: shown only when the collection is too large to render
+               whole, so the panes hold one page of records at a time. -->
+          <div id="record-pager" class="record-pager" style="display: none">
+            <button id="btn-page-prev" class="btn btn-icon" title="Previous records">◀</button>
+            <span id="record-pager-label">–</span>
+            <button id="btn-page-next" class="btn btn-icon" title="Next records">▶</button>
+          </div>
+          <button id="btn-diff-details" class="btn btn-ghost" style="display: none" title="Field-level breakdown of every change">Details</button>
           <button id="btn-clear-all" class="btn btn-ghost" style="display: none">Clear All</button>
         </div>
 
@@ -365,7 +373,22 @@
       <div id="view-container"></div>
 
       <div id="conversion-error-area" style="display: none"></div>
-      
+
+      <!-- Field-level diff breakdown. Driven by the structural model, so it is
+           complete and exact no matter how many records are on screen. -->
+      <div id="diff-details" class="diff-details" style="display: none">
+        <div class="diff-details-head">
+          <strong>Differences</strong>
+          <input id="diff-details-filter" type="search" placeholder="Filter items or fields…" />
+          <button id="btn-diff-details-close" class="btn btn-icon" title="Close">✕</button>
+        </div>
+        <div id="diff-details-meta" class="diff-details-meta"></div>
+        <div class="diff-details-section">Fields by number of items affected</div>
+        <div id="diff-details-fields" class="diff-details-fields"></div>
+        <div class="diff-details-section">Items — click to jump</div>
+        <div id="diff-details-items" class="diff-details-items"></div>
+      </div>
+
       <!-- Footer with version info -->
       <div class="app-footer">
         <span>CodeMirror 6 (Modern)</span>
@@ -454,6 +477,9 @@
           clearTimeout(window.diffRefreshTimer);
           window.diffRefreshTimer = setTimeout(() => {
             if (!userTyping) applyBlockAlignment();
+            // Content changed size → the diff effort must follow it, whether or
+            // not alignment ran (raw/non-JSON text needs it too).
+            syncDiffConfig();
             refreshMergeViewIfNeeded();
           }, 500);
           
@@ -665,6 +691,60 @@
         if (transformActive()) applyBlockAlignment();
         else removeBlockAlignment();
         updateDiffStatus();
+      }
+
+      // Rebuild every piece of LIVE comparison state from stored settings.
+      //
+      // Importing a snapshot / opening a share URL used to write the settings to
+      // localStorage and then only refresh wordWrap, scrollLock and theme. The
+      // options that decide what the diff actually SAYS — ignore patterns and
+      // their scope, numeric tolerance, block diff — stayed at whatever the
+      // current session had, so a reopened comparison did not reproduce. This
+      // re-derives all of them, then re-runs the transform.
+      function applyComparisonSettings() {
+        ignorePatterns = normalizeIgnorePatterns(SettingsManager.get('ignorePatterns'));
+        const scope = SettingsManager.get('ignoreScope');
+        ignoreScope = ['key', 'value', 'both'].includes(scope) ? scope : 'both';
+        ignoreStyled = SettingsManager.get('ignoreStyled') !== false;
+        rebuildIgnoreMatcher();
+
+        numTolEnabled = SettingsManager.get('numToleranceEnabled') === true;
+        const t = parseFloat(SettingsManager.get('numTolerance'));
+        numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
+
+        wordWrapEnabled = SettingsManager.get('wordWrap') !== false;
+        scrollLocked = SettingsManager.get('scrollLock') !== false;
+        currentTheme = SettingsManager.get('theme') || 'default';
+        syncDocumentTheme(currentTheme);
+
+        // The transform result depends on all of the above, so the memo (keyed
+        // on doc + mode) must not short-circuit the next run.
+        _lastAlignMemo = null;
+        _ignorePristine = null;
+        recordPageFrom = 0;
+
+        updateIgnoreStyleClass();
+        reconfigureIgnore();
+        renderIgnoreList();
+        syncIgnoreAndToleranceInputs();
+        if (transformActive()) applyBlockAlignment();
+        else removeBlockAlignment();
+        syncDiffConfig();
+        updateDiffStatus();
+      }
+
+      // Push the restored ignore/tolerance values back into their form controls
+      // (the settings panel has its own initializer; these live in the Ignore
+      // dropdown and are not covered by it).
+      function syncIgnoreAndToleranceInputs() {
+        const scopeSel = document.getElementById('ignore-scope');
+        if (scopeSel) scopeSel.value = ignoreScope;
+        const styledChk = document.getElementById('ignore-styled');
+        if (styledChk) styledChk.checked = ignoreStyled;
+        const tolChk = document.getElementById('numtol-enabled');
+        if (tolChk) tolChk.checked = numTolEnabled;
+        const tolInput = document.getElementById('numtol-value');
+        if (tolInput) { tolInput.value = numTolValue; tolInput.disabled = !numTolEnabled; }
       }
 
       // Add one raw pattern. Returns an error string, or null on success.
@@ -1057,10 +1137,8 @@
         // Apply settings from URL if present (before other initialization)
         if (urlContent && urlContent.settings) {
           try {
-            // Apply all settings from URL to SettingsManager
-            Object.keys(urlContent.settings).forEach(key => {
-              SettingsManager.set(key, urlContent.settings[key]);
-            });
+            // One write, not one localStorage read+write per key.
+            SettingsManager.saveAll(urlContent.settings);
             console.log('Settings loaded from URL:', urlContent.settings);
           } catch (err) {
             console.warn('Failed to apply URL settings:', err);
@@ -1168,6 +1246,7 @@
         initializeExtraSettingsPanel();
         initializeInfoDropdown();
         initializeIgnorePanel();
+        initDiffDetails();
         updateIgnoreStyleClass();
 
         // Progressive disclosure: move verbose descriptions into ⓘ tooltips so
@@ -1225,12 +1304,16 @@
         updateDiffStatus();
       }
 
-      // Load merge settings from localStorage
+      // Load merge settings from localStorage.
+      // Every key the settings panel reads back MUST be listed here — a missing
+      // one reads as `undefined` at restore time and silently falls back to its
+      // hardcoded default, which is how Block Diff stopped persisting.
       function loadMergeSettings() {
         return {
           highlightChanges: SettingsManager.get('highlightChanges'),
           gutter: SettingsManager.get('gutter'),
           collapseUnchanged: SettingsManager.get('collapseUnchanged'),
+          blockDiff: SettingsManager.get('blockDiff'),
           orientation: SettingsManager.get('orientation'),
           revertControls: SettingsManager.get('revertControls'),
           scanLimit: SettingsManager.get('scanLimit'),
@@ -1286,7 +1369,12 @@
         document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-block-diff').addEventListener('change', applyMergeSettings);
-        document.getElementById('setting-collapse-unchanged').addEventListener('change', applyMergeSettings);
+        // Touching the collapse control makes it the user's choice again, so the
+        // size-forced override stops shadowing what gets persisted.
+        document.getElementById('setting-collapse-unchanged').addEventListener('change', () => {
+          _collapseForcedBySize = false;
+          applyMergeSettings();
+        });
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
@@ -1547,6 +1635,7 @@
             const val = e.target.checked;
             const setting = document.getElementById('setting-collapse-unchanged');
             if (setting) setting.checked = val;
+            _collapseForcedBySize = false;   // explicit choice beats the size override
             applyMergeSettings();
           });
         }
@@ -1666,42 +1755,69 @@
         updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
       }
 
-      // ---- Adaptive diff effort (prevents main-thread freezes) ---------------
-      // CM6's MergeView runs its line+character diff SYNCHRONOUSLY on the main
-      // thread, and its cost grows ~O(scanLimit^2) on the deepest Myers
-      // segments. So a large scanLimit on large, *dissimilar* documents locks
-      // the tab. Measured here on a ~1MB / ~20k-line pair of completely
-      // different JSON (the docs/test-cases-example snapshot):
-      //     scanLimit  6000 -> ~35ms    (155 chunks)
-      //     scanLimit 10000 -> ~48ms    (155 chunks)
-      //     scanLimit 25000 -> ~2360ms
-      //     scanLimit 60000 -> ~3200ms+ (155 chunks  <- same detail, ~66x slower)
-      // Diff DETAIL is already maxed out by ~6000 (identical chunk count), so a
-      // higher scanLimit buys only freezes. We therefore clamp the *applied*
-      // scanLimit by combined content size, independent of the (possibly
-      // imported via snapshot/URL, or hand-typed) user setting. Small documents
-      // still honor the user's value, where a thorough scan is cheap anyway.
-      // Note: CM6 merge 6.7.2 has no diff `timeout` option, so scanLimit is the
-      // only lever — the stored `timeout` setting is inert.
-      const DIFF_SCAN_CAPS = [
-        // [ maxCombinedBytes, scanLimitCap ]  — first matching row wins.
-        [ 256 * 1024,        Infinity ],  // <=256KB: trust the user (cheap anyway)
-        [ 2 * 1024 * 1024,   10000 ],     // <=2MB
-        [ 8 * 1024 * 1024,   6000 ],      // <=8MB
+      // ---- Adaptive diff effort ----------------------------------------------
+      // scanLimit is NOT just a speed knob — below a content-dependent threshold
+      // CM6 stops diffing and returns a single change covering everything. From
+      // @codemirror/merge 6.7.2 (the applied limit is `scanLimit >> 1`):
+      //
+      //     min(lenA,lenB) > scanLimit*16  ->  crudeMatch (coarser, still useful)
+      //     min(lenA,lenB) > scanLimit*64  ->  [one Change spanning the doc]
+      //
+      // Those are absolute CHARACTER counts. The old table here *lowered*
+      // scanLimit as content grew, which drove big inputs straight into that
+      // second branch — a 2,000-record collection reported as one diff. That was
+      // the "large collections show a single large diff" bug.
+      //
+      // What actually keeps things fast is bounding the TEXT (json_align renders
+      // a page of records; see json_align.js "SCALE"). Given a bounded document,
+      // scanLimit must then be raised to whatever that document needs:
+      //   floor = minSide/21  -> comfortably clear of the *64 cliff
+      // The user's value acts as a minimum, never as a cap that breaks the diff.
+      //
+      // The exception is UNALIGNED content — non-JSON, or Block Diff off — which
+      // can be both huge and genuinely dissimilar. There Myers really is
+      // quadratic and the crude fallback is protective, so the old ceiling
+      // applies. `alignedRender` records which case we are in.
+      const SCAN_LIMIT_FLOOR = 6000;
+      const SCAN_LIMIT_MAX = 250000;      // beyond this, cost outweighs detail
+      const RAW_SCAN_CAPS = [
+        // [ maxCombinedBytes, scanLimitCap ] for unaligned text — first row wins.
+        [ 256 * 1024,        Infinity ],
+        [ 2 * 1024 * 1024,   10000 ],
+        [ 8 * 1024 * 1024,   6000 ],
       ];
-      const DIFF_SCAN_CAP_HUGE = 4000;    // >8MB: bail to a crude diff quickly
+      const RAW_SCAN_CAP_HUGE = 4000;
+
+      // True when both panes hold text that json_align produced (line-aligned,
+      // so CM6's diff terminates quickly even at a high scanLimit).
+      let _alignedRender = false;
+      // Last scanLimit handed to the live view, so syncDiffConfig() can skip a
+      // no-op reconfigure on every debounced edit.
+      let _appliedScanLimit = null;
+      // True while Collapse Unchanged is on only because a large paste forced
+      // it. The checkbox shows the effective state, but the *stored* preference
+      // stays whatever the user chose until they touch the control themselves.
+      let _collapseForcedBySize = false;
 
       function clampScanLimit(userScanLimit, combinedLen) {
         let u = parseInt(userScanLimit, 10);
-        if (!Number.isFinite(u) || u <= 0) u = 6000;
-        let cap = DIFF_SCAN_CAP_HUGE;
-        for (const [bytes, c] of DIFF_SCAN_CAPS) {
-          if (combinedLen <= bytes) { cap = c; break; }
+        if (!Number.isFinite(u) || u <= 0) u = SCAN_LIMIT_FLOOR;
+
+        if (!_alignedRender) {
+          let cap = RAW_SCAN_CAP_HUGE;
+          for (const [bytes, c] of RAW_SCAN_CAPS) {
+            if (combinedLen <= bytes) { cap = c; break; }
+          }
+          return cap === Infinity ? u : Math.min(u, cap);
         }
-        const applied = cap === Infinity ? u : Math.min(u, cap);
-        if (applied < u && !clampScanLimit._warned) {
-          clampScanLimit._warned = true;
-          console.info(`[perf] scanLimit capped ${u} -> ${applied} for ${(combinedLen/1024/1024).toFixed(1)}MB of content to keep the diff responsive.`);
+
+        // Aligned: raise to whatever this document needs to stay out of the
+        // "one giant change" branch, and never below what the user asked for.
+        const needed = Math.ceil((combinedLen / 2) / 21);
+        const applied = Math.min(SCAN_LIMIT_MAX, Math.max(u, needed));
+        if (applied > u && !clampScanLimit._warnedUp) {
+          clampScanLimit._warnedUp = true;
+          console.info(`[diff] scanLimit raised ${u} -> ${applied}; below ~${Math.ceil((combinedLen/2)/32)} CM6 collapses this document into a single change.`);
         }
         return applied;
       }
@@ -1717,7 +1833,22 @@
       // Pass combinedLen when the content strings are already in hand.
       function buildDiffConfig(userScanLimit, combinedLen) {
         if (combinedLen == null) combinedLen = currentCombinedDocLen();
-        return { scanLimit: clampScanLimit(userScanLimit, combinedLen) };
+        _appliedScanLimit = clampScanLimit(userScanLimit, combinedLen);
+        return { scanLimit: _appliedScanLimit };
+      }
+
+      // Push a scanLimit appropriate to the CURRENT document size into the live
+      // view. Required after any content change, not just a settings change:
+      // scanLimit is a function of document length, and a value left over from
+      // smaller content makes CM6 abandon the diff and report one change
+      // covering everything (see the cliff described above).
+      function syncDiffConfig() {
+        if (!mergeView || !canReconfigure()) return;
+        const want = clampScanLimit(SettingsManager.get('scanLimit'), currentCombinedDocLen());
+        if (want === _appliedScanLimit) return;
+        _appliedScanLimit = want;
+        try { mergeView.reconfigure({ diffConfig: { scanLimit: want } }); }
+        catch (e) { console.warn('diffConfig reconfigure failed', e); }
       }
 
       // True when the live MergeView supports in-place reconfiguration
@@ -1767,7 +1898,11 @@
         SettingsManager.set('scrollLock', newScrollLock);
         SettingsManager.set('highlightChanges', newSettings.highlightChanges);
         SettingsManager.set('gutter', newSettings.gutter);
-        SettingsManager.set('collapseUnchanged', newSettings.collapseUnchanged);
+        // If collapse is only on because a large paste forced it, keep the
+        // user's stored preference — do not let the forced state become theirs.
+        SettingsManager.set('collapseUnchanged', _collapseForcedBySize
+          ? SettingsManager.get('collapseUnchanged') === true
+          : newSettings.collapseUnchanged);
         SettingsManager.set('orientation', newSettings.orientation);
         SettingsManager.set('revertControls', newSettings.revertControls);
         SettingsManager.set('scanLimit', newSettings.scanLimit);
@@ -1877,7 +2012,45 @@
       // here (debounced change timer, afterContentChanged, applyIgnorePatterns,
       // branch init), so re-running on untouched docs is pure waste — skipping
       // it avoids a full parse+align+stringify of both documents.
-      let _lastAlignMemo = null; // { docA, docB, block, pred, tol }
+      let _lastAlignMemo = null; // { docA, docB, block, pred, tol, page, view }
+
+      // ---- Large-collection record paging ------------------------------------
+      // For a top-level array too big to render whole, json_align emits a WINDOW
+      // of records at full fidelity and reports the complete item/field diff
+      // separately. `diffModel` is that complete answer (every item, every
+      // changed field, exact at any size); `diffStats` describes what is
+      // currently on screen. The panes only ever hold real, valid JSON — a
+      // contiguous slice of the data — and `_ignorePristine` keeps the full
+      // text for autosave/export.
+      let diffModel = null;        // JSONAlign model, or null when not an array pair
+      let diffStats = null;        // { view, from, to, itemsTotal, pageSize, truncated }
+      let recordView = 'auto';     // 'auto' (page when large) | 'full' (never page)
+      let recordPageFrom = 0;      // first item index rendered
+      let recordPageSize = null;   // null = size it from the data
+
+      function recordPageCount() {
+        if (!diffStats || !diffStats.itemsTotal) return 1;
+        const size = Math.max(1, (diffStats.to - diffStats.from) || diffStats.pageSize || 1);
+        return Math.max(1, Math.ceil(diffStats.itemsTotal / size));
+      }
+
+      // Re-render at a new page. The transform must re-run from the FULL text
+      // (kept in _ignorePristine while a window is showing), never from the
+      // window currently in the panes.
+      function gotoRecordPage(from) {
+        if (!diffStats) return;
+        const size = Math.max(1, (diffStats.to - diffStats.from) || diffStats.pageSize || 1);
+        const max = Math.max(0, diffStats.itemsTotal - 1);
+        recordPageFrom = Math.max(0, Math.min(from, max));
+        const src = _ignorePristine;
+        const L = src ? src.left : mergeView.a.state.doc.toString();
+        const R = src ? src.right : mergeView.b.state.doc.toString();
+        transformAndDispatch(L, R);
+        refreshMergeViewIfNeeded();
+        updateDiffStatus();
+        const pageNo = Math.floor(recordPageFrom / size) + 1;
+        updateStatus(`Showing records ${recordPageFrom + 1}–${diffStats ? diffStats.to : recordPageFrom + size} (page ${pageNo} of ${recordPageCount()})`);
+      }
 
       // Core: align/normalize the given left/right TEXT and write both panes.
       // Returns true if it transformed & dispatched (caller can then skip a raw
@@ -1890,18 +2063,30 @@
         const pred = ignorePredicate;
         const tol = numToleranceActive();
         let dispatched = false;
+        _alignedRender = false;
         if (window.JSONAlign && (block || pred || tol != null)) {
           let res;
           try {
-            res = block ? window.JSONAlign.align(L, R, { ignore: pred, numTol: tol })
+            res = block ? window.JSONAlign.align(L, R, {
+                            ignore: pred, numTol: tol,
+                            view: recordView, from: recordPageFrom, size: recordPageSize
+                          })
                         : window.JSONAlign.normalize(L, R, pred, tol);
           } catch (e) { res = null; }
           if (res && res.ok) {
-            // `changed` is true only while the input still holds un-normalized
-            // (differing) ignored / near-equal values → it is "fresh" content.
-            // Snapshot the originals so the transform can be undone and autosave
-            // keeps real data rather than the normalized (copied-left) view.
-            if ((pred || tol != null) && res.changed) _ignorePristine = { left: L, right: R };
+            // The item/field model is exact regardless of how much got rendered —
+            // it, not mergeView.chunks, is what the UI reports.
+            diffModel = res.model || null;
+            diffStats = res.stats || null;
+            // Snapshot the untransformed pair when the panes no longer hold it
+            // verbatim, so autosave/export keep the user's real data:
+            //  - normalization rewrote values (ignore / numeric tolerance), or
+            //  - the render is a WINDOW over a large collection (records outside
+            //    the current page are not in the pane at all).
+            const normalized = (pred || tol != null) && res.changed;
+            if (normalized || (res.stats && res.stats.truncated)) {
+              _ignorePristine = { left: L, right: R };
+            }
             _blockAligning = true;
             try {
               setPaneIfChanged(mergeView.a, res.left);
@@ -1909,12 +2094,20 @@
             } finally {
               _blockAligning = false;
             }
+            _alignedRender = true;
             dispatched = true;
+          } else {
+            diffModel = null; diffStats = null;
           }
+        } else {
+          diffModel = null; diffStats = null;
         }
+        // The panes just changed size — re-derive the diff effort for them.
+        syncDiffConfig();
         // Memoize against the post-dispatch docs (failures too) so the next call
         // on unchanged content returns in O(1).
-        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc, block, pred, tol };
+        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
+                           block, pred, tol, page: recordPageFrom, view: recordView };
         return dispatched;
       }
 
@@ -1929,8 +2122,14 @@
         if (_lastAlignMemo &&
             _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
             _lastAlignMemo.block === block && _lastAlignMemo.pred === pred &&
-            _lastAlignMemo.tol === tol) return;
-        transformAndDispatch(docA.toString(), docB.toString());
+            _lastAlignMemo.tol === tol && _lastAlignMemo.page === recordPageFrom &&
+            _lastAlignMemo.view === recordView) return;
+        // While a window is showing, the panes hold only the current page —
+        // re-aligning from them would window a window and lose the rest of the
+        // data. _ignorePristine holds the untransformed pair; prefer it.
+        const src = _ignorePristine;
+        transformAndDispatch(src ? src.left : docA.toString(),
+                             src ? src.right : docB.toString());
       }
 
       // Strip alignment gap lines from both panes (used when Block Diff is turned
@@ -3294,23 +3493,19 @@
           // Use unified snapshot handler (supports both .zip and .json.gz)
           const data = await SnapshotHandler.importSnapshot(file);
           
-          // Apply settings from snapshot if present
+          // Apply settings from snapshot if present. Written in one batch (not
+          // one localStorage round-trip per key); applyComparisonSettings()
+          // below turns them into live state so the reopened comparison is
+          // computed exactly the way it was exported.
           if (data.settings && typeof data.settings === 'object') {
             try {
-              Object.keys(data.settings).forEach(key => {
-                SettingsManager.set(key, data.settings[key]);
-              });
+              SettingsManager.saveAll(data.settings);
               console.log('Settings loaded from snapshot:', data.settings);
-              
-              // Reload global settings
-              wordWrapEnabled = SettingsManager.get('wordWrap');
-              scrollLocked = SettingsManager.get('scrollLock');
-              currentTheme = SettingsManager.get('theme');
             } catch (err) {
               console.warn('Failed to apply snapshot settings:', err);
             }
           }
-          
+
           mergeView.a.dispatch({
             changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
           });
@@ -3351,6 +3546,10 @@
               recreateMergeView(currentSettings, wordWrapEnabled);
               initializeSettingsPanel();
               initializeThemeSelector();
+              // Ignore rules, numeric tolerance and block diff decide what the
+              // diff reports; without this they were stored but never applied,
+              // so an imported comparison did not reproduce.
+              applyComparisonSettings();
               
               // Update branch selectors with imported values
               updateBranchSelectors();
@@ -3372,23 +3571,19 @@
           // Use unified snapshot handler (supports both .zip and .json.gz)
           const data = await SnapshotHandler.importSnapshot(file);
           
-          // Apply settings from snapshot if present
+          // Apply settings from snapshot if present. Written in one batch (not
+          // one localStorage round-trip per key); applyComparisonSettings()
+          // below turns them into live state so the reopened comparison is
+          // computed exactly the way it was exported.
           if (data.settings && typeof data.settings === 'object') {
             try {
-              Object.keys(data.settings).forEach(key => {
-                SettingsManager.set(key, data.settings[key]);
-              });
+              SettingsManager.saveAll(data.settings);
               console.log('Settings loaded from snapshot:', data.settings);
-              
-              // Reload global settings
-              wordWrapEnabled = SettingsManager.get('wordWrap');
-              scrollLocked = SettingsManager.get('scrollLock');
-              currentTheme = SettingsManager.get('theme');
             } catch (err) {
               console.warn('Failed to apply snapshot settings:', err);
             }
           }
-          
+
           mergeView.a.dispatch({
             changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
           });
@@ -3429,6 +3624,10 @@
               recreateMergeView(currentSettings, wordWrapEnabled);
               initializeSettingsPanel();
               initializeThemeSelector();
+              // Ignore rules, numeric tolerance and block diff decide what the
+              // diff reports; without this they were stored but never applied,
+              // so an imported comparison did not reproduce.
+              applyComparisonSettings();
               
               // Update branch selectors with imported values
               updateBranchSelectors();
@@ -3627,14 +3826,17 @@
       //  tab stays alive, and coalesces the follow-up work into one pass.
       // ============================================================
 
-      // Cap on rendered "cells" (~object keys × rows) per panel. Wide CSVs
-      // (many columns) sample fewer rows; narrow CSVs sample many. This keeps
-      // the MergeView responsive instead of trying to render millions of lines.
-      // Cap raised from 150k after block-alignment made large, mostly-identical
-      // datasets cheap to diff (aligned content collapses; CM6 renders only the
-      // viewport). 220k cells covers ~6.2k rows at ~35 columns — enough to show
-      // both example parcel datasets (6,111 rows) in full without sampling.
-      const MAX_RENDER_CELLS_PER_PANEL = 220000;
+      // Cap on ingested "cells" (~object keys × rows) per panel. Wide CSVs
+      // (many columns) sample fewer rows; narrow CSVs sample many.
+      //
+      // This used to bound what MergeView had to RENDER, which meant dropping
+      // rows — a 2,000-row × 158-column export was silently cut to ~1,390 rows
+      // and those rows were never compared at all. Rendering is now bounded
+      // where it belongs, by json_align's record window (see json_align.js
+      // "SCALE"), so this only needs to bound parse + memory. Raised so real
+      // exports are compared in full; the row-cap disclosure toast and
+      // __ingestConvertAll escape hatch still apply beyond it.
+      const MAX_RENDER_CELLS_PER_PANEL = 2000000;
       // Raw CSV larger than this is always parsed in the worker.
       const OFFTHREAD_CSV_THRESHOLD = 100 * 1024;        // 100 KB
       // Combined content above this turns on collapse-unchanged before render.
@@ -3790,7 +3992,11 @@
           collapse.checked = true;
           const quick = document.getElementById('quick-collapse-unchanged');
           if (quick) quick.checked = true;
-          SettingsManager.set('collapseUnchanged', true);
+          // Deliberately NOT persisted. This is a transient posture for one large
+          // paste; writing it to settings permanently flipped a preference the
+          // user had turned off, which then "came back on by itself" after every
+          // reload. The live view is reconfigured; the stored choice is theirs.
+          _collapseForcedBySize = true;
           if (canReconfigure()) {
             mergeView.reconfigure(buildReconfigureConfig({
               highlightChanges: document.getElementById('setting-highlight-changes')?.checked ?? true,
@@ -4137,7 +4343,10 @@
         }
 
         // Optional viewport-diff mode computes its own (visible-area) count.
-        if (viewportDiffManager?.enabled) {
+        // Only consulted when there is no structural model: an approximate
+        // "~5 differences in view" is strictly worse than an exact item and
+        // field count for the whole collection.
+        if (!diffModel && viewportDiffManager?.enabled) {
           const result = viewportDiffManager.calculateViewportDiff();
           if (result) {
             setDiffSummary('diff', viewportDiffManager.getDiffStatusMessage() || 'Calculating…');
@@ -4146,14 +4355,211 @@
           }
         }
 
+        // Prefer the structural model: it counts every item and every changed
+        // field across the WHOLE collection, independent of how much is
+        // rendered. mergeView.chunks only ever describes the visible text, and
+        // on a large document it is the thing that used to collapse to "1".
+        if (diffModel) {
+          const t = diffModel.totals;
+          if (!t.changed && !t.added && !t.removed && !t.moved) {
+            const ignoredHere = !!ignoreMatcher || numToleranceActive() != null;
+            setDiffSummary('same', ignoredHere ? 'No differences (excluded matches ignored)' : 'No differences');
+          } else {
+            const bits = [];
+            if (t.changed) bits.push(`${fmtNum(t.changed)} changed`);
+            if (t.added) bits.push(`${fmtNum(t.added)} added`);
+            if (t.removed) bits.push(`${fmtNum(t.removed)} removed`);
+            if (t.moved) bits.push(`${fmtNum(t.moved)} moved`);
+            let msg = `${bits.join(', ')} of ${fmtNum(t.total)} items`;
+            if (t.fieldChanges) msg += ` · ${fmtNum(t.fieldChanges)} field change${t.fieldChanges !== 1 ? 's' : ''}`;
+            setDiffSummary('diff', msg);
+          }
+          updateRecordPager();
+          renderDiffDetails();
+          updateDiffNavState();
+          return;
+        }
+
         const chunkCount = countVisibleChunks();
         if (chunkCount === 0) {
           const ignoredHere = !!ignoreMatcher && (mergeView?.chunks?.length || 0) > 0;
           setDiffSummary('same', ignoredHere ? 'No differences (excluded matches ignored)' : 'No differences');
+        } else if (diffIsDegraded()) {
+          // CM6 gave up and returned one change spanning the document. Reporting
+          // "1 changed block" here reads as a result; it is the absence of one.
+          setDiffSummary('warn', 'Too large to compare precisely — use CSV→JSON so records can be matched individually');
         } else {
           setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }
+        updateRecordPager();
         updateDiffNavState();
+      }
+
+      function fmtNum(n) { return Number(n).toLocaleString(); }
+
+      // True when CM6 abandoned the diff and returned a single change covering
+      // (essentially) the whole document — its `min(lenA,lenB) > scanLimit*64`
+      // branch, where scanLimit is already halved internally. Detected rather
+      // than guessed: one chunk that spans most of both sides, on content past
+      // that threshold, is the crude fallback and not a real result.
+      function diffIsDegraded() {
+        const chunks = mergeView?.chunks;
+        if (!chunks || chunks.length !== 1) return false;
+        const aLen = mergeView.a.state.doc.length, bLen = mergeView.b.state.doc.length;
+        const internal = (_appliedScanLimit || 6000) >> 1;
+        if (Math.min(aLen, bLen) <= internal * 64) return false;
+        const c = chunks[0];
+        const spanA = (c.toA - c.fromA) / Math.max(1, aLen);
+        const spanB = (c.toB - c.fromB) / Math.max(1, bLen);
+        return spanA > 0.5 && spanB > 0.5;
+      }
+
+      // ---- Record pager -------------------------------------------------------
+      function updateRecordPager() {
+        const pager = document.getElementById('record-pager');
+        const label = document.getElementById('record-pager-label');
+        const prev = document.getElementById('btn-page-prev');
+        const next = document.getElementById('btn-page-next');
+        const details = document.getElementById('btn-diff-details');
+        if (!pager) return;
+
+        if (details) details.style.display = diffModel ? '' : 'none';
+
+        if (!diffStats || !diffStats.truncated) {
+          pager.style.display = 'none';
+          return;
+        }
+        pager.style.display = '';
+        const size = Math.max(1, (diffStats.to - diffStats.from) || 1);
+        label.textContent = `${fmtNum(diffStats.from + 1)}–${fmtNum(diffStats.to)} of ${fmtNum(diffStats.itemsTotal)}`;
+        label.title = `Records ${diffStats.from + 1}–${diffStats.to} of ${diffStats.itemsTotal} shown. `
+          + `All ${diffStats.itemsTotal} are compared — open Details for the full breakdown.`;
+        prev.disabled = diffStats.from <= 0;
+        next.disabled = diffStats.to >= diffStats.itemsTotal;
+        prev.onclick = () => gotoRecordPage(diffStats.from - size);
+        next.onclick = () => gotoRecordPage(diffStats.to);
+      }
+
+      // ---- Field-level details panel -----------------------------------------
+      // Renders straight off the structural model, so it lists every changed
+      // item and field in the collection — not just what fits on screen.
+      const DD_MAX_ROWS = 500;   // keep the DOM small; filter narrows it down
+
+      function renderDiffDetails() {
+        const box = document.getElementById('diff-details');
+        if (!box || box.style.display === 'none') return;
+        const meta = document.getElementById('diff-details-meta');
+        const fieldsEl = document.getElementById('diff-details-fields');
+        const itemsEl = document.getElementById('diff-details-items');
+        const q = (document.getElementById('diff-details-filter').value || '').trim().toLowerCase();
+
+        if (!diffModel) {
+          meta.textContent = '';
+          fieldsEl.innerHTML = '';
+          itemsEl.innerHTML = '<div class="dd-empty">Load two JSON arrays to see a field-level breakdown.</div>';
+          return;
+        }
+
+        const t = diffModel.totals;
+        const matched = diffModel.idKey
+          ? `matched on <code>${escapeHtml(diffModel.idKey)}</code>`
+          : `matched by ${diffModel.strategy === 'lcs' ? 'content' : diffModel.strategy}`;
+        meta.innerHTML = `${fmtNum(t.total)} items ${matched} — `
+          + `<strong>${fmtNum(t.changed)}</strong> changed, ${fmtNum(t.added)} added, `
+          + `${fmtNum(t.removed)} removed, ${fmtNum(t.moved || 0)} moved, `
+          + `<strong>${fmtNum(t.fieldChanges)}</strong> field changes`;
+
+        // Field histogram, most-affected first.
+        const fields = Object.keys(diffModel.fields)
+          .map(k => [k, diffModel.fields[k]])
+          .filter(([k]) => !q || k.toLowerCase().includes(q))
+          .sort((a, b) => b[1] - a[1]);
+        const top = fields.length ? fields[0][1] : 1;
+        fieldsEl.innerHTML = fields.length
+          ? fields.map(([k, n]) => `<div class="dd-field-row">
+                <span class="dd-field-name" title="${escapeHtml(k)}">${escapeHtml(k)}</span>
+                <span class="dd-bar"><span style="width:${Math.round(n / top * 100)}%"></span></span>
+                <span class="dd-count">${fmtNum(n)}</span>
+              </div>`).join('')
+          : '<div class="dd-empty">No fields match that filter.</div>';
+
+        // Changed items. Clicking one pages to it.
+        const src = idSource();   // parsed once per render, not per row
+        const rows = [];
+        for (let p = 0; p < diffModel.items.length && rows.length < DD_MAX_ROWS; p++) {
+          const it = diffModel.items[p];
+          if (it.status === 'same') continue;
+          // A move is one record occupying two rows (a removal and an addition
+          // that share an identity). List it once, from the left-hand side.
+          if (it.status === 'moved' && it.a === null) continue;
+          const keys = it.changed.concat(it.onlyA.map(k => k + ' (left only)'))
+                                 .concat(it.onlyB.map(k => k + ' (right only)'));
+          const label = itemLabel(it, src);
+          if (q && !label.toLowerCase().includes(q) && !keys.some(k => k.toLowerCase().includes(q))) continue;
+          rows.push(`<div class="dd-item-row" data-index="${p}" title="Jump to this record">
+              <span class="dd-badge ${it.status}">${it.status}</span>
+              <span class="dd-field-name">${escapeHtml(label)}${keys.length ? ' — ' + escapeHtml(keys.join(', ')) : ''}</span>
+            </div>`);
+        }
+        itemsEl.innerHTML = rows.length
+          ? rows.join('') + (rows.length >= DD_MAX_ROWS
+              ? `<div class="dd-empty">Showing the first ${DD_MAX_ROWS}. Use the filter to narrow down.</div>` : '')
+          : '<div class="dd-empty">No items match that filter.</div>';
+
+        itemsEl.querySelectorAll('.dd-item-row').forEach(row => {
+          row.onclick = () => gotoRecordPage(parseInt(row.dataset.index, 10));
+        });
+      }
+
+      // Parsed copies of both sides, used only to label rows with their identity
+      // value. Cached against the exact text objects so a filter keystroke never
+      // re-parses a multi-MB document.
+      let _idSourceCache = null; // { key, left, right }
+
+      function idSource() {
+        if (!diffModel || !diffModel.idKey) return null;
+        const L = _ignorePristine ? _ignorePristine.left : mergeView.a.state.doc.toString();
+        const R = _ignorePristine ? _ignorePristine.right : mergeView.b.state.doc.toString();
+        if (_idSourceCache && _idSourceCache.key === L.length + ':' + R.length + ':' + diffModel.idKey) {
+          return _idSourceCache;
+        }
+        try {
+          _idSourceCache = {
+            key: L.length + ':' + R.length + ':' + diffModel.idKey,
+            left: JSON.parse(L), right: JSON.parse(R)
+          };
+        } catch (e) { _idSourceCache = null; }
+        return _idSourceCache;
+      }
+
+      // A human handle for a record: its identity value when we found one.
+      function itemLabel(it, src) {
+        const idx = it.a !== null ? it.a : it.b;
+        const base = `#${idx + 1}`;
+        if (!src) return base;
+        const side = it.a !== null ? src.left : src.right;
+        const rec = side && side[idx];
+        const v = rec && rec[diffModel.idKey];
+        return v === undefined || v === null ? base : `${base} ${diffModel.idKey}=${v}`;
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c =>
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      }
+
+      function initDiffDetails() {
+        const btn = document.getElementById('btn-diff-details');
+        const box = document.getElementById('diff-details');
+        const close = document.getElementById('btn-diff-details-close');
+        const filter = document.getElementById('diff-details-filter');
+        if (!btn || !box) return;
+        btn.addEventListener('click', () => {
+          box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+          renderDiffDetails();
+        });
+        close.addEventListener('click', () => { box.style.display = 'none'; });
+        filter.addEventListener('input', renderDiffDetails);
       }
 
       // Count diff chunks, skipping any whose changed lines lie entirely within

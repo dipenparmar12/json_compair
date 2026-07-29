@@ -247,8 +247,13 @@
     KEY: "json_compair_settings",
     defaults: {
       autoCsv: false,
-      autoFormatJson: true,     // Auto-format JSON on paste/drop
-      autoSortKeys: false,      // Auto-sort keys on paste/drop
+      // Read and written as `autoFormat` / `autoSort` everywhere in the app.
+      // They were also declared here as `autoFormatJson` / `autoSortKeys`, which
+      // nothing read — so the intended "auto-format on" default never applied,
+      // and storage ended up carrying both names with disagreeing values. One
+      // name each, matching the readers.
+      autoFormat: true,         // Auto-format JSON on paste/drop
+      autoSort: false,          // Auto-sort keys on paste/drop
       showOnlyDiffs: false,
       wordWrap: true,       // Default word wrap enabled
       scrollLock: true,     // Default scroll lock enabled
