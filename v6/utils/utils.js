@@ -368,7 +368,6 @@
       left: JSON.stringify(
         {
           user_id: 10482,
-          legacy_id: "USR-2021-994",
           username: "alex_developer",
           status: "pending_verification",
           role: "editor",
@@ -377,7 +376,6 @@
             last_name: "Morgan",
             email: "alex.morgan@example.com",
             phone: "+1-555-019-2834",
-            avatar_url: "https://cdn.example.com/avatars/user-10482.jpg",
             address: {
               street: "742 Evergreen Terrace",
               city: "Springfield",
@@ -391,8 +389,7 @@
             last_login: "2026-07-20T14:22:10Z",
             login_count: 42,
             email_verified: false
-          },
-          roles: ["content_creator", "beta_tester"]
+          }
         },
         null,
         2
@@ -404,27 +401,16 @@
           status: "active",
           role: "admin",
           profile: {
-            first_name: "Alexander",
+            first_name: "Alex",
             last_name: "Morgan",
             email: "alex.morgan@example.com",
             phone: "+1-555-019-2834",
-            avatar_url: "https://cdn.example.com/avatars/v2/user-10482.webp",
             address: {
               street: "742 Evergreen Terrace",
-              suite: "Building B, Suite 400",
               city: "Springfield",
               state: "IL",
               postal_code: "62704",
               country: "USA"
-            }
-          },
-          preferences: {
-            theme: "dark",
-            language: "en-US",
-            notifications: {
-              email: true,
-              push: false,
-              sms: true
             }
           },
           account: {
@@ -433,8 +419,7 @@
             login_count: 87,
             email_verified: true,
             mfa_enabled: true
-          },
-          roles: ["content_creator", "beta_tester", "system_administrator"]
+          }
         },
         null,
         2
@@ -445,7 +430,6 @@
         {
           status_code: 200,
           message: "Success",
-          data_version: "1.0",
           page: 1,
           per_page: 2,
           total_records: 4,
@@ -474,27 +458,19 @@
       right: JSON.stringify(
         {
           status_code: 200,
-          message: "Operation completed successfully",
-          data_version: "2.0",
-          meta: {
-            pagination: {
-              current_page: 1,
-              per_page: 2,
-              total_records: 5,
-              total_pages: 3,
-              has_next: true
-            },
-            response_time_ms: 42
-          },
+          message: "Success",
+          page: 1,
+          per_page: 2,
+          total_records: 5,
           products: [
             {
               id: "PROD-101",
               name: "Wireless Noise-Canceling Headphones",
-              category: "Audio & Sound",
+              category: "Audio",
               price: 179.99,
               in_stock: true,
               rating: 4.8,
-              tags: ["audio", "wireless", "bluetooth", "noise-canceling"]
+              tags: ["audio", "wireless", "bluetooth"]
             },
             {
               id: "PROD-102",
@@ -502,8 +478,7 @@
               category: "Peripherals",
               price: 129.50,
               in_stock: true,
-              rating: 4.6,
-              tags: ["office", "keyboard", "rgb"]
+              tags: ["office", "keyboard"]
             }
           ]
         },
