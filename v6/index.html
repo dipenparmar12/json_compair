@@ -449,11 +449,18 @@
       import { lintKeymap } from "@codemirror/lint";
 
       // Import Compartment for dynamic configuration
-      import { Compartment, RangeSetBuilder } from "@codemirror/state";
+      import { Compartment, RangeSetBuilder, Transaction } from "@codemirror/state";
 
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
         if (update.docChanged) {
+          // CM6 rebuilds MergeView.chunks only inside its own dispatch(), from the
+          // diffConfig live at that instant. That rebuild has already happened by
+          // the time this listener runs, so this records the effort the CURRENT
+          // diff was actually computed with — which is what tells ensureDiffFresh()
+          // whether the on-screen diff is stale. See writeAlignedPanes().
+          _chunkScanLimit = _appliedScanLimit;
+
           // Any doc change that is NOT our own normalization dispatch invalidates
           // the pre-normalization snapshot: the docs no longer correspond to it,
           // and persisting the stale pair would resurrect replaced/cleared content
@@ -478,8 +485,12 @@
           window.diffRefreshTimer = setTimeout(() => {
             if (!userTyping) applyBlockAlignment();
             // Content changed size → the diff effort must follow it, whether or
-            // not alignment ran (raw/non-JSON text needs it too).
+            // not alignment ran (raw/non-JSON text needs it too), and the diff
+            // on screen has to be recomputed at the new effort. Not while the
+            // user is typing: re-diffing means rewriting a pane, and their next
+            // keystroke re-diffs anyway.
             syncDiffConfig();
+            if (!userTyping) ensureDiffFresh();
             refreshMergeViewIfNeeded();
           }, 500);
           
@@ -1214,6 +1225,9 @@
             (initialContent.left ? initialContent.left.length : 0) + (initialContent.right ? initialContent.right.length : 0)
           ),
         });
+        // The constructor diffs with exactly that config, so the initial chunks
+        // and the applied limit agree.
+        _chunkScanLimit = _appliedScanLimit;
 
         // Add per-pane control buttons
         addPaneControls();
@@ -1791,12 +1805,18 @@
       // expensive middle band (crudeMatch's repeated indexOf over megabytes) or
       // full Myers on a pair that cannot finish. Above it we keep the low
       // protective cap, which makes CM6 bail out immediately and cheaply.
+      // Measured on aligned 158-field records (diff time at the needed limit):
+      //   0.6 MB combined → 0.24 s   1.5 MB → 1.2 s   3 MB → 3.3 s   6 MB → 12 s
+      // 3 MB is the affordability edge, which is why bounding the TEXT (the record
+      // window, json_align's renderArray) is the mechanism above it, not a bigger
+      // limit. The two constants agree: at 3 MB the needed limit is ~214k < 250k.
       //
       // This matters for transient states as much as final ones: writing the two
       // panes is two dispatches, so there is a moment where one side is the new
       // ~300 KB window and the other is still the old multi-MB document. CM6
-      // re-diffs on every dispatch, and a scanLimit raised for the *previous*
-      // content turned that moment into full Myers on 300 KB vs 10 MB — a hard
+      // re-diffs on every dispatch (and ONLY on a dispatch — see
+      // writeAlignedPanes), and a scanLimit raised for the *previous* content
+      // turned that moment into full Myers on 300 KB vs 10 MB — a hard
       // main-thread lock. Keeping large content on the low cap makes every
       // intermediate state bail instantly instead.
       const SCAN_RAISE_MAX_BYTES = 3 * 1024 * 1024;
@@ -1814,6 +1834,12 @@
       // Last scanLimit handed to the live view, so syncDiffConfig() can skip a
       // no-op reconfigure on every debounced edit.
       let _appliedScanLimit = null;
+      // The scanLimit the chunks CM6 is currently showing were actually computed
+      // with. Not the same thing as _appliedScanLimit: reconfigure({diffConfig})
+      // only stores the value for the next doc change, so these drift apart
+      // whenever the limit moves without a write. Updated on every doc change by
+      // the autosave update listener; compared by ensureDiffFresh().
+      let _chunkScanLimit = null;
       // True while Collapse Unchanged is on only because a large paste forced
       // it. The checkbox shows the effective state, but the *stored* preference
       // stays whatever the user chose until they touch the control themselves.
@@ -1864,10 +1890,13 @@
       // scanLimit is a function of document length, and a value left over from
       // smaller content makes CM6 abandon the diff and report one change
       // covering everything (see the cliff described above).
-      // Pass `combinedLen` when the text that is ABOUT to be dispatched is
-      // already in hand: CM6 re-diffs on the dispatch itself, so setting the
-      // limit afterwards means the new content was diffed with the previous
-      // document's value.
+      //
+      // IMPORTANT: this only sets the effort for the NEXT diff. CM6 rebuilds
+      // chunks solely inside MergeView.dispatch() on a doc change — reconfigure()
+      // stores diffConfig and nothing else — so calling this after writing the
+      // panes leaves the visible diff computed at the OLD value. Pass
+      // `combinedLen` and call it BEFORE the write (see writeAlignedPanes), or
+      // follow it with ensureDiffFresh() when there is no write to piggyback on.
       function syncDiffConfig(combinedLen) {
         if (!mergeView || !canReconfigure()) return;
         const want = clampScanLimit(SettingsManager.get('scanLimit'),
@@ -1945,6 +1974,9 @@
         const orientationChanged = prevOrientation !== newSettings.orientation;
         if (canReconfigure() && !orientationChanged) {
           mergeView.reconfigure(buildReconfigureConfig(newSettings));
+          // reconfigure() stores diffConfig but never recomputes chunks, so a new
+          // Scan Limit would otherwise not take effect until the next edit.
+          ensureDiffFresh();
         } else {
           recreateMergeView(newSettings, newWordWrap);
         }
@@ -2029,6 +2061,103 @@
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
       }
 
+      // Re-run CM6's diff against the CURRENT diffConfig without changing the text.
+      // Rewriting a pane with its own content is a full-document change, and CM6
+      // widens a full-document change to a complete re-diff of the pair — which is
+      // the only lever the merge API gives us, since reconfigure({diffConfig})
+      // never recomputes chunks. Used when the effort has to change but no content
+      // write is coming (settings change, or content that arrived already aligned).
+      function forceRediff() {
+        if (!mergeView) return;
+        const view = mergeView.b;
+        const len = view.state.doc.length;
+        if (!len) return;
+        const text = view.state.doc.toString();
+        _blockAligning = true;
+        try {
+          view.dispatch({
+            changes: { from: 0, to: len, insert: text },
+            selection: view.state.selection,   // identical text ⇒ still in range
+            annotations: Transaction.addToHistory.of(false),
+            scrollIntoView: false,
+          });
+        } catch (e) {
+          console.warn('forced re-diff failed', e);
+        } finally {
+          _blockAligning = false;
+        }
+        // Same text, but a NEW immutable Text object — the alignment memo is keyed
+        // on doc identity, so leaving it would miss and re-align the whole
+        // document for nothing. Re-point it at the new docs instead.
+        if (_lastAlignMemo) {
+          _lastAlignMemo.docA = mergeView.a.state.doc;
+          _lastAlignMemo.docB = mergeView.b.state.doc;
+        }
+      }
+
+      // Make sure what is on screen was diffed at the effort the current content
+      // needs. Normally a no-op: _chunkScanLimit is refreshed on every doc change,
+      // so this only fires when the limit moved without a write.
+      function ensureDiffFresh() {
+        if (!mergeView || !canReconfigure()) return;
+        if (_appliedScanLimit == null || _chunkScanLimit === _appliedScanLimit) return;
+        forceRediff();
+      }
+
+      /**
+       * Write both panes and leave CM6's diff computed at the right effort.
+       *
+       * CM6 rebuilds MergeView.chunks ONLY inside its own dispatch(), from the
+       * diffConfig live at that instant; reconfigure({diffConfig}) just stores the
+       * value for next time. So the limit has to be correct BEFORE the write that
+       * settles the pair, not after it.
+       *
+       * This code used to raise it afterwards, which meant every large render
+       * stayed on the low transition cap. Past scanLimit*64 CM6 returns ONE change
+       * covering the whole document, so a 61-record page rendered as a single solid
+       * red/green block with nothing collapsed and no field-level detail — the
+       * reported bug. Measured on the 2,000 x 158 pair: 1 chunk before, 203 after.
+       *
+       * A full-document replacement makes CM6 re-diff the whole pair, so the LAST
+       * write is the one that counts. The FIRST write is the dangerous one — there
+       * one pane holds the new window while the other is still the old multi-MB
+       * document — so it runs on the low cap and bails out instantly.
+       */
+      function writeAlignedPanes(left, right) {
+        const finalLen = left.length + right.length;
+        const aStale = mergeView.a.state.doc.toString() !== left;
+        const bStale = mergeView.b.state.doc.toString() !== right;
+
+        function setEffort(aligned, len) {
+          _alignedRender = aligned;
+          syncDiffConfig(len);
+        }
+
+        _blockAligning = true;
+        try {
+          if (aStale && bStale) {
+            setEffort(false, Number.MAX_SAFE_INTEGER);  // mismatched pair: bail cheap
+            setPaneIfChanged(mergeView.a, left);
+            setEffort(true, finalLen);                  // settled pair: real effort
+            setPaneIfChanged(mergeView.b, right);
+          } else if (aStale || bStale) {
+            // Only one side moves, so the pair is already final at that write —
+            // no mismatched transition to protect against.
+            setEffort(true, finalLen);
+            if (aStale) setPaneIfChanged(mergeView.a, left);
+            else setPaneIfChanged(mergeView.b, right);
+          } else {
+            setEffort(true, finalLen);
+          }
+        } finally {
+          _blockAligning = false;
+        }
+        // Covers the "nothing to write" case (content already aligned, e.g. at
+        // startup or on a re-align that changed nothing) where the live chunks may
+        // still be from an earlier, lower effort.
+        ensureDiffFresh();
+      }
+
       // Transform both panes for diffing. Runs when Block Diff and/or ignore
       // patterns are active. Block Diff → structural gap-alignment; ignore →
       // normalize matched values so MergeView sees no change. No-op (raw text +
@@ -2079,21 +2208,10 @@
           // Cheap path: same documents, different window.
           const res = _alignHandle.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
           diffModel = res.model; diffStats = res.stats;
-          // Low across the two-dispatch transition, raised for the settled
-          // content — same reasoning as transformAndDispatch.
-          _alignedRender = false;
-          syncDiffConfig(Number.MAX_SAFE_INTEGER);
-          _blockAligning = true;
-          try {
-            setPaneIfChanged(mergeView.a, res.left);
-            setPaneIfChanged(mergeView.b, res.right);
-          } finally { _blockAligning = false; }
-          _alignedRender = true;
-          syncDiffConfig(res.left.length + res.right.length);
+          writeAlignedPanes(res.left, res.right);
           _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
                              block: blockDiffEnabled(), pred: ignorePredicate,
                              tol: numToleranceActive(), page: recordPageFrom, view: recordView };
-          syncDiffConfig();
         } else {
           const src = _ignorePristine;
           transformAndDispatch(src ? src.left : mergeView.a.state.doc.toString(),
@@ -2149,24 +2267,7 @@
             if (normalized || (res.stats && res.stats.truncated)) {
               _ignorePristine = { left: L, right: R };
             }
-            // Writing the panes is two dispatches and CM6 re-diffs on each, so
-            // there is an unavoidable moment where one side is the new window
-            // and the other is still the old document. Keep the limit LOW across
-            // that transition so the mismatched pair bails out instantly, then
-            // raise it once for the settled content — CM6 re-diffs on the
-            // reconfigure, so the final result is computed at the right effort
-            // and only one cheap diff is wasted.
-            _alignedRender = false;
-            syncDiffConfig(Number.MAX_SAFE_INTEGER);
-            _blockAligning = true;
-            try {
-              setPaneIfChanged(mergeView.a, res.left);
-              setPaneIfChanged(mergeView.b, res.right);
-            } finally {
-              _blockAligning = false;
-            }
-            _alignedRender = true;
-            syncDiffConfig(res.left.length + res.right.length);
+            writeAlignedPanes(res.left, res.right);
             dispatched = true;
           } else {
             diffModel = null; diffStats = null;
@@ -2175,8 +2276,12 @@
           diffModel = null; diffStats = null;
         }
         // Covers the paths that did NOT dispatch aligned text (normalize-only,
-        // alignment unavailable): the panes still changed, so re-derive.
-        syncDiffConfig();
+        // alignment unavailable): the panes still changed, so re-derive the
+        // effort — and re-diff, since nothing is going to write after us.
+        if (!dispatched) {
+          syncDiffConfig();
+          ensureDiffFresh();
+        }
         // Memoize against the post-dispatch docs (failures too) so the next call
         // on unchanged content returns in O(1).
         _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
@@ -2272,6 +2377,9 @@
           collapseUnchanged: newSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
           diffConfig: buildDiffConfig(newSettings.scanLimit, leftContent.length + rightContent.length),
         });
+        // The constructor diffs with exactly that config, so the fresh chunks and
+        // the applied limit agree.
+        _chunkScanLimit = _appliedScanLimit;
 
         // Re-add pane controls
         addPaneControls();
@@ -4503,7 +4611,9 @@
         const chunks = mergeView?.chunks;
         if (!chunks || chunks.length !== 1) return false;
         const aLen = mergeView.a.state.doc.length, bLen = mergeView.b.state.doc.length;
-        const internal = (_appliedScanLimit || 6000) >> 1;
+        // The limit the visible chunks were computed with, which is not always the
+        // one currently configured (see ensureDiffFresh).
+        const internal = (_chunkScanLimit || _appliedScanLimit || 6000) >> 1;
         if (Math.min(aLen, bLen) <= internal * 64) return false;
         const c = chunks[0];
         const spanA = (c.toA - c.fromA) / Math.max(1, aLen);
@@ -4621,9 +4731,12 @@
           return _idSourceCache;
         }
         try {
+          // The model describes the COLLECTION, which for an envelope shape
+          // ({data:[...]}) lives one key down — index the same array it counted.
+          const at = (v) => (diffModel.path == null || !v) ? v : v[diffModel.path];
           _idSourceCache = {
             key: L.length + ':' + R.length + ':' + diffModel.idKey,
-            left: JSON.parse(L), right: JSON.parse(R)
+            left: at(JSON.parse(L)), right: at(JSON.parse(R))
           };
         } catch (e) { _idSourceCache = null; }
         return _idSourceCache;

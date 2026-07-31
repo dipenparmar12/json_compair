@@ -32,6 +32,11 @@
 
    So this module stops relying on CM6 to FIND the differences:
 
+     0. findCollection() locates the records: the root when both sides are
+        arrays, else the shared object key holding the biggest array on both
+        sides. Envelope shapes ({data:[...]}, {results:[...]}) therefore get
+        the same model + window as a bare array instead of being handed to
+        CM6 whole.
      1. matchArray()  pairs records itself — by a detected identity key
         (patience/LIS over unique ids, O(n log n)), else by content-hash
         anchors, else positionally. No O(n·m) DP, no size cliff.
@@ -718,8 +723,10 @@
    *              pretty until `budget` is spent. Complete, but on a very large
    *              collection CM6's own diff will degrade — the model stays exact.
    */
-  function renderArray(a, b, model, ctx, opts) {
-    var A = ['['], B = ['['];
+  function renderArray(a, b, model, ctx, opts, pad) {
+    if (pad == null) pad = '';
+    var child = pad + INDENT;
+    var A = [pad + '['], B = [pad + '['];
     var buf = {};
     var budget = opts.budget == null ? EXPAND_CHAR_BUDGET : opts.budget;
     var windowed = opts.view === 'window';
@@ -756,13 +763,13 @@
       shown++;
 
       if (it.status === 'removed') {
-        sub = windowed ? ser(a[i], INDENT) : [INDENT + compactSingle(a[i])];
+        sub = windowed ? ser(a[i], child) : [child + compactSingle(a[i])];
         if (commaA) addComma(sub);
         pushBoth(sub, blanks(sub.length));
         continue;
       }
       if (it.status === 'added') {
-        sub = windowed ? ser(b[j], INDENT) : [INDENT + compactSingle(b[j])];
+        sub = windowed ? ser(b[j], child) : [child + compactSingle(b[j])];
         if (commaB) addComma(sub);
         pushBoth(blanks(sub.length), sub);
         continue;
@@ -775,7 +782,7 @@
 
       if (!wantPretty) {
         compactPair(a[i], b[j], ctx, buf);
-        var la = [INDENT + buf.a], lb = [INDENT + buf.b];
+        var la = [child + buf.a], lb = [child + buf.b];
         if (commaA) addComma(la);
         if (commaB) addComma(lb);
         pushBoth(la, lb);
@@ -783,7 +790,7 @@
         continue;
       }
 
-      var al = prettyPair(a[i], b[j], INDENT, ctx);
+      var al = prettyPair(a[i], b[j], child, ctx);
       if (commaA) addComma(al.A);
       if (commaB) addComma(al.B);
       for (var q = 0; q < al.A.length; q++) used += al.A[q].length + 1;
@@ -791,8 +798,11 @@
       pushBoth(al.A, al.B);
     }
 
-    A.push(']'); B.push(']');
+    // Pad BEFORE the closing bracket so the two "]" lines stay on the same row.
+    // Matters when this block is nested inside an object shell and more keys
+    // follow it — otherwise everything after the array is off by the gap.
     var res = padToEqual(A, B);
+    res.A.push(pad + ']'); res.B.push(pad + ']');
     res.stats = {
       view: windowed ? 'window' : 'full',
       from: from, to: to, shown: shown, itemsTotal: items.length,
@@ -802,6 +812,51 @@
       budgetHit: used >= budget
     };
     return res;
+  }
+
+  /**
+   * Find the collection this pair is really "about", so object-rooted exports
+   * get the same treatment as bare arrays.
+   *
+   * Everything above (matching, the field model, the record window) works on a
+   * pair of ARRAYS, and used to be reachable only when the two documents were
+   * arrays at the root. But the most common export shape is an envelope —
+   * {data:[...]}, {results:[...]}, {items:[...]} — and for those the whole
+   * mechanism switched off: no model, no window, no pager, and a multi-MB
+   * document handed to CM6 whole, which is exactly the size where its diff
+   * gives up and returns one change covering everything.
+   *
+   * So: use the root when both sides are arrays, otherwise the shared object key
+   * holding the biggest array on both sides. Depth 1 only — that covers the
+   * envelope shapes without turning this into a search over the whole document.
+   *
+   * @returns {{path: string|null, a: Array, b: Array} | null}
+   */
+  function findCollection(a, b) {
+    if (Array.isArray(a) && Array.isArray(b)) return { path: null, a: a, b: b };
+    if (!isPlainObject(a) || !isPlainObject(b)) return null;
+    var best = null, k;
+    for (k in a) {
+      if (!hasOwn(a, k) || !hasOwn(b, k)) continue;
+      if (!Array.isArray(a[k]) || !Array.isArray(b[k])) continue;
+      var n = a[k].length + b[k].length;
+      if (!best || n > best.n) best = { path: k, a: a[k], b: b[k], n: n };
+    }
+    // A one-element array is not a collection worth paging; let it render pretty.
+    return best && best.n > 1 ? best : null;
+  }
+
+  /**
+   * Render the object shell around a collection: every other key aligned
+   * normally, with the already-rendered collection lines spliced in at `path`.
+   * Keeps the window bounded (the collection is the only big thing) while the
+   * panes still hold a complete, valid JSON object.
+   */
+  function renderWithShell(pa, pb, path, lines, ctx) {
+    var A = lines.A.slice(), B = lines.B.slice();
+    A[0] = keyPrefix(A[0], INDENT, path);
+    B[0] = keyPrefix(B[0], INDENT, path);
+    return alignObject(pa, pb, '', ctx, { key: path, A: A, B: B });
   }
 
   /* ==================================================================
@@ -860,7 +915,10 @@
     return { A: A, B: B };
   }
 
-  function alignObject(a, b, pad, ctx) {
+  // `override` (optional) = { key, A, B }: use those pre-rendered lines for that
+  // key instead of aligning its value here. Used by renderWithShell so a windowed
+  // collection can sit inside a normally-aligned object.
+  function alignObject(a, b, pad, ctx, override) {
     var child = pad + INDENT;
     var aKeys = Object.keys(a), bKeys = Object.keys(b);
     var aSet = {}, bSet = {}, i;
@@ -887,9 +945,15 @@
       var commaB = e.inB && i !== lastB;
       var sub;
       if (e.inA && e.inB) {
+        // Pre-rendered collection (already gap-aligned, equal line counts).
+        if (override && override.key === e.k) {
+          var oA = override.A.slice(), oB = override.B.slice();
+          if (commaA) addComma(oA);
+          if (commaB) addComma(oB);
+          pushBoth(oA, oB);
         // Ignored property present on both sides → normalize to the "a" value
         // on BOTH sides so MergeView sees no change.
-        if (ctx.ignore && ctx.ignore(e.k, a[e.k], b[e.k])) {
+        } else if (ctx.ignore && ctx.ignore(e.k, a[e.k], b[e.k])) {
           if (!deepEqual(a[e.k], b[e.k])) ctx.changed = true;
           var canon = ser(a[e.k], child);
           canon[0] = keyPrefix(canon[0], child, e.k);
@@ -950,8 +1014,11 @@
     try {
       var p = parsePair(leftText, rightText);
       if (!p) return { ok: false };
-      if (!Array.isArray(p.a) || !Array.isArray(p.b)) return { ok: false, reason: 'not-arrays' };
-      return { ok: true, model: buildModel(p.a, p.b, makeCtx(opts)) };
+      var coll = findCollection(p.a, p.b);
+      if (!coll) return { ok: false, reason: 'no-collection' };
+      var m = buildModel(coll.a, coll.b, makeCtx(opts));
+      m.path = coll.path;
+      return { ok: true, model: m };
     } catch (e) {
       return { ok: false, error: e && e.message };
     }
@@ -972,11 +1039,16 @@
     try {
       var p = parsePair(leftText, rightText);
       if (!p) return { ok: false };
-      if (!Array.isArray(p.a) || !Array.isArray(p.b)) return { ok: false, reason: 'not-arrays' };
+      // The root pair when both are arrays, else the envelope key holding the
+      // collection ({data:[...]} and friends) — see findCollection.
+      var coll = findCollection(p.a, p.b);
+      if (!coll) return { ok: false, reason: 'no-collection' };
+      var rootIsArray = coll.path === null;
       var baseCtx = makeCtx(opts);
-      var model = buildModel(p.a, p.b, baseCtx);
+      var model = buildModel(coll.a, coll.b, baseCtx);
+      model.path = coll.path;
       var combined = leftText.length + rightText.length;
-      var pageSize = pageSizeFor(p.a, p.b, (opts && opts.budget) || EXPAND_CHAR_BUDGET);
+      var pageSize = pageSizeFor(coll.a, coll.b, (opts && opts.budget) || EXPAND_CHAR_BUDGET);
 
       return {
         ok: true,
@@ -989,17 +1061,21 @@
           if (view === 'auto') view = combined <= PRETTY_MAX_BYTES ? 'pretty' : 'window';
           var res, stats;
           if (view === 'pretty') {
-            res = alignArrayPretty(p.a, p.b, '', ctx);
+            // Small enough to show whole: the ordinary pretty alignment, which
+            // already handles an envelope object around the array.
+            res = rootIsArray ? alignArrayPretty(p.a, p.b, '', ctx)
+                              : alignValue(p.a, p.b, '', ctx);
             stats = {
               view: 'pretty', from: 0, to: model.items.length, shown: model.items.length,
               itemsTotal: model.items.length, expanded: model.totals.changed, compacted: 0,
               changedTotal: model.totals.changed, truncated: false, budgetHit: false
             };
           } else {
-            res = renderArray(p.a, p.b, model, ctx, {
+            var arr = renderArray(coll.a, coll.b, model, ctx, {
               view: view, from: o.from, size: o.size, budget: o.budget
-            });
-            stats = res.stats;
+            }, rootIsArray ? '' : INDENT);
+            stats = arr.stats;
+            res = rootIsArray ? arr : renderWithShell(p.a, p.b, coll.path, arr, ctx);
           }
           stats.pageSize = pageSize;
           return {
@@ -1034,7 +1110,10 @@
       var ctx = makeCtx(opts);
       var o = opts || {};
 
-      if (Array.isArray(p.a) && Array.isArray(p.b)) {
+      // Whenever there is a collection to work with — a root array, or an
+      // envelope object around one — go through prepare(), so the item/field
+      // model and the record window apply regardless of the wrapper.
+      if (findCollection(p.a, p.b)) {
         // The model is always computed: item and field counts must not depend
         // on how much of the document we choose to render.
         var h = prepare(leftText, rightText, opts);
