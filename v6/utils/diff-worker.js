@@ -646,6 +646,13 @@ function csvToJSON(csvText, options = {}) {
   const empty = { data: [], builtRows: 0, approxTotalRows: 0, truncated: false };
   if (!csvText || !csvText.trim()) return empty;
 
+  // Optional progress callback, invoked every PROGRESS_EVERY_BYTES of input so
+  // the main thread can show a determinate bar. Bytes (not rows) because the
+  // row count is not known until the parse finishes, while the byte total is.
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const PROGRESS_EVERY_BYTES = 262144;   // 256 KB
+  let nextProgressAt = PROGRESS_EVERY_BYTES;
+
   const coerceTypes = !!options.coerceTypes;
   const maxRows = (typeof options.maxRows === 'number' && options.maxRows > 0)
     ? options.maxRows : Infinity;
@@ -695,6 +702,10 @@ function csvToJSON(csvText, options = {}) {
       row.push(cur); cur = "";
       commitRow();
       if (data.length >= maxRows) { truncated = true; bytesConsumed = i + 1; break; }
+      if (onProgress && i >= nextProgressAt) {
+        nextProgressAt = i + PROGRESS_EVERY_BYTES;
+        onProgress(i, text.length, data.length);
+      }
       continue;
     }
     cur += ch;
@@ -775,7 +786,14 @@ self.addEventListener('message', function (e) {
         case 'csvToJsonString': {
           const opts = payload.options || { coerceTypes: true };
           if (typeof payload.maxRows === 'number') opts.maxRows = payload.maxRows;
+          // Stream progress back while parsing. A worker cannot RECEIVE messages
+          // mid-loop, so this channel is one-way: cancellation is done by the
+          // main thread terminating the worker outright (see cancelWorker).
+          opts.onProgress = function (bytes, totalBytes, rows) {
+            self.postMessage({ id, type: 'progress', phase: 'csv', done: bytes, total: totalBytes, rows: rows });
+          };
           const parsed = csvToJSON(payload.text, opts);
+          self.postMessage({ id, type: 'progress', phase: 'stringify', done: 1, total: 1, rows: parsed.builtRows });
           let arr = parsed.data;
           if (payload.autoSort) arr = sortJSONKeys(arr);
           result = {

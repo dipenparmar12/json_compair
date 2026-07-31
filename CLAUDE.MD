@@ -61,6 +61,8 @@ json_compair/
 │       ├── json_to_table.js
 │       └── json_fuzzer.js
 │
+│       ├── progress.js     # ProcessingUI: progress panel, ETA, cancellation token
+│
 ├── docs/                   # Documentation & PRDs
 ├── tests/                  # Test files
 └── _archive/               # Old iterations
@@ -247,6 +249,9 @@ window.JSONAlign
                             //   opts: {ignore, numTol, view:'auto'|'pretty'|'window'|'full',
                             //          from, size, budget}
   .prepare(l, r, opts)      // parse+match+model ONCE → {ok, model, render({from,size,view})}
+  .prepareAsync(l, r, opts, ctl)  // same result, in interruptible slices (Diff Engine §11)
+                            //   ctl: { signal:{cancelled}, onPhase(key,total)->{onProgress} }
+                            //   rejects with err.cancelled === true when stopped
   .diffModel(l, r, opts)    // item + FIELD level diff, no rendering; exact at ANY size
                             //   → {ok, model:{items,totals,fields,idKey,strategy,path}}
                             //   `path`: collection key, or null when the root is the array.
@@ -266,6 +271,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/utils_zip.js"></script>
 <script src="./utils/utils_branch.js"></script>
 <script src="./utils/viewport_diff.js"></script>  <!-- v6 only: performance managers -->
+<script src="./utils/progress.js"></script>       <!-- v6 only: progress panel + cancellation -->
 <script src="./utils/diff_ignore.js"></script>    <!-- v6 only: exclude keys/patterns from diff -->
 ```
 
@@ -918,6 +924,56 @@ Understand the split before touching diff/perf code:
   Off / value ≤ 0 → `numTol` null → zero overhead. **Gotcha:** the boundary is IEEE754-fuzzy —
   `|19.991 - 19.99|` is `0.001000…012 > 0.001`, so exactly-at-tolerance pairs may or may not match.
   See memory [[v6-numeric-tolerance-diff]].
+
+### 11. Progress, ETA and cancellation for long runs — `progress.js` + async pipeline
+- **Why:** a large comparison is a chain of individually-fast steps (CSV parse ≈ 0.25 s,
+  parse ≈ 0.1 s, match ≈ 0.1 s, field model ≈ 0.3 s, CM6's diff ≈ 0.25 s) that add up, and the
+  model/match passes are **linear in record count** — 0.3 s at 2,000 records is 3 s at 20,000.
+  Run synchronously with no feedback, that is indistinguishable from a frozen tab.
+- **`window.ProcessingUI`** (`utils/progress.js`) owns a non-blocking bottom-right panel:
+  phase label, determinate bar, `1,245 / 2,000`, elapsed, an EMA-smoothed ETA, optional heap
+  size, and a **Cancel** button. `start({title, phases:[{key,label,weight}]})` → a job;
+  `job.phase(key)` / `job.update(done,total,note)` drive it. Repaints are coalesced to one
+  per frame — a chunked loop calls `update()` thousands of times a second.
+  - It only appears after `SHOW_DELAY_MS` (400 ms); a bar that flashes for 80 ms is worse
+    than none. Most comparisons never show it.
+  - `fraction()` measures from the **first phase actually entered**, not the start of the
+    declared list — a JSON paste skips the CSV phase, and a bar that opens at 20 % because of
+    a step that will never run reads as broken.
+  - **`detach()` vs `finish()`:** two panes can ingest at once and the newer job takes over the
+    panel, but the older one is still working and must stay cancellable. Conflating the two
+    (the newer job calling `finish()` on the older) made `cancel()` early-return on
+    `job.finished` — one pane kept processing after Cancel and produced a nonsense
+    "61 changed, 1,939 removed" comparison against a stale pane.
+- **Cooperative chunking** (`json_align.js`): `chunkedLoop(n, body, ctl)` runs slices of
+  `SLICE_MS` (12 ms) and yields via **MessageChannel** — `setTimeout`'s ~4 ms clamp would
+  dominate at one yield per slice, and `requestAnimationFrame` never fires in a background tab.
+  `CHECK_EVERY` (64), not `SLICE_MS`, sets the *floor* on slice length, since the clock is only
+  read every N items; at 256 a 158-field record set ran 33 ms slices (over a frame).
+- **`prepareAsync(l, r, opts, ctl)`** is a verified drop-in twin of `prepare()` — identical
+  model, items, rendered text and stats, ~10 % slower from yielding. Phases: `parse` →
+  `identity` → `match` → `model`. Rendering stays synchronous (bounded by the record window,
+  ~10-20 ms at any collection size). `phaseCtl()` must copy `signal` onto each phase's control:
+  a reporter returned bare from `onPhase()` carries only `onProgress`, which silently made
+  every loop uncancellable.
+- **Cancellation is real, not cosmetic.** A Worker running a synchronous parse loop cannot
+  receive a "stop" message — its queue is not serviced until the loop returns — so
+  `cancelWorker()` **terminates** it (`initializeDiffWorker` is lazy, so the next call rebuilds
+  it). Main-thread work checks `ctl.signal.cancelled` at each yield. `cancelAllProcessing()` is
+  re-entrant (each job's handler calls back into it), snapshots `_liveJobs` before cancelling,
+  clears `_blockAligning` (a cancel can land between the two pane writes), and is also called
+  by `clearAll()` so an in-flight ingest can't write over freshly-cleared panes.
+- **Cancel stays cancelled:** `_cancelledAlign` records the doc pair that was stopped, so the
+  500 ms debounced re-align doesn't restart the exact work the user just cancelled. Any real
+  content change clears it.
+- **Every cancel point is before a pane write**, so cancellation never leaves a half-written
+  comparison — there is nothing to roll back.
+- **`WORKER_VERSION`** — the worker URL carries `?v=N`. Browsers cache Workers hard and a
+  normal (even forced) reload does **not** pick up a new one: measured, the stale worker kept
+  running the old message protocol and silently emitted zero progress frames. Bump it whenever
+  `diff-worker.js` changes.
+- Only payloads over `PROGRESS_MIN_BYTES` (512 KB) take the interruptible path; below that the
+  synchronous path is done before the panel would appear.
 
 ### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on

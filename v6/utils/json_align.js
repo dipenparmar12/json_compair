@@ -110,6 +110,113 @@
     return v !== null && typeof v === 'object' && !Array.isArray(v);
   }
 
+  /* ==================================================================
+     COOPERATIVE CHUNKING — so a big model build can be watched and stopped
+     --------------------------------------------------------------------
+     The matching and field-model passes are linear in record count: ~0.3 s
+     for 2,000 records, so ~3 s for 20,000 and worse beyond. Run as one
+     synchronous loop that is a frozen tab with no progress and no way out.
+
+     The async variants below do exactly the same work, but hand control back
+     to the browser every SLICE_MS and check a cancellation flag when they do.
+     The sync entry points are untouched, so small comparisons keep taking the
+     straight-line path with zero added overhead.
+
+     Kept dependency-free on purpose (this module is pure): the caller passes
+     `signal` / `onProgress`, and the yield is implemented locally.
+     ================================================================== */
+
+  var SLICE_MS = 12;        // work between yields — about one frame
+  // The clock is only read every CHECK_EVERY items, so this — not SLICE_MS —
+  // sets the FLOOR on slice length. At 256 a 158-field record set ran ~33 ms
+  // slices (over a frame, and only 8 progress updates across 2,000 records).
+  // 64 keeps slices inside a frame; the extra clock reads are unmeasurable.
+  var CHECK_EVERY = 64;
+
+  function nowMs() {
+    return (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+  }
+
+  function Cancelled() {
+    this.name = 'CancelledError';
+    this.message = 'Operation cancelled';
+    this.cancelled = true;   // duck-typed so callers can test err.cancelled
+  }
+  Cancelled.prototype = Object.create(Error.prototype);
+  Cancelled.prototype.constructor = Cancelled;
+
+  // A real macrotask: MessageChannel avoids setTimeout's ~4 ms clamp (which,
+  // at one yield per slice, would dominate the runtime), and still fires in a
+  // background tab where requestAnimationFrame never would.
+  var _chan = (typeof MessageChannel === 'function') ? new MessageChannel() : null;
+  var _waiters = [];
+  if (_chan) {
+    _chan.port1.onmessage = function () {
+      var fn = _waiters.shift();
+      if (fn) fn();
+    };
+  }
+  function yieldNow() {
+    return new Promise(function (resolve) {
+      if (_chan) { _waiters.push(resolve); _chan.port2.postMessage(0); }
+      else setTimeout(resolve, 0);
+    });
+  }
+
+  function cancelledBy(ctl) {
+    return !!(ctl && ctl.signal && ctl.signal.cancelled);
+  }
+
+  /**
+   * Open a phase and return the control object for its loop.
+   *
+   * The signal has to be copied onto the per-phase control: chunkedLoop tests
+   * `ctl.signal`, and a reporter returned bare from onPhase() carries only
+   * onProgress — which silently made every loop uncancellable.
+   */
+  function phaseCtl(ctl, key, total) {
+    if (!ctl) return undefined;
+    var rep = ctl.onPhase ? ctl.onPhase(key, total) : null;
+    return {
+      signal: ctl.signal,
+      onProgress: rep ? rep.onProgress : ctl.onProgress
+    };
+  }
+
+  /**
+   * Run body(i) for i in [0, n), yielding every SLICE_MS.
+   * @param {object} [ctl] { signal, onProgress(done,total) }
+   */
+  function chunkedLoop(n, body, ctl) {
+    var i = 0;
+    function run() {
+      var deadline = nowMs() + SLICE_MS;
+      var sinceCheck = 0;
+      while (i < n) {
+        body(i);
+        i++;
+        if (++sinceCheck >= CHECK_EVERY) {
+          sinceCheck = 0;
+          if (nowMs() >= deadline) break;
+        }
+      }
+      if (i >= n) {
+        if (ctl && ctl.onProgress) ctl.onProgress(n, n);
+        return Promise.resolve();
+      }
+      if (cancelledBy(ctl)) return Promise.reject(new Cancelled());
+      if (ctl && ctl.onProgress) ctl.onProgress(i, n);
+      return yieldNow().then(run);
+    }
+    // n === 0 still has to report completion so the phase bar fills.
+    if (n <= 0) {
+      if (ctl && ctl.onProgress) ctl.onProgress(0, 0);
+      return Promise.resolve();
+    }
+    return run();
+  }
+
   // Structural equality with an OPTIONAL numeric tolerance `tol` (null = exact).
   // Returns a kind so callers can tell a genuine match from a tolerated one:
   //   0 = not equal
@@ -483,6 +590,12 @@
     }
 
     // Walk anchors, filling the gaps between them positionally.
+    return { pairs: fillPairs(a, b, anchors), strategy: strategy, idKey: idKey };
+  }
+
+  // The anchor→pair walk, shared by matchArray and matchArrayAsync.
+  function fillPairs(a, b, anchors) {
+    var n = a.length, m = b.length;
     var pairs = [];
     var list = anchors.concat([[n, m]]);
     var ai = 0, bj = 0;
@@ -505,7 +618,67 @@
       if (ti < n && tj < m) { pairs.push([ti, tj]); ai = ti + 1; bj = tj + 1; }
       else { ai = ti; bj = tj; }
     }
-    return { pairs: pairs, strategy: strategy, idKey: idKey };
+    return pairs;
+  }
+
+  // Identity detection, one candidate key per slice. Stage 2 scans both arrays
+  // in full for every surviving candidate, so on a large collection this is the
+  // second-most expensive thing we do after the field model.
+  function detectIdKeyAsync(a, b, ctl) {
+    var n = a.length, m = b.length;
+    if (!n || !m || !isPlainObject(a[0]) || !isPlainObject(b[0])) return Promise.resolve(null);
+
+    var sampleN = Math.min(ID_SAMPLE, n), sampleM = Math.min(ID_SAMPLE, m);
+    var candidates = [], keys = Object.keys(a[0]);
+    for (var ki = 0; ki < keys.length; ki++) {
+      if (uniqueOver(a, sampleN, keys[ki]) && uniqueOver(b, sampleM, keys[ki])) candidates.push(keys[ki]);
+    }
+    if (!candidates.length) return Promise.resolve(null);
+
+    var best = null, minLen = Math.min(n, m);
+    var inner = phaseCtl(ctl, 'identity', candidates.length);
+    return chunkedLoop(candidates.length, function (idx) {
+      var k = candidates[idx];
+      var setA = collectIds(a, k); if (!setA) return;
+      var setB = collectIds(b, k); if (!setB) return;
+      var overlap = 0;
+      setA.forEach(function (v) { if (setB.has(v)) overlap++; });
+      if (overlap >= minLen * ID_MIN_OVERLAP && (!best || overlap > best.overlap)) {
+        best = { key: k, overlap: overlap };
+      }
+    }, inner).then(function () { return best ? best.key : null; });
+  }
+
+  // Async twin of matchArray. Same strategies, same results.
+  function matchArrayAsync(a, b, tol, ctl) {
+    var n = a.length, m = b.length;
+    if (!n || !m) {
+      return Promise.resolve({ pairs: fillPairs(a, b, []), strategy: 'empty', idKey: null });
+    }
+    var idPromise = Math.min(n, m) >= ID_MIN_ITEMS
+      ? detectIdKeyAsync(a, b, ctl)
+      : Promise.resolve(null);
+
+    return idPromise.then(function (idKey) {
+      var strategy, anchors;
+      if (idKey) {
+        strategy = 'id';
+        anchors = anchorsFromSymbols(a, b, function (r) { return idOf(r, idKey); });
+      } else if (n * m <= MAX_LCS_CELLS) {
+        strategy = 'lcs';
+        anchors = lcsMatches(a, b, tol);   // bounded by MAX_LCS_CELLS, so bounded time
+      } else {
+        strategy = 'hash';
+        anchors = anchorsFromSymbols(a, b, function (r) { return hashValue(r); });
+      }
+      if (cancelledBy(ctl)) throw new Cancelled();
+      var inner = phaseCtl(ctl, 'match', n + m);
+      // The walk itself is linear with a small constant; report it as one step
+      // rather than paying a closure per element.
+      var pairs = fillPairs(a, b, anchors);
+      if (inner && inner.onProgress) inner.onProgress(n + m, n + m);
+      return { pairs: pairs, strategy: strategy, idKey: idKey };
+    });
   }
 
   /* ==================================================================
@@ -543,41 +716,68 @@
    * items[]: { a, b, status, changed[], onlyA[], onlyB[], nFields }
    *          status ∈ 'same' | 'changed' | 'added' | 'removed'
    */
+  // Split into start/step/end so the synchronous and the chunked async build
+  // run byte-identical logic — two copies of this loop would drift.
+  function modelStart(a, b, ctx, match) {
+    return {
+      a: a, b: b, ctx: ctx, match: match,
+      items: [], fields: Object.create(null),
+      totals: { total: 0, same: 0, changed: 0, added: 0, removed: 0, moved: 0, fieldChanges: 0 }
+    };
+  }
+
+  function modelStep(st, p) {
+    var a = st.a, b = st.b, ctx = st.ctx;
+    var i = st.match.pairs[p][0], j = st.match.pairs[p][1];
+    var it;
+    if (i !== null && j !== null) {
+      var d = diffFields(a[i], b[j], ctx);
+      if (!d) {
+        it = { a: i, b: j, status: 'same', changed: [], onlyA: [], onlyB: [], nFields: 0 };
+        st.totals.same++;
+      } else {
+        var nf = d.changed.length + d.onlyA.length + d.onlyB.length;
+        it = { a: i, b: j, status: 'changed', changed: d.changed, onlyA: d.onlyA, onlyB: d.onlyB, nFields: nf };
+        st.totals.changed++;
+        st.totals.fieldChanges += nf;
+        countFields(st.fields, d.changed); countFields(st.fields, d.onlyA); countFields(st.fields, d.onlyB);
+      }
+    } else if (i !== null) {
+      it = { a: i, b: null, status: 'removed', changed: [], onlyA: [], onlyB: [], nFields: 0 };
+      st.totals.removed++;
+    } else {
+      it = { a: null, b: j, status: 'added', changed: [], onlyA: [], onlyB: [], nFields: 0 };
+      st.totals.added++;
+    }
+    st.totals.total++;
+    st.items.push(it);
+  }
+
+  function modelEnd(st) {
+    if (st.match.idKey) {
+      linkMoves(st.items, st.a, st.b, st.ctx, st.match.idKey, st.totals, st.fields);
+    }
+    return {
+      kind: 'array', strategy: st.match.strategy, idKey: st.match.idKey,
+      items: st.items, totals: st.totals, fields: st.fields
+    };
+  }
+
   function buildModel(a, b, ctx) {
     var match = matchArray(a, b, ctx.numTol);
-    var items = [], fields = Object.create(null);
-    var totals = { total: 0, same: 0, changed: 0, added: 0, removed: 0, moved: 0, fieldChanges: 0 };
+    var st = modelStart(a, b, ctx, match);
+    for (var p = 0; p < match.pairs.length; p++) modelStep(st, p);
+    return modelEnd(st);
+  }
 
-    for (var p = 0; p < match.pairs.length; p++) {
-      var i = match.pairs[p][0], j = match.pairs[p][1];
-      var it;
-      if (i !== null && j !== null) {
-        var d = diffFields(a[i], b[j], ctx);
-        if (!d) {
-          it = { a: i, b: j, status: 'same', changed: [], onlyA: [], onlyB: [], nFields: 0 };
-          totals.same++;
-        } else {
-          var nf = d.changed.length + d.onlyA.length + d.onlyB.length;
-          it = { a: i, b: j, status: 'changed', changed: d.changed, onlyA: d.onlyA, onlyB: d.onlyB, nFields: nf };
-          totals.changed++;
-          totals.fieldChanges += nf;
-          countFields(fields, d.changed); countFields(fields, d.onlyA); countFields(fields, d.onlyB);
-        }
-      } else if (i !== null) {
-        it = { a: i, b: null, status: 'removed', changed: [], onlyA: [], onlyB: [], nFields: 0 };
-        totals.removed++;
-      } else {
-        it = { a: null, b: j, status: 'added', changed: [], onlyA: [], onlyB: [], nFields: 0 };
-        totals.added++;
-      }
-      totals.total++;
-      items.push(it);
-    }
-    if (match.idKey) linkMoves(items, a, b, ctx, match.idKey, totals, fields);
-    return {
-      kind: 'array', strategy: match.strategy, idKey: match.idKey,
-      items: items, totals: totals, fields: fields
-    };
+  // Same result as buildModel, built in interruptible slices with progress.
+  function buildModelAsync(a, b, ctx, ctl) {
+    return matchArrayAsync(a, b, ctx.numTol, ctl).then(function (match) {
+      var st = modelStart(a, b, ctx, match);
+      var inner = phaseCtl(ctl, 'model', match.pairs.length);
+      return chunkedLoop(match.pairs.length, function (p) { modelStep(st, p); }, inner)
+        .then(function () { return modelEnd(st); });
+    });
   }
 
   /**
@@ -1047,46 +1247,102 @@
       var baseCtx = makeCtx(opts);
       var model = buildModel(coll.a, coll.b, baseCtx);
       model.path = coll.path;
-      var combined = leftText.length + rightText.length;
-      var pageSize = pageSizeFor(coll.a, coll.b, (opts && opts.budget) || EXPAND_CHAR_BUDGET);
-
-      return {
-        ok: true,
-        model: model,
-        render: function (o) {
-          o = o || {};
-          // Fresh ctx per render: `changed` reports what THIS render normalized.
-          var ctx = makeCtx(opts);
-          var view = o.view || 'auto';
-          if (view === 'auto') view = combined <= PRETTY_MAX_BYTES ? 'pretty' : 'window';
-          var res, stats;
-          if (view === 'pretty') {
-            // Small enough to show whole: the ordinary pretty alignment, which
-            // already handles an envelope object around the array.
-            res = rootIsArray ? alignArrayPretty(p.a, p.b, '', ctx)
-                              : alignValue(p.a, p.b, '', ctx);
-            stats = {
-              view: 'pretty', from: 0, to: model.items.length, shown: model.items.length,
-              itemsTotal: model.items.length, expanded: model.totals.changed, compacted: 0,
-              changedTotal: model.totals.changed, truncated: false, budgetHit: false
-            };
-          } else {
-            var arr = renderArray(coll.a, coll.b, model, ctx, {
-              view: view, from: o.from, size: o.size, budget: o.budget
-            }, rootIsArray ? '' : INDENT);
-            stats = arr.stats;
-            res = rootIsArray ? arr : renderWithShell(p.a, p.b, coll.path, arr, ctx);
-          }
-          stats.pageSize = pageSize;
-          return {
-            ok: true, left: res.A.join('\n'), right: res.B.join('\n'),
-            changed: ctx.changed, model: model, stats: stats
-          };
-        }
-      };
+      return makeHandle(p.a, p.b, coll, rootIsArray, model, opts,
+                        leftText.length + rightText.length);
     } catch (e) {
       return { ok: false, error: e && e.message };
     }
+  }
+
+  // The reusable render closure shared by prepare() and prepareAsync().
+  // Rendering is deliberately synchronous: a window is bounded by design, so it
+  // costs ~10-20 ms whether the collection has 60 records or 2,000,000.
+  function makeHandle(rootA, rootB, coll, rootIsArray, model, opts, combined) {
+    var pageSize = pageSizeFor(coll.a, coll.b, (opts && opts.budget) || EXPAND_CHAR_BUDGET);
+    return {
+      ok: true,
+      model: model,
+      render: function (o) {
+        o = o || {};
+        // Fresh ctx per render: `changed` reports what THIS render normalized.
+        var ctx = makeCtx(opts);
+        var view = o.view || 'auto';
+        if (view === 'auto') view = combined <= PRETTY_MAX_BYTES ? 'pretty' : 'window';
+        var res, stats;
+        if (view === 'pretty') {
+          // Small enough to show whole: the ordinary pretty alignment, which
+          // already handles an envelope object around the array.
+          res = rootIsArray ? alignArrayPretty(rootA, rootB, '', ctx)
+                            : alignValue(rootA, rootB, '', ctx);
+          stats = {
+            view: 'pretty', from: 0, to: model.items.length, shown: model.items.length,
+            itemsTotal: model.items.length, expanded: model.totals.changed, compacted: 0,
+            changedTotal: model.totals.changed, truncated: false, budgetHit: false
+          };
+        } else {
+          var arr = renderArray(coll.a, coll.b, model, ctx, {
+            view: view, from: o.from, size: o.size, budget: o.budget
+          }, rootIsArray ? '' : INDENT);
+          stats = arr.stats;
+          res = rootIsArray ? arr : renderWithShell(rootA, rootB, coll.path, arr, ctx);
+        }
+        stats.pageSize = pageSize;
+        return {
+          ok: true, left: res.A.join('\n'), right: res.B.join('\n'),
+          changed: ctx.changed, model: model, stats: stats
+        };
+      }
+    };
+  }
+
+  /**
+   * Interruptible twin of prepare(): identical result, built in slices that
+   * yield to the browser, report progress, and stop when the signal is set.
+   *
+   * Phases reported through ctl.onPhase(key, total) → a per-phase reporter:
+   *   'parse'    both documents into values (native, not divisible)
+   *   'identity' looking for a stable record id
+   *   'match'    pairing records up
+   *   'model'    the field-level diff, item by item  ← the one that scales
+   *
+   * Rendering stays synchronous: it is bounded by the record window, so it
+   * costs ~10-20 ms regardless of collection size.
+   *
+   * @param {object} ctl { signal:{cancelled}, onPhase(key,total)->{onProgress} }
+   * @returns {Promise<{ok:true, model, render} | {ok:false}>}
+   *          Rejects with a Cancelled error (err.cancelled === true) if stopped.
+   */
+  function prepareAsync(leftText, rightText, opts, ctl) {
+    return Promise.resolve().then(function () {
+      if (typeof leftText !== 'string' || typeof rightText !== 'string') return { ok: false };
+      if (!leftText.trim() || !rightText.trim()) return { ok: false };
+      if (leftText.length + rightText.length > MAX_BYTES) return { ok: false };
+
+      var parseRep = phaseCtl(ctl, 'parse', 2);
+      var pa, pb;
+      try { pa = JSON.parse(leftText); } catch (e) { return { ok: false }; }
+      if (parseRep && parseRep.onProgress) parseRep.onProgress(1, 2);
+      if (cancelledBy(ctl)) throw new Cancelled();
+
+      // Yield between the two parses: each is a single uninterruptible native
+      // call, so this is the only place the panel can paint during parsing.
+      return yieldNow().then(function () {
+        try { pb = JSON.parse(rightText); } catch (e) { return { ok: false }; }
+        if (parseRep && parseRep.onProgress) parseRep.onProgress(2, 2);
+        if (cancelledBy(ctl)) throw new Cancelled();
+
+        var coll = findCollection(pa, pb);
+        if (!coll) return { ok: false, reason: 'no-collection' };
+        var rootIsArray = coll.path === null;
+        var baseCtx = makeCtx(opts);
+
+        return buildModelAsync(coll.a, coll.b, baseCtx, ctl).then(function (model) {
+          model.path = coll.path;
+          return makeHandle(pa, pb, coll, rootIsArray, model, opts,
+                            leftText.length + rightText.length);
+        });
+      });
+    });
   }
 
   /**
@@ -1162,9 +1418,11 @@
   window.JSONAlign = {
     align: align,
     prepare: prepare,
+    prepareAsync: prepareAsync,
     diffModel: diffModel,
     normalize: normalize,
     stripGaps: stripGaps,
+    CancelledError: Cancelled,
     EXPAND_CHAR_BUDGET: EXPAND_CHAR_BUDGET
   };
 })();

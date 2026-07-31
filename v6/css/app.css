@@ -2436,3 +2436,143 @@ button:disabled,
 [data-theme="dark"] .dd-badge.added   { background: rgba(64, 160, 88, 0.25);  color: #8ed6a4; }
 [data-theme="dark"] .dd-badge.removed { background: rgba(200, 72, 72, 0.25);  color: #f0a0a0; }
 [data-theme="dark"] .dd-badge.moved   { background: rgba(140, 100, 200, 0.28); color: #c0a8f0; }
+
+/* ============================================================
+   Processing panel — progress / ETA / cancel for long operations
+   Non-blocking by design: it floats above the editors, never covers
+   them, and only the panel itself takes pointer events, so the app
+   stays usable while a large comparison runs.
+   ============================================================ */
+.proc-panel {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 4000;
+    width: 320px;
+    max-width: calc(100vw - 32px);
+    padding: 12px 14px;
+    background: var(--bg-elev, #fff);
+    border: 1px solid var(--border, #e2e4e8);
+    border-radius: var(--radius-lg, 10px);
+    box-shadow: var(--shadow, 0 4px 16px rgba(0, 0, 0, 0.12));
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--text, #1f2328);
+    /* Hidden until the work is slow enough to be worth reporting. */
+    display: none;
+    animation: proc-in 140ms ease-out;
+}
+
+.proc-panel.is-visible {
+    display: block;
+}
+
+@keyframes proc-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.proc-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.proc-head {
+    margin-bottom: 6px;
+}
+
+.proc-title {
+    flex: 1;
+    font-weight: 600;
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.proc-spinner {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border: 2px solid var(--border-strong, #c8ccd2);
+    border-top-color: var(--accent, #08c988);
+    border-radius: 50%;
+    animation: proc-spin 700ms linear infinite;
+}
+
+@keyframes proc-spin {
+    to { transform: rotate(360deg); }
+}
+
+.proc-cancel {
+    flex: none;
+    padding: 3px 10px;
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text, #1f2328);
+    background: var(--bg-muted, #f8f9fa);
+    border: 1px solid var(--border-strong, #c8ccd2);
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+}
+
+.proc-cancel:hover {
+    background: var(--diff-del-line, #ffebe9);
+    border-color: #d9534f;
+    color: #b02a25;
+}
+
+.proc-phase {
+    margin-bottom: 6px;
+    color: var(--text-muted, #6c757d);
+}
+
+.proc-track {
+    height: 5px;
+    background: var(--bg-hover, #f1f3f5);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.proc-fill {
+    height: 100%;
+    width: 0;
+    background: var(--accent, #08c988);
+    border-radius: 3px;
+    transition: width 140ms linear;
+}
+
+.proc-meta {
+    margin-top: 6px;
+    justify-content: space-between;
+    color: var(--text-faint, #9aa0a6);
+    font-size: 11px;
+}
+
+.proc-meta .proc-eta {
+    flex: none;
+    white-space: nowrap;
+}
+
+.proc-meta .proc-count {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+[data-theme="dark"] .proc-cancel:hover {
+    background: rgba(200, 72, 72, 0.22);
+    border-color: #c85050;
+    color: #f0a0a0;
+}
+
+@media (max-width: 560px) {
+    .proc-panel {
+        left: 12px;
+        right: 12px;
+        width: auto;
+        bottom: 12px;
+    }
+}

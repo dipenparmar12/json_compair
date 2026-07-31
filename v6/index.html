@@ -41,6 +41,7 @@
     <script src="./utils/utils_zip.js"></script>
     <script src="./utils/utils_branch.js"></script>
     <script src="./utils/viewport_diff.js"></script>
+    <script src="./utils/progress.js"></script>
     <script src="./utils/json_align.js"></script>
     <script src="./utils/diff_ignore.js"></script>
 
@@ -461,6 +462,9 @@
           // whether the on-screen diff is stale. See writeAlignedPanes().
           _chunkScanLimit = _appliedScanLimit;
 
+          // New content means the earlier cancellation no longer applies.
+          _cancelledAlign = null;
+
           // Any doc change that is NOT our own normalization dispatch invalidates
           // the pre-normalization snapshot: the docs no longer correspond to it,
           // and persisting the stale pair would resurrect replaced/cleared content
@@ -482,8 +486,11 @@
 
           // Debounce merge view refresh for diff recalculation
           clearTimeout(window.diffRefreshTimer);
-          window.diffRefreshTimer = setTimeout(() => {
-            if (!userTyping) applyBlockAlignment();
+          window.diffRefreshTimer = setTimeout(async () => {
+            // Awaited: on a large pair the re-align is interruptible and
+            // finishes asynchronously, and everything below depends on the
+            // panes having settled first.
+            if (!userTyping) await applyBlockAlignment();
             // Content changed size → the diff effort must follow it, whether or
             // not alignment ran (raw/non-JSON text needs it too), and the diff
             // on screen has to be recomputed at the new effort. Not while the
@@ -1408,16 +1415,29 @@
       // Initialize Web Worker for off-thread CSV/JSON processing.
       // Uses an id-based request/response protocol so multiple callers can be
       // in flight at once (see callWorker).
+      // Bumped whenever utils/diff-worker.js changes. Workers are cached hard by
+      // the browser and, unlike page subresources, a normal reload does NOT pick
+      // up a new one — a stale worker kept running with the old message protocol
+      // (silently no CSV progress) even after a forced reload. A stable token
+      // keeps the worker cacheable while guaranteeing a new one after a release.
+      const WORKER_VERSION = '2';
+
       function initializeDiffWorker() {
         if (diffWorker) return diffWorker;
 
         try {
-          diffWorker = new Worker('./utils/diff-worker.js');
+          diffWorker = new Worker('./utils/diff-worker.js?v=' + WORKER_VERSION);
           diffWorker.onmessage = function(e) {
             const data = e.data || {};
             if (data.type === 'ready') { console.log('[DiffWorker] Ready'); return; }
             if (data.id != null && workerCallbacks.has(data.id)) {
               const cb = workerCallbacks.get(data.id);
+              // Progress is a stream: keep the callback registered until the
+              // final ok/error frame arrives.
+              if (data.type === 'progress') {
+                if (cb.onProgress) cb.onProgress(data);
+                return;
+              }
               workerCallbacks.delete(data.id);
               if (data.ok) cb.resolve(data.result);
               else cb.reject(new Error(data.error || 'Worker error'));
@@ -1440,12 +1460,12 @@
 
       // Promise-based RPC to the diff worker. Rejects when the worker is
       // unavailable so every caller can fall back to a main-thread path.
-      function callWorker(action, payload) {
+      function callWorker(action, payload, onProgress) {
         const w = initializeDiffWorker();
         if (!w) return Promise.reject(new Error('Worker unavailable'));
         return new Promise((resolve, reject) => {
           const id = ++workerCallSeq;
-          workerCallbacks.set(id, { resolve, reject });
+          workerCallbacks.set(id, { resolve, reject, onProgress });
           try {
             w.postMessage({ id, action, payload });
           } catch (err) {
@@ -1453,6 +1473,24 @@
             reject(err);
           }
         });
+      }
+
+      /**
+       * Stop whatever the worker is doing, right now.
+       *
+       * A Worker running a synchronous parse loop cannot receive a "please stop"
+       * message — its message queue is not serviced until the loop returns. So
+       * the only way to make Cancel actually immediate is to terminate it and
+       * let the next call build a fresh one (initializeDiffWorker is lazy, so
+       * that costs one worker boot, ~10 ms, on the next large paste).
+       */
+      function cancelWorker() {
+        if (!diffWorker) return;
+        try { diffWorker.terminate(); } catch (e) { /* already gone */ }
+        diffWorker = null;
+        const err = new CancelledError();
+        workerCallbacks.forEach((cb) => cb.reject(err));
+        workerCallbacks.clear();
       }
       
       // Initialize performance-related settings
@@ -2041,6 +2079,94 @@
         mergeView.reconfigure({ collapseUnchanged: { margin: 3, minSize: 4 } });
       }
 
+      /* ---- Processing jobs: progress, ETA, cancellation ---------------------
+         Long comparisons are a sequence of individually-fast steps (CSV parse,
+         record match, field model, CM6's diff) that add up. A job owns the
+         progress panel for one such run, and owns what "Cancel" has to undo.
+
+         Cancel means stop EVERYTHING in flight, not just the run whose panel is
+         showing — two panes can be ingesting at once, and a user who presses
+         Cancel does not care which of them is on screen. */
+      const PROGRESS_PHASES = [
+        { key: 'csv',      label: 'Parsing CSV data',                  weight: 20 },
+        { key: 'parse',    label: 'Loading datasets',                  weight: 12 },
+        { key: 'identity', label: 'Detecting record identity',         weight: 8  },
+        { key: 'match',    label: 'Matching records',                  weight: 10 },
+        { key: 'model',    label: 'Generating field-level differences', weight: 30 },
+        { key: 'render',   label: 'Rendering comparison results',      weight: 20 },
+      ];
+      // Below this the whole pipeline finishes well inside the panel's show
+      // delay, so the interruptible path would only add overhead.
+      const PROGRESS_MIN_BYTES = 512 * 1024;
+
+      const _liveJobs = new Set();
+
+      function startProcessingJob(title) {
+        if (!window.ProcessingUI) return null;
+        const job = window.ProcessingUI.start({ title, phases: PROGRESS_PHASES });
+        job.onCancel(cancelAllProcessing);
+        _liveJobs.add(job);
+        return job;
+      }
+
+      function endProcessingJob(job) {
+        if (!job) return;
+        _liveJobs.delete(job);
+        job.finish();
+      }
+
+      // Content the user explicitly cancelled. Without this, the debounced
+      // re-align fires 500 ms later and restarts the exact work they just
+      // stopped — cancel has to stay cancelled until the content changes.
+      let _cancelledAlign = null;   // { docA, docB }
+
+      // Stop every in-flight operation and leave the app immediately usable.
+      // Re-entrant by nature: cancelling a job runs its handlers, which lead
+      // straight back here, so the first call does the work and the rest bail.
+      let _cancelling = false;
+      function cancelAllProcessing() {
+        if (_cancelling) return;
+        _cancelling = true;
+        try { cancelAllProcessingInner(); } finally { _cancelling = false; }
+      }
+
+      function cancelAllProcessingInner() {
+        // Snapshot before cancelling: each cancel mutates the set.
+        const jobs = Array.from(_liveJobs);
+        const hadWork = jobs.length > 0;
+        _liveJobs.clear();
+        // Synchronous worker loops can't be messaged; tear the worker down.
+        cancelWorker();
+        jobs.forEach((j) => { if (!j.cancelled) j.cancel(); });
+        // A cancel can land between the two pane writes, so clear the reentry
+        // guard explicitly — otherwise every later re-align would be skipped
+        // and the app would look alive but never update again.
+        _blockAligning = false;
+        if (!hadWork) return;   // e.g. Clear All with nothing running
+        // Don't let a queued debounce restart what was just cancelled.
+        clearTimeout(window.diffRefreshTimer);
+        _cancelledAlign = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc };
+        updateStatus('Processing cancelled — Clear All to start over');
+        setDiffSummary('idle', 'Cancelled — paste, drop or clear to start again');
+      }
+
+      // Adapter between a job and json_align's ctl contract.
+      function jobControl(job) {
+        if (!job) return undefined;
+        return {
+          signal: job.signal,
+          onPhase(key, total) {
+            job.phase(key);
+            job.update(0, total);
+            return { onProgress: (done, tot) => job.update(done, tot) };
+          },
+        };
+      }
+
+      function isCancellation(err) {
+        return !!(err && (err.cancelled || err.name === 'CancelledError'));
+      }
+
       // ---- Block-level (object-aware) JSON diff ------------------------------
       // CM6's MergeView can't take a custom diff, so instead of replacing the
       // engine we feed it a structurally-aligned version of both documents:
@@ -2233,11 +2359,10 @@
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
         const tol = numToleranceActive();
-        let dispatched = false;
         _alignedRender = false;
         _alignHandle = null;
+        let res = null;
         if (window.JSONAlign && (block || pred || tol != null)) {
-          let res;
           try {
             if (block) {
               // prepare() parses + matches + models once; the handle is kept so
@@ -2253,32 +2378,80 @@
               res = window.JSONAlign.normalize(L, R, pred, tol);
             }
           } catch (e) { res = null; }
-          if (res && res.ok) {
-            // The item/field model is exact regardless of how much got rendered —
-            // it, not mergeView.chunks, is what the UI reports.
-            diffModel = res.model || null;
-            diffStats = res.stats || null;
-            // Snapshot the untransformed pair when the panes no longer hold it
-            // verbatim, so autosave/export keep the user's real data:
-            //  - normalization rewrote values (ignore / numeric tolerance), or
-            //  - the render is a WINDOW over a large collection (records outside
-            //    the current page are not in the pane at all).
-            const normalized = (pred || tol != null) && res.changed;
-            if (normalized || (res.stats && res.stats.truncated)) {
-              _ignorePristine = { left: L, right: R };
-            }
-            writeAlignedPanes(res.left, res.right);
-            dispatched = true;
-          } else {
-            diffModel = null; diffStats = null;
+        }
+        return applyTransformResult(res, L, R, block, pred, tol);
+      }
+
+      /**
+       * Interruptible twin of transformAndDispatch, for payloads big enough that
+       * the synchronous version would visibly lock the tab. Same result; the
+       * expensive half (parse → identity → match → field model) runs in slices
+       * that report progress and stop when `job` is cancelled.
+       *
+       * Falls back to the sync path whenever the async one cannot apply
+       * (no block diff, or JSONAlign has no collection to work with).
+       */
+      async function transformAndDispatchAsync(L, R, job) {
+        const block = blockDiffEnabled();
+        const pred = ignorePredicate;
+        const tol = numToleranceActive();
+        if (!window.JSONAlign || !block || !window.JSONAlign.prepareAsync) {
+          return transformAndDispatch(L, R);
+        }
+        _alignedRender = false;
+        _alignHandle = null;
+
+        let res = null;
+        const h = await window.JSONAlign.prepareAsync(
+          L, R, { ignore: pred, numTol: tol }, jobControl(job));
+
+        if (h && h.ok) {
+          _alignHandle = h;
+          if (job) { job.phase('render'); job.update(0, 1, 'Building comparison view'); }
+          // Let the panel paint the render phase before CM6's own (synchronous,
+          // uninterruptible) diff runs inside the dispatch below.
+          await window.ProcessingUI.yieldToPaint();
+          if (job && job.cancelled) throw new CancelledError();
+          res = h.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
+        } else {
+          // Not an array/collection pair (a plain object, say): the whole-value
+          // alignment is not divisible, but it is also not the case that scales.
+          try {
+            res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
+          } catch (e) { res = null; }
+        }
+        const out = applyTransformResult(res, L, R, block, pred, tol);
+        // Close the bar out at 100%: the panes are written and CM6 has diffed.
+        // Without this the last thing the user sees is a bar stuck at 80%.
+        if (job) job.update(1, 1, 'Done');
+        return out;
+      }
+
+      // Shared tail of both transform paths: publish the model, protect the
+      // user's real data, write the panes, memoize.
+      function applyTransformResult(res, L, R, block, pred, tol) {
+        let dispatched = false;
+        if (res && res.ok) {
+          // The item/field model is exact regardless of how much got rendered —
+          // it, not mergeView.chunks, is what the UI reports.
+          diffModel = res.model || null;
+          diffStats = res.stats || null;
+          // Snapshot the untransformed pair when the panes no longer hold it
+          // verbatim, so autosave/export keep the user's real data:
+          //  - normalization rewrote values (ignore / numeric tolerance), or
+          //  - the render is a WINDOW over a large collection (records outside
+          //    the current page are not in the pane at all).
+          const normalized = (pred || tol != null) && res.changed;
+          if (normalized || (res.stats && res.stats.truncated)) {
+            _ignorePristine = { left: L, right: R };
           }
+          writeAlignedPanes(res.left, res.right);
+          dispatched = true;
         } else {
           diffModel = null; diffStats = null;
-        }
-        // Covers the paths that did NOT dispatch aligned text (normalize-only,
-        // alignment unavailable): the panes still changed, so re-derive the
-        // effort — and re-diff, since nothing is going to write after us.
-        if (!dispatched) {
+          // Covers the paths that did NOT dispatch aligned text (normalize-only,
+          // alignment unavailable): the panes still changed, so re-derive the
+          // effort — and re-diff, since nothing is going to write after us.
           syncDiffConfig();
           ensureDiffFresh();
         }
@@ -2297,6 +2470,8 @@
         if (!block && !pred && tol == null) return;
         const docA = mergeView.a.state.doc;
         const docB = mergeView.b.state.doc;
+        // Respect an explicit cancel until the content actually changes.
+        if (_cancelledAlign && _cancelledAlign.docA === docA && _cancelledAlign.docB === docB) return;
         if (_lastAlignMemo &&
             _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
             _lastAlignMemo.block === block && _lastAlignMemo.pred === pred &&
@@ -2306,8 +2481,26 @@
         // re-aligning from them would window a window and lose the rest of the
         // data. _ignorePristine holds the untransformed pair; prefer it.
         const src = _ignorePristine;
-        transformAndDispatch(src ? src.left : docA.toString(),
-                             src ? src.right : docB.toString());
+        const L = src ? src.left : docA.toString();
+        const R = src ? src.right : docB.toString();
+
+        // A re-align after an edit costs the same as the original ingest, so on
+        // a large pair it gets the same interruptible treatment. Returns a
+        // promise; callers that don't await still end up with a correct UI
+        // because the async branch runs afterContentChanged() when it lands.
+        if (block && L.length + R.length > PROGRESS_MIN_BYTES
+            && window.JSONAlign.prepareAsync) {
+          const job = startProcessingJob('Updating comparison');
+          return transformAndDispatchAsync(L, R, job)
+            .then(() => { afterContentChanged(); })
+            .catch((err) => {
+              if (!isCancellation(err)) console.warn('[align] failed', err);
+            })
+            .finally(() => endProcessingJob(job));
+        }
+
+        transformAndDispatch(L, R);
+        return Promise.resolve();
       }
 
       // Strip alignment gap lines from both panes (used when Block Diff is turned
@@ -4097,7 +4290,7 @@
 
       // Convert CSV → pretty JSON string off the main thread, sampling rows
       // for very large inputs. Returns { json, builtRows, approxTotalRows, truncated }.
-      async function csvToJsonStringOffThread(csvText, { autoSort = false, side } = {}) {
+      async function csvToJsonStringOffThread(csvText, { autoSort = false, side, job } = {}) {
         const columns = countColumns(csvText);
         const override = side ? ingestRowCapOverride[side] : false;
         const maxRows = override
@@ -4111,8 +4304,15 @@
               options: { coerceTypes: true },
               maxRows,
               autoSort
-            });
+            }, job && ((p) => {
+              if (p.phase === 'stringify') {
+                job.update(p.total, p.total, `Serializing ${fmtNum(p.rows)} records`);
+              } else {
+                job.update(p.done, p.total, `${fmtNum(p.rows)} rows parsed`);
+              }
+            }));
           } catch (err) {
+            if (isCancellation(err)) throw err;
             console.warn('[ingest] worker CSV parse failed, using main thread:', err);
           }
         }
@@ -4197,6 +4397,32 @@
       async function ingestContent(rawText, side, opts = {}) {
         if (rawText == null) return;
         const editor = side === 'left' ? mergeView.a : mergeView.b;
+        // Only large payloads get the progress panel + interruptible pipeline;
+        // anything smaller is done before the panel would even appear.
+        const otherLenNow = (side === 'left' ? mergeView.b : mergeView.a).state.doc.length;
+        const job = (rawText.length + otherLenNow > PROGRESS_MIN_BYTES)
+          ? startProcessingJob(side === 'left' ? 'Processing left panel' : 'Processing right panel')
+          : null;
+        try {
+          return await ingestContentInner(rawText, side, opts, editor, job);
+        } catch (err) {
+          if (isCancellation(err)) {
+            // Cancellation is a normal outcome, not a failure. The panes were
+            // never half-written (every cancel point is before a pane write), so
+            // there is nothing to roll back — just leave the app ready.
+            updateStatus('Processing cancelled');
+            return;
+          }
+          console.warn('[ingest] failed', err);
+          updateStatus('Processing failed: ' + (err && err.message ? err.message : err));
+          setDiffSummary('warn', 'Processing failed — try again or clear the panels');
+          return;
+        } finally {
+          endProcessingJob(job);
+        }
+      }
+
+      async function ingestContentInner(rawText, side, opts, editor, job) {
 
         const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
         const autoFormat = document.getElementById('auto-format-json')?.checked;
@@ -4225,9 +4451,10 @@
         if (!handled && (opts.forceCsv || (autoCSV && cheapLooksLikeCSV(rawText)))) {
           lastRawCsv[side] = rawText;
           setIngestBusy('Converting CSV…');
+          if (job) { job.phase('csv'); job.update(0, rawText.length, 'Reading file'); }
           await nextPaint();
           try {
-            const res = await csvToJsonStringOffThread(rawText, { autoSort, side });
+            const res = await csvToJsonStringOffThread(rawText, { autoSort, side, job });
             content = res.json;
             handled = true;
             if (res.truncated) showSampleNotice(side, res.builtRows, res.approxTotalRows);
@@ -4235,11 +4462,14 @@
               ? `CSV converted (first ${res.builtRows.toLocaleString()} of ~${res.approxTotalRows.toLocaleString()} rows)`
               : 'CSV converted to JSON');
           } catch (err) {
+            if (isCancellation(err)) throw err;   // handled by the caller
             updateStatus('CSV conversion failed: ' + (err && err.message ? err.message : err));
             showErrorMessage('CSV conversion failed: ' + (err && err.message ? err.message : err));
             return;
           }
         }
+
+        if (job && job.cancelled) throw new CancelledError();
 
         // 3) Proactive performance posture before the heavy render.
         await applyProactivePosture(content, side);
@@ -4261,7 +4491,11 @@
         if (fullReplace && transformActive() && content.trim() && otherText.trim()) {
           const L = side === 'left' ? content : otherText;
           const R = side === 'left' ? otherText : content;
-          dispatched = transformAndDispatch(L, R);
+          // Big pairs take the interruptible path so the panel keeps updating
+          // and Cancel stays clickable through match + model.
+          dispatched = (job && L.length + R.length > PROGRESS_MIN_BYTES)
+            ? await transformAndDispatchAsync(L, R, job)
+            : transformAndDispatch(L, R);
         }
         if (!dispatched) {
           editor.dispatch({ changes: { from, to, insert: content } });
@@ -4350,6 +4584,10 @@
       // Clear all content
       async function clearAll() {
         if (!confirm("Clear all content?")) return;
+
+        // Stop anything still running first, or an in-flight ingest would write
+        // its panes over the freshly-cleared editors a moment later.
+        cancelAllProcessing();
 
         // Drop the pre-normalization snapshot up front so nothing downstream
         // (autosave, export) can persist the old content back.
