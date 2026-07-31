@@ -246,8 +246,11 @@ window.JSONAlign
   .align(l, r, opts)        // → {ok,left,right,changed,model,stats}
                             //   opts: {ignore, numTol, view:'auto'|'pretty'|'window'|'full',
                             //          from, size, budget}
+  .prepare(l, r, opts)      // parse+match+model ONCE → {ok, model, render({from,size,view})}
   .diffModel(l, r, opts)    // item + FIELD level diff, no rendering; exact at ANY size
-                            //   → {ok, model:{items,totals,fields,idKey,strategy}}
+                            //   → {ok, model:{items,totals,fields,idKey,strategy,path}}
+                            //   `path`: collection key, or null when the root is the array.
+                            //   Works for a root array AND for {data:[…]}-style envelopes.
   .normalize(l, r, ignore, numTol) // normalize only (block-diff off)
   .stripGaps(text)
 ```
@@ -712,11 +715,34 @@ Understand the split before touching diff/perf code:
 - `syncDiffConfig()` must run after **any content change**, not just settings changes —
   scanLimit is a function of document length, so a value left over from smaller content
   silently re-introduces the bail. See memory [[v6-scanlimit-freeze]].
+- **`reconfigure({diffConfig})` does NOT re-diff — the limit must be right BEFORE the write.**
+  In `@codemirror/merge` 6.7.2, `MergeView.reconfigure()` assigns `this.diffConf` and calls
+  `scheduleMeasure()`; chunks are rebuilt *only* inside `MergeView.dispatch()` on a doc change,
+  from the `diffConf` live at that instant. So "write the panes, then raise scanLimit" — which
+  is what this code did — leaves the visible diff computed at the low transition cap forever.
+  That was the whole "large collections render as one modified block" bug: measured on the
+  2,000 × 158 pair, the rendered page produced **1 chunk at the live limit vs 196 at the raised
+  one**, on byte-identical text. `writeAlignedPanes()` now orders it correctly — low cap for the
+  first write (where one pane is new and the other is still the old multi-MB doc), the final
+  limit before the write that settles the pair. A full-document replacement makes CM6 re-diff
+  the whole pair, so the last write is the one that counts.
+- `_chunkScanLimit` records what the visible chunks were **actually** computed with (updated on
+  every doc change by the autosave update listener); `ensureDiffFresh()` compares it with
+  `_appliedScanLimit` and calls `forceRediff()` — rewriting a pane with its own text, the only
+  lever the merge API gives us — when they disagree. Needed wherever the effort changes without
+  a content write: a Scan Limit settings change, or content that arrived already aligned.
+  `diffIsDegraded()` also tests against `_chunkScanLimit`, not the configured value.
+- Cost of a raised limit on aligned 158-field records, measured: 0.6 MB combined → 0.24 s,
+  1.5 MB → 1.2 s, 3 MB → 3.3 s, 6 MB → 12 s. That is why `SCAN_RAISE_MAX_BYTES` is 3 MB and
+  why bounding the **text** (the record window) is the mechanism above it, not a bigger limit.
 
 ### 4. In-place reconfigure + forced re-collapse (no more teardown on edit)
 - `canReconfigure()` gates on CM6 merge ≥ 6.7. When true, settings/edits call
   `mergeView.reconfigure(buildReconfigureConfig(...))` instead of full DOM teardown.
   `recreateMergeView()` now runs only for an **orientation flip**.
+- **Caveat:** reconfigure applies highlight/gutter/collapse/orientation/revert immediately, but
+  `diffConfig` is only *stored* — it takes effect on the next doc change. Anything that depends
+  on the diff being recomputed must follow it with `ensureDiffFresh()` (see §3).
 - `refreshMergeViewIfNeeded()` (called after format/sort/paste/CSV ingest and debounced edits,
   only while Collapse-Unchanged is on) reconfigures in place, then calls `forceRecollapse()`.
 - `forceRecollapse()` works around CM6's collapse being a singleton StateField that only folds
@@ -763,6 +789,15 @@ Understand the split before touching diff/perf code:
 
 **How it works now — `json_align.js` stopped relying on CM6 to FIND differences:**
 
+0. **`findCollection()` locates the records first.** The root when both sides are arrays,
+   otherwise the shared object key holding the biggest array on both sides (depth 1). Envelope
+   shapes — `{data:[…]}`, `{results:[…]}`, `{items:[…]}` — used to bypass this entire module:
+   no model, no window, no pager, and the whole multi-MB document handed to CM6, which is
+   exactly the size where its diff gives up. They now get the same treatment as a bare array,
+   with the collection windowed *inside* a normally-aligned object shell (`renderWithShell()`
+   + `alignObject(…, override)`), so the panes still hold a complete, valid JSON object.
+   `model.path` names the key (null for a root array) — `idSource()` in index.html indexes
+   through it. Below `PRETTY_MAX_BYTES` nothing changes: still fully pretty-printed.
 1. **`matchArray()` pairs records itself.** In preference order:
    - `'id'` — an **identity key** detected by `detectIdKey()`: a field whose values are unique on
      *both* sides **and** largely overlap between them. Uniqueness alone is not enough — in a
@@ -813,9 +848,12 @@ Understand the split before touching diff/perf code:
   which meant dropping rows — a 2,000-row × 158-column export was silently cut to ~1,390 rows and
   those rows were never compared at all. Rendering is now bounded by the record window, so this
   only needs to bound parse + memory.
-- **Measured** on the 2,000 × 158 pair (~19.7 MB pretty): model in ~0.5 s; 2,000 items,
+- **Measured** on the 2,000 × 158 pair (~19.7 MB pretty): model in ~0.4 s; 2,000 items,
   6,370 field changes, matched on `ParcelNumberRaw`; rendered page ~300 KB/side; CM6 returns
-  ~857 real chunks instead of 1.
+  ~196 real chunks touching ~2 % of the rendered lines, in ~0.24 s — instead of 1 chunk
+  covering everything. Page turns ~0.25 s. Same numbers for the `{meta, data:[…]}` envelope
+  (197 chunks) and for a 60-record pretty render (190). Regression data:
+  `docs/test-cases-example/6-did-not-show-diffs-test-data/{one,two}.csv`.
 
 ### 7. Exclude keys/patterns from the diff — `diff_ignore.js` + normalization + `.cm-ignoredLine`
 - **Why:** ignore noisy fields (db `created_on`/`updated_at`, ids, hashes) that differ on every
