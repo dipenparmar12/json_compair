@@ -1869,6 +1869,33 @@
       // True when both panes hold text that json_align produced (line-aligned,
       // so CM6's diff terminates quickly even at a high scanLimit).
       let _alignedRender = false;
+
+      /* How much of the rendered page actually differs, line for line (set from
+         JSONAlign's render stats). This is the second half of the scanLimit
+         story, and skipping it is what made the tab hang.
+
+         Myers costs O((N+M) * D). "Aligned" alone does NOT bound D — only
+         SIMILARITY does:
+
+           dataset 6 (2,000 x 158, ~2 fields differ per record →  2% of lines):
+             D is tiny, Myers exits immediately, a high limit is free.
+             301 KB page → 193 chunks in 270 ms at scanLimit 44,020.
+
+           dataset 7 (70,752 x 9, disjoint records → 64% of lines):
+             D is enormous. Myers burns the ENTIRE depth budget and then falls
+             back to crudeMatch anyway — returning the same 1-2 chunks it would
+             have produced instantly. Measured on a 301 KB page:
+                 12,000 →  1.9 s        44,020 → 32 s
+                 19,247 → 18.8 s       116,000 → 5,421 s  (90 MINUTES)
+             …and 97-100% of lines come back marked changed at every page size,
+             because there genuinely is no field-level diff to find.
+
+         So effort is only worth spending when it can pay off. Above this ratio
+         we keep the low protective cap and let CM6 bail out instantly; the
+         item/field model still reports the exact truth, and the Details panel
+         still lists every change. */
+      const MYERS_MAX_DIFF_RATIO = 0.25;
+      let _renderDiffRatio = 0;
       // Last scanLimit handed to the live view, so syncDiffConfig() can skip a
       // no-op reconfigure on every debounced edit.
       let _appliedScanLimit = null;
@@ -1886,6 +1913,15 @@
       function clampScanLimit(userScanLimit, combinedLen) {
         let u = parseInt(userScanLimit, 10);
         if (!Number.isFinite(u) || u <= 0) u = SCAN_LIMIT_FLOOR;
+
+        // Too dissimilar for CM6 to find anything, however hard it tries: cap
+        // hard so it bails instantly instead of grinding (see the note on
+        // MYERS_MAX_DIFF_RATIO). The user's Scan Limit is a minimum everywhere
+        // else, but it cannot be allowed to override this one — typing 116000
+        // here is a 90-minute main-thread freeze.
+        if (_alignedRender && _renderDiffRatio > MYERS_MAX_DIFF_RATIO) {
+          return Math.min(u, RAW_SCAN_CAP_HUGE);
+        }
 
         if (!_alignedRender || combinedLen > SCAN_RAISE_MAX_BYTES) {
           let cap = RAW_SCAN_CAP_HUGE;
@@ -2334,6 +2370,9 @@
           // Cheap path: same documents, different window.
           const res = _alignHandle.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
           diffModel = res.model; diffStats = res.stats;
+          // Per-page: similarity varies between pages, and it decides the effort.
+          _renderDiffRatio = (res.stats && typeof res.stats.diffLineRatio === 'number')
+            ? res.stats.diffLineRatio : 0;
           writeAlignedPanes(res.left, res.right);
           _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
                              block: blockDiffEnabled(), pred: ignorePredicate,
@@ -2436,6 +2475,10 @@
           // it, not mergeView.chunks, is what the UI reports.
           diffModel = res.model || null;
           diffStats = res.stats || null;
+          // Must be set BEFORE writeAlignedPanes: it picks the scanLimit, and
+          // that decision depends on how similar the two rendered sides are.
+          _renderDiffRatio = (res.stats && typeof res.stats.diffLineRatio === 'number')
+            ? res.stats.diffLineRatio : 0;
           // Snapshot the untransformed pair when the panes no longer hold it
           // verbatim, so autosave/export keep the user's real data:
           //  - normalization rewrote values (ignore / numeric tolerance), or
@@ -3720,38 +3763,88 @@
       // back to the default key sort. Each pane is handled independently: a pane
       // that isn't a top-level array (or won't parse) is left untouched. Returns
       // an error string to surface in the panel, or null on success.
-      function sortByFields(spec) {
+      async function sortByFields(spec) {
         const specs = window.parseSortSpec(spec || '');
         if (specs.length === 0) { sortJSON(); return null; }  // no criteria → app default
 
-        const panes = [
-          { view: mergeView.a, text: mergeView.a.state.doc.toString().trim() },
-          { view: mergeView.b, text: mergeView.b.state.doc.toString().trim() },
-        ];
-        if (!panes.some((p) => p.text)) return 'Add content to a panel to sort.';
+        // While a window is showing, the panes hold ONE PAGE of a much larger
+        // collection. Sorting what is on screen and writing it back would
+        // silently discard every record outside that page — on the 70,752-record
+        // export that is 69,857 records gone. Always sort the complete pair;
+        // _ignorePristine is the untransformed original (same invariant as
+        // applyBlockAlignment / saveContent).
+        const src = _ignorePristine;
+        const texts = src
+          ? [src.left, src.right]
+          : [mergeView.a.state.doc.toString().trim(), mergeView.b.state.doc.toString().trim()];
+        if (!texts.some((t) => t && t.trim())) return 'Add content to a panel to sort.';
 
-        let parsedAny = false, sortedAny = false;
-        const results = panes.map((p) => {
-          if (!p.text) return null;
-          let parsed;
-          try { parsed = window.parseFlexibleJSON(p.text); }
-          catch (e) { return null; }            // leave an unparseable pane untouched
-          parsedAny = true;
-          if (!Array.isArray(parsed)) return null;
-          sortedAny = true;
-          return { view: p.view, out: JSON.stringify(window.sortJSONByFields(parsed, specs), null, 3) };
-        });
+        const big = (texts[0] || '').length + (texts[1] || '').length > PROGRESS_MIN_BYTES;
+        const job = big ? startProcessingJob('Sorting records') : null;
+        try {
+          if (job) {
+            job.phase('parse');
+            job.update(0, 2, 'Reading both panels');
+            await window.ProcessingUI.yieldToPaint();
+          }
 
-        if (!parsedAny) return 'Could not parse JSON — fix it and try again.';
-        if (!sortedAny) return 'Sort by field needs a top-level array of objects.';
+          let parsedAny = false, sortedAny = false;
+          const out = [];
+          for (let i = 0; i < texts.length; i++) {
+            const text = texts[i];
+            if (!text || !text.trim()) { out.push(null); continue; }
+            let parsed;
+            try { parsed = window.parseFlexibleJSON(text); }
+            catch (e) { out.push(null); continue; }   // leave an unparseable side untouched
+            parsedAny = true;
+            if (!Array.isArray(parsed)) { out.push(null); continue; }
+            sortedAny = true;
+            out.push(JSON.stringify(window.sortJSONByFields(parsed, specs), null, 3));
+            if (job) {
+              job.update(i + 1, 2, `Sorted ${fmtNum(parsed.length)} records`);
+              await window.ProcessingUI.yieldToPaint();
+              if (job.cancelled) throw new CancelledError();
+            }
+          }
 
-        results.forEach((r) => {
-          if (r) r.view.dispatch({ changes: { from: 0, to: r.view.state.doc.length, insert: r.out } });
-        });
-        updateStatus('Sorted by ' + specs.map((s) => s.field + (s.dir < 0 ? ' ↓' : ' ↑')).join(', '));
-        updateDiffStatus();
-        refreshMergeViewIfNeeded();
-        return null;
+          if (!parsedAny) return 'Could not parse JSON — fix it and try again.';
+          if (!sortedAny) return 'Sort by field needs a top-level array of objects.';
+
+          const L = out[0] != null ? out[0] : texts[0];
+          const R = out[1] != null ? out[1] : texts[1];
+
+          // The order changed, so any page number we were on is meaningless.
+          recordPageFrom = 0;
+          _ignorePristine = null;     // the sorted pair is the new original
+          _lastAlignMemo = null;
+
+          if (transformActive() && L.trim() && R.trim()) {
+            if (job && L.length + R.length > PROGRESS_MIN_BYTES) {
+              await transformAndDispatchAsync(L, R, job);
+            } else {
+              transformAndDispatch(L, R);
+            }
+          } else {
+            _blockAligning = true;
+            try {
+              setPaneIfChanged(mergeView.a, L);
+              setPaneIfChanged(mergeView.b, R);
+            } finally { _blockAligning = false; }
+            syncDiffConfig();
+            ensureDiffFresh();
+          }
+
+          updateStatus('Sorted by ' + specs.map((s) => s.field + (s.dir < 0 ? ' ↓' : ' ↑')).join(', '));
+          updateDiffStatus();
+          refreshMergeViewIfNeeded();
+          return null;
+        } catch (err) {
+          if (isCancellation(err)) return null;
+          console.warn('[sort] failed', err);
+          return 'Sorting failed: ' + (err && err.message ? err.message : err);
+        } finally {
+          endProcessingJob(job);
+        }
       }
 
       // Wire the Sort dropdown: toggle open/close, the field-sort input/Apply, and
@@ -3783,8 +3876,8 @@
           }
         });
 
-        const runSort = () => {
-          const err = sortByFields(input ? input.value : '');
+        const runSort = async () => {
+          const err = await sortByFields(input ? input.value : '');
           if (err) { showErr(err); return; }
           showErr('');
           panel.style.display = 'none';
@@ -4830,7 +4923,9 @@
         } else if (diffIsDegraded()) {
           // CM6 gave up and returned one change spanning the document. Reporting
           // "1 changed block" here reads as a result; it is the absence of one.
-          setDiffSummary('warn', 'Too large to compare precisely — use CSV→JSON so records can be matched individually');
+          setDiffSummary('warn', _renderDiffRatio > MYERS_MAX_DIFF_RATIO
+            ? 'These records differ too much for line-by-line highlighting — open Details for the exact breakdown'
+            : 'Too large to compare precisely — use CSV→JSON so records can be matched individually');
         } else {
           setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }

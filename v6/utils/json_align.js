@@ -1254,6 +1254,20 @@
     }
   }
 
+  // Fraction of emitted lines where the two sides are not byte-identical.
+  // This is the practical stand-in for Myers' D: near 0 means CM6 will find the
+  // diff almost instantly however hard we let it try; near 1 means it cannot
+  // find one at any price, and asking it to try harder only burns time.
+  function lineDiffRatio(A, B) {
+    var n = Math.max(A.length, B.length);
+    if (!n) return 0;
+    var differing = 0;
+    for (var i = 0; i < n; i++) {
+      if ((A[i] === undefined ? '' : A[i]) !== (B[i] === undefined ? '' : B[i])) differing++;
+    }
+    return differing / n;
+  }
+
   // The reusable render closure shared by prepare() and prepareAsync().
   // Rendering is deliberately synchronous: a window is bounded by design, so it
   // costs ~10-20 ms whether the collection has 60 records or 2,000,000.
@@ -1287,6 +1301,12 @@
           res = rootIsArray ? arr : renderWithShell(rootA, rootB, coll.path, arr, ctx);
         }
         stats.pageSize = pageSize;
+        // How much of what we just emitted actually differs, line for line.
+        // The caller needs this to decide how hard CM6 should try: Myers costs
+        // O((N+M)*D), so on a near-identical page a high scanLimit is free,
+        // while on a mostly-different page it is ruinous and buys nothing.
+        // One pass over the rendered lines — a few ms at any page size.
+        stats.diffLineRatio = lineDiffRatio(res.A, res.B);
         return {
           ok: true, left: res.A.join('\n'), right: res.B.join('\n'),
           changed: ctx.changed, model: model, stats: stats
@@ -1377,7 +1397,13 @@
       }
 
       var v = alignValue(p.a, p.b, '', ctx);
-      return { ok: true, left: v.A.join('\n'), right: v.B.join('\n'), changed: ctx.changed };
+      return {
+        ok: true, left: v.A.join('\n'), right: v.B.join('\n'), changed: ctx.changed,
+        // No collection here (a plain object pair), so no model or window — but
+        // the caller still needs to know how similar the two sides are before it
+        // decides how hard to let CM6 try. See MYERS_MAX_DIFF_RATIO.
+        stats: { view: 'value', diffLineRatio: lineDiffRatio(v.A, v.B) }
+      };
     } catch (e) {
       return { ok: false, error: e && e.message };
     }
@@ -1400,9 +1426,13 @@
       var p = parsePair(leftText, rightText);
       if (!p) return { ok: false };
       var ctx = { ignore: hasIgnore ? ignore : null, changed: false, numTol: tol };
-      var left = ser(p.a, '').join('\n');
-      var right = serWithSwap(p.b, p.a, ctx, '').join('\n');
-      return { ok: true, left: left, right: right, changed: ctx.changed };
+      var leftLines = ser(p.a, '');
+      var rightLines = serWithSwap(p.b, p.a, ctx, '');
+      return {
+        ok: true, left: leftLines.join('\n'), right: rightLines.join('\n'),
+        changed: ctx.changed,
+        stats: { view: 'normalized', diffLineRatio: lineDiffRatio(leftLines, rightLines) }
+      };
     } catch (e) {
       return { ok: false, error: e && e.message };
     }
