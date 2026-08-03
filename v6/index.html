@@ -405,7 +405,10 @@
       import { EditorView } from "@codemirror/view";
       import { EditorState } from "@codemirror/state";
       import { json } from "@codemirror/lang-json";
-      import { MergeView, goToNextChunk, goToPreviousChunk } from "@codemirror/merge";
+      // `diff` is the same routine MergeView runs internally. We call it on a
+      // small probe page to MEASURE how expensive this particular pair is before
+      // choosing how much to render — see calibrateRenderBudget().
+      import { MergeView, goToNextChunk, goToPreviousChunk, diff as cmDiff } from "@codemirror/merge";
       
       // Import themes
       import { oneDark } from "@codemirror/theme-one-dark";
@@ -1910,7 +1913,12 @@
       // stays whatever the user chose until they touch the control themselves.
       let _collapseForcedBySize = false;
 
-      function clampScanLimit(userScanLimit, combinedLen) {
+      // `aligned` / `ratio` default to the live render's state, but are passed
+      // explicitly by the budget probe, which has to predict the effort a page
+      // WILL get before that page is the live one.
+      function clampScanLimit(userScanLimit, combinedLen, aligned, ratio) {
+        if (aligned === undefined) aligned = _alignedRender;
+        if (ratio === undefined) ratio = _renderDiffRatio;
         let u = parseInt(userScanLimit, 10);
         if (!Number.isFinite(u) || u <= 0) u = SCAN_LIMIT_FLOOR;
 
@@ -1919,11 +1927,11 @@
         // MYERS_MAX_DIFF_RATIO). The user's Scan Limit is a minimum everywhere
         // else, but it cannot be allowed to override this one — typing 116000
         // here is a 90-minute main-thread freeze.
-        if (_alignedRender && _renderDiffRatio > MYERS_MAX_DIFF_RATIO) {
+        if (aligned && ratio > MYERS_MAX_DIFF_RATIO) {
           return Math.min(u, RAW_SCAN_CAP_HUGE);
         }
 
-        if (!_alignedRender || combinedLen > SCAN_RAISE_MAX_BYTES) {
+        if (!aligned || combinedLen > SCAN_RAISE_MAX_BYTES) {
           let cap = RAW_SCAN_CAP_HUGE;
           for (const [bytes, c] of RAW_SCAN_CAPS) {
             if (combinedLen <= bytes) { cap = c; break; }
@@ -2351,6 +2359,94 @@
       // difference between an instant page turn and several seconds.
       let _alignHandle = null;
 
+      /* ---- Render budget: size the page by MEASURED diff cost ---------------
+         The record window used to be a fixed character budget (400 KB/side).
+         That is the wrong unit, because CM6's diff cost is not a function of
+         size alone — it is O((N+M)·D), and D varies enormously between datasets.
+         Measured on 300 KB pages:
+
+           dataset 6  (2 % of lines differ) →    0.3 s
+           attom/parcels (8 % differ)       →   12-20 s   ← locks the tab
+           disjoint records (64 % differ)   →   bails out, one chunk, no diff
+
+         A single budget cannot serve all three, and guessing from the line-diff
+         ratio does not work either: 4x the ratio cost 70x the time.
+
+         So don't guess — measure. Render a small probe page, run CM6's own
+         `diff` on it, and scale the real page so the predicted cost lands near
+         DIFF_TARGET_MS. Cost grows ~quadratically with page bytes (measured
+         exponent ≈ 2.1 across datasets), so the page scales with the square
+         root of the headroom.
+
+         This is self-calibrating, which matters for a client-side tool: a
+         constant tuned on one machine would be wrong on a slower one. It also
+         costs nothing in diff QUALITY — chunk count tracks records shown
+         exactly (256 records → 256 chunks, 32 → 32), so a smaller page means
+         fewer records per page, never a coarser diff. The user pages through.
+
+         Result: attom/parcels 12,574 ms → ~400 ms with real field-level chunks
+         instead of a frozen tab. */
+      const DIFF_TARGET_MS = 400;      // budget for ONE synchronous CM6 diff
+      const PROBE_BUDGET = 24000;      // chars rendered for the measurement (~18 KB/side)
+      // How far the probe is allowed to extrapolate. Cost is smooth and ~quadratic
+      // while CM6 stays in full Myers, but the algorithm switches branches on
+      // absolute length (Myers → crudeMatch → give up), so on a mostly-different
+      // page the curve is not even monotonic — measured on the disjoint pair:
+      // 60 ms → 102 ms → 6 ms → 22 ms → 1 ms as the page grew. Extrapolating
+      // through that is meaningless, so those pages only get a small step up.
+      const MAX_PROBE_SCALE = 16;
+      const MAX_PROBE_SCALE_DISSIMILAR = 2;
+      let _renderBudget = null;        // calibrated chars; null = not measured yet
+
+      // The scanLimit a page of this size and similarity would actually run at.
+      function scanLimitForPage(combinedLen, ratio) {
+        return clampScanLimit(SettingsManager.get('scanLimit'), combinedLen, true, ratio);
+      }
+
+      // Time CM6's diff on the probe page, then scale the budget to the target.
+      function calibrateRenderBudget(probe) {
+        const combined = probe.left.length + probe.right.length;
+        const ratio = (probe.stats && typeof probe.stats.diffLineRatio === 'number')
+          ? probe.stats.diffLineRatio : 0;
+        let ms;
+        try {
+          const t0 = performance.now();
+          cmDiff(probe.left, probe.right, { scanLimit: scanLimitForPage(combined, ratio) });
+          ms = Math.max(1, performance.now() - t0);
+        } catch (e) {
+          console.warn('[diff] probe failed, using the default budget', e);
+          return window.JSONAlign.EXPAND_CHAR_BUDGET;
+        }
+        const cap = ratio > MYERS_MAX_DIFF_RATIO
+          ? MAX_PROBE_SCALE_DISSIMILAR : MAX_PROBE_SCALE;
+        const scale = Math.min(cap, Math.sqrt(DIFF_TARGET_MS / ms));
+        const want = Math.round(PROBE_BUDGET * scale);
+        const budget = Math.max(PROBE_BUDGET,
+                                Math.min(window.JSONAlign.EXPAND_CHAR_BUDGET, want));
+        console.info(`[diff] probe ${Math.round(ms)} ms on ${combined} chars (${(ratio * 100).toFixed(0)}% of lines differ) → render budget ${budget}`);
+        return budget;
+      }
+
+      /**
+       * Render the current window from `handle`, sizing the page to the measured
+       * cost of diffing THIS pair. Measures once per content change; page turns
+       * reuse the result (so Next stays instant).
+       */
+      function renderWindow(handle) {
+        const base = { view: recordView, from: recordPageFrom, size: recordPageSize };
+        if (_renderBudget != null) return handle.render({ ...base, budget: _renderBudget });
+
+        const probe = handle.render({ ...base, budget: PROBE_BUDGET });
+        // Small enough to show whole: there is no window to size, and the
+        // pretty render ignores the budget entirely.
+        if (!probe.stats || probe.stats.view !== 'window') return probe;
+
+        _renderBudget = calibrateRenderBudget(probe);
+        // The probe already IS the page at this budget — don't render it twice.
+        if (_renderBudget <= PROBE_BUDGET) return probe;
+        return handle.render({ ...base, budget: _renderBudget });
+      }
+
       function recordPageCount() {
         if (!diffStats || !diffStats.itemsTotal) return 1;
         const size = Math.max(1, (diffStats.to - diffStats.from) || diffStats.pageSize || 1);
@@ -2367,8 +2463,9 @@
         recordPageFrom = Math.max(0, Math.min(from, max));
 
         if (_alignHandle) {
-          // Cheap path: same documents, different window.
-          const res = _alignHandle.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
+          // Cheap path: same documents, different window (and the page budget is
+          // already calibrated, so no probe on a page turn).
+          const res = renderWindow(_alignHandle);
           diffModel = res.model; diffStats = res.stats;
           // Per-page: similarity varies between pages, and it decides the effort.
           _renderDiffRatio = (res.stats && typeof res.stats.diffLineRatio === 'number')
@@ -2400,6 +2497,7 @@
         const tol = numToleranceActive();
         _alignedRender = false;
         _alignHandle = null;
+        _renderBudget = null;   // new content ⇒ re-measure the diff cost
         let res = null;
         if (window.JSONAlign && (block || pred || tol != null)) {
           try {
@@ -2409,7 +2507,7 @@
               const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol });
               if (h && h.ok) {
                 _alignHandle = h;
-                res = h.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
+                res = renderWindow(h);
               } else {
                 res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
               }
@@ -2439,6 +2537,7 @@
         }
         _alignedRender = false;
         _alignHandle = null;
+        _renderBudget = null;   // new content ⇒ re-measure the diff cost
 
         let res = null;
         const h = await window.JSONAlign.prepareAsync(
@@ -2451,7 +2550,7 @@
           // uninterruptible) diff runs inside the dispatch below.
           await window.ProcessingUI.yieldToPaint();
           if (job && job.cancelled) throw new CancelledError();
-          res = h.render({ view: recordView, from: recordPageFrom, size: recordPageSize });
+          res = renderWindow(h);
         } else {
           // Not an array/collection pair (a plain object, say): the whole-value
           // alignment is not divisible, but it is also not the case that scales.
@@ -4591,7 +4690,19 @@
             : transformAndDispatch(L, R);
         }
         if (!dispatched) {
+          // The write itself is the whole cost when there is no transform to run
+          // (the first file of a pair, with the other pane still empty): handing
+          // CodeMirror a 20 MB document is seconds of synchronous work that no
+          // phase used to cover, so the panel sat on "Parsing CSV data" while the
+          // tab locked. Announce it and let the panel paint before we block.
+          if (job) {
+            job.phase('render');
+            job.update(0, 1, `Loading ${fmtBytes(content.length)} into the editor`);
+            await window.ProcessingUI.yieldToPaint();
+            if (job.cancelled) throw new CancelledError();
+          }
           editor.dispatch({ changes: { from, to, insert: content } });
+          if (job) job.update(1, 1, 'Done');
         }
 
         // 5) Coalesced follow-up.
@@ -4908,6 +5019,13 @@
             if (t.moved) bits.push(`${fmtNum(t.moved)} moved`);
             let msg = `${bits.join(', ')} of ${fmtNum(t.total)} items`;
             if (t.fieldChanges) msg += ` · ${fmtNum(t.fieldChanges)} field change${t.fieldChanges !== 1 ? 's' : ''}`;
+            // Nothing on either side could be matched to anything on the other.
+            // Say so: the panes correctly show whole-record adds and removes,
+            // and without this the user reads "70,752 added" as a result rather
+            // than as "these two files have no records in common".
+            if (!t.same && !t.changed && !t.moved && (t.added || t.removed)) {
+              msg += ' · no records in common';
+            }
             setDiffSummary('diff', msg);
           }
           updateRecordPager();
@@ -4934,6 +5052,12 @@
       }
 
       function fmtNum(n) { return Number(n).toLocaleString(); }
+
+      function fmtBytes(n) {
+        if (n < 1024) return n + ' B';
+        if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+        return (n / 1048576).toFixed(1) + ' MB';
+      }
 
       // True when CM6 abandoned the diff and returned a single change covering
       // (essentially) the whole document — its `min(lenA,lenB) > scanLimit*64`

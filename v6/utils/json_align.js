@@ -84,6 +84,22 @@
   var MAX_LCS_CELLS = 250000;
   var PAIR_KEY_RATIO = 0.5;    // min shared-key ratio to treat two objects as "the same item changed"
 
+  // Sharing key NAMES is not evidence that two records are the same record.
+  // Every row of a CSV export has identical keys, so a key-name-only test says
+  // "yes" to any two rows and positional gap-filling then pairs record k of one
+  // file with record k of an unrelated file. That produced the worst possible
+  // outcome: a model claiming thousands of "changed" records and tens of
+  // thousands of "field changes" that do not exist, rendered as a page where
+  // ~64% of lines differ — which CM6 cannot diff at any affordable scanLimit,
+  // so the panes showed one undifferentiated block while the summary insisted
+  // there were changes to see. Values have to agree too.
+  var PAIR_VALUE_RATIO = 0.5;  // min share of INFORMATIVE shared keys that must be equal
+  // Agreement on a column that holds the same value in every record (a status
+  // flag, a constant unit) is not evidence either, so those keys are excluded
+  // from the ratio. Sampled: a key that never varies across this many spread-out
+  // records is treated as constant.
+  var INFO_SAMPLE = 400;
+
   // Below this combined input size everything is pretty-printed, exactly as
   // before — small comparisons must look untouched. Above it the adaptive
   // renderer kicks in (equal records compact, changed records pretty within a
@@ -202,6 +218,12 @@
         }
       }
       if (i >= n) {
+        // Check on the way OUT too, not only at a yield. A loop whose last slice
+        // covers the remaining items used to finish regardless — a cancel landing
+        // there was silently ignored and the phase reported success. (Harmless in
+        // this file, since callers re-check before writing anything, but a
+        // cancellation that is only sometimes honoured is not one.)
+        if (cancelledBy(ctl)) return Promise.reject(new Cancelled());
         if (ctl && ctl.onProgress) ctl.onProgress(n, n);
         return Promise.resolve();
       }
@@ -357,17 +379,66 @@
     }
   }
 
-  // Heuristic: are two values "the same item, modified" (→ align internals)
-  // vs unrelated (→ show as separate remove + add)?
-  function shouldPair(x, y) {
+  /**
+   * Which keys carry information about record identity, i.e. actually vary
+   * across the collection. Sampled with a stride so this stays O(INFO_SAMPLE·k)
+   * regardless of how many records there are.
+   * @returns {object|null} a key→true set, or null when nothing varies
+   */
+  function informativeKeys(a, b) {
+    if (!a.length || !b.length || !isPlainObject(a[0])) return null;
+    var keys = Object.keys(a[0]), out = Object.create(null), any = false;
+    for (var i = 0; i < keys.length; i++) {
+      if (keyVaries(a, keys[i]) || keyVaries(b, keys[i])) { out[keys[i]] = true; any = true; }
+    }
+    return any ? out : null;
+  }
+
+  function keyVaries(arr, key) {
+    var step = Math.max(1, Math.floor(arr.length / INFO_SAMPLE));
+    var first, seen = false;
+    for (var i = 0; i < arr.length; i += step) {
+      var r = arr[i];
+      if (!isPlainObject(r)) continue;
+      if (!seen) { first = r[key]; seen = true; continue; }
+      if (eqKind(r[key], first, null) === 0) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Heuristic: are two values "the same item, modified" (→ align internals and
+   * report a field-level diff) vs unrelated (→ show as separate remove + add)?
+   *
+   * Only consulted for records that the anchor pass could NOT match, so this is
+   * a guess. Guessing "unrelated" costs a field diff the user might have wanted;
+   * guessing "same" invents field changes AND produces text CM6 cannot diff. The
+   * second is strictly worse, so the bar is agreement on both key names and
+   * values (see PAIR_VALUE_RATIO).
+   *
+   * @param {object} [info] informativeKeys() set — keys that are constant across
+   *        the collection are ignored, since matching on them proves nothing.
+   */
+  function shouldPair(x, y, info) {
     var xObj = isPlainObject(x), yObj = isPlainObject(y);
     if (xObj && yObj) {
       var xk = Object.keys(x), yk = Object.keys(y);
       if (xk.length === 0 || yk.length === 0) return true;
       var ySet = {}; for (var i = 0; i < yk.length; i++) ySet[yk[i]] = true;
-      var shared = 0;
-      for (var j = 0; j < xk.length; j++) if (ySet[xk[j]]) shared++;
-      return shared / Math.max(xk.length, yk.length) >= PAIR_KEY_RATIO;
+      var shared = 0, weighed = 0, agree = 0;
+      for (var j = 0; j < xk.length; j++) {
+        var k = xk[j];
+        if (!ySet[k]) continue;
+        shared++;
+        if (info && !info[k]) continue;         // constant column: carries no evidence
+        weighed++;
+        if (eqKind(x[k], y[k], null) !== 0) agree++;
+      }
+      if (shared / Math.max(xk.length, yk.length) < PAIR_KEY_RATIO) return false;
+      // Nothing informative to judge on (every shared key is constant): fall back
+      // to the old key-name-only verdict rather than refusing every pair.
+      if (!weighed) return true;
+      return agree / weighed >= PAIR_VALUE_RATIO;
     }
     if (Array.isArray(x) && Array.isArray(y)) return true;
     // primitives / type-mismatch: pairing just renders old → new on a line
@@ -590,11 +661,11 @@
     }
 
     // Walk anchors, filling the gaps between them positionally.
-    return { pairs: fillPairs(a, b, anchors), strategy: strategy, idKey: idKey };
+    return { pairs: fillPairs(a, b, anchors, informativeKeys(a, b)), strategy: strategy, idKey: idKey };
   }
 
   // The anchor→pair walk, shared by matchArray and matchArrayAsync.
-  function fillPairs(a, b, anchors) {
+  function fillPairs(a, b, anchors, info) {
     var n = a.length, m = b.length;
     var pairs = [];
     var list = anchors.concat([[n, m]]);
@@ -608,7 +679,7 @@
       for (var k = 0; k < len; k++) {
         var di = k < dels.length ? dels[k] : null;
         var ij = k < inss.length ? inss[k] : null;
-        if (di !== null && ij !== null && !shouldPair(a[di], b[ij])) {
+        if (di !== null && ij !== null && !shouldPair(a[di], b[ij], info)) {
           pairs.push([di, null]);
           pairs.push([null, ij]);
         } else {
@@ -653,7 +724,7 @@
   function matchArrayAsync(a, b, tol, ctl) {
     var n = a.length, m = b.length;
     if (!n || !m) {
-      return Promise.resolve({ pairs: fillPairs(a, b, []), strategy: 'empty', idKey: null });
+      return Promise.resolve({ pairs: fillPairs(a, b, [], null), strategy: 'empty', idKey: null });
     }
     var idPromise = Math.min(n, m) >= ID_MIN_ITEMS
       ? detectIdKeyAsync(a, b, ctl)
@@ -675,7 +746,7 @@
       var inner = phaseCtl(ctl, 'match', n + m);
       // The walk itself is linear with a small constant; report it as one step
       // rather than paying a closure per element.
-      var pairs = fillPairs(a, b, anchors);
+      var pairs = fillPairs(a, b, anchors, informativeKeys(a, b));
       if (inner && inner.onProgress) inner.onProgress(n + m, n + m);
       return { pairs: pairs, strategy: strategy, idKey: idKey };
     });

@@ -814,6 +814,22 @@ Understand the split before touching diff/perf code:
      Identity is *not* guessed below `ID_MIN_ITEMS` (4) — on a handful of elements almost any
      field looks unique.
    - `'hash'` — content-hash anchors + positional gap fill. No O(n·m) DP, no size cliff.
+
+   **Gap filling must not invent pairs (`shouldPair`).** Records the anchor pass could not match
+   are filled in positionally, and `shouldPair()` decides whether such a pair is "the same record,
+   modified" or two unrelated records. It used to test **key names only** — but every row of a CSV
+   export has identical keys, so it said yes to *anything*. Comparing two unrelated 70k/8k exports
+   (dataset 8, zero overlap on every column) therefore paired record k with record k and reported
+   **"8,000 changed · 55,988 field changes"** for changes that do not exist — and the resulting page
+   differed on 64 % of its lines, which CM6 cannot diff at any affordable scanLimit, so the panes
+   showed one undifferentiated block while the summary insisted there was something to see.
+   `shouldPair` now also requires **value agreement** (`PAIR_VALUE_RATIO`, 0.5) over the keys that
+   actually *vary* across the collection (`informativeKeys()`, sampled `INFO_SAMPLE`) — matching on
+   a column that holds the same value in every record proves nothing. Guessing "unrelated" only
+   costs a field diff; guessing "same" invents field changes *and* produces undiffable text, so the
+   bar is deliberately set high. Dataset 8 now reports `8,000 removed, 70,752 added, 0 field
+   changes · no records in common`, rendered as clean whole-record add/remove blocks. Datasets 6,
+   the attom/parcels pair and all six curated examples are byte-identical before/after.
 2. **`buildModel()` computes the item + field diff directly** — `{status, changed[], onlyA[],
    onlyB[]}` per item plus totals and a field histogram. Exact at any size; this is what the UI
    reports and lists.
@@ -831,10 +847,35 @@ Understand the split before touching diff/perf code:
    - `view: 'full'` renders everything: equal records compact (byte-identical both sides, so they
      cost CM6 nothing and fold away), changed records pretty until `EXPAND_CHAR_BUDGET`.
    - Below the threshold everything is pretty-printed exactly as before.
+- **The page size is MEASURED, not fixed (`calibrateRenderBudget` / `renderWindow`, index.html).**
+  A fixed character budget is the wrong unit, because CM6's diff is O((N+M)·D) and D varies
+  enormously between datasets. Measured on ~300 KB pages: dataset 6 (2 % of lines differ) 0.3 s;
+  attom/parcels (8 % differ) **12–20 s**, a locked tab; disjoint records (64 % differ) gives up
+  entirely. Nor can it be predicted from the line-diff ratio — 4× the ratio cost 70× the time.
+  So: render a small **probe** page (`PROBE_BUDGET`, 24k chars), run CM6's own exported `diff` on
+  it, and scale the real page so the predicted cost lands near `DIFF_TARGET_MS` (400 ms). Cost
+  grows ~quadratically with page bytes (measured exponent ≈ 2.1), so the page scales with the
+  square root of the headroom. This costs **nothing in diff quality** — chunk count tracks records
+  shown exactly (256 records → 256 chunks, 32 → 32), so a smaller page means fewer records per
+  page, never a coarser diff. Self-calibrating on purpose: a constant tuned on one machine would
+  be wrong on a slower one. Measured once per content change; page turns reuse it.
+  - **Extrapolation is capped** (`MAX_PROBE_SCALE` 16, `MAX_PROBE_SCALE_DISSIMILAR` 2). CM6
+    switches algorithm branches on absolute length (full Myers → `crudeMatch` → give up), so on a
+    mostly-different page the cost curve is not even monotonic — measured 60 → 102 → 6 → 22 → 1 ms
+    as the page grew. Extrapolating through that is meaningless, so those pages take one small step
+    up instead.
+  - Result: attom/parcels **12,574 ms → ~400 ms** with real field-level chunks; worst synchronous
+    CM6 cost across all regression datasets ~400 ms, stable across runs.
+  - A dissimilar page still hits the `MYERS_MAX_DIFF_RATIO` cap and comes back as one chunk. That
+    is deliberate: at ~100 % differing lines every line is marked changed either way, so 1 vs 108
+    chunks changes only prev/next granularity, not what is rendered — and letting Myers run to
+    completion there costs 490–770 ms per page for a result the Details panel already gives.
 - **UI:** a **record pager** (`1–62 of 2,000`, prev/next) appears only when the render is
   windowed, and a **Details** panel (`#diff-details`) lists the complete breakdown — field
   histogram + every changed/added/removed/moved item, filterable, click to jump to that record.
   Both read the model, so they describe the whole dataset, not the visible page.
+  The status pill appends **"no records in common"** when nothing on either side matched anything
+  on the other, so a large "added" count reads as a verdict rather than as a result.
 - **`prepare()` — parse once, render many windows.** `JSONAlign.prepare(l, r, opts)` returns a
   handle holding the parsed pair + match + model; `handle.render({from, size})` emits a window
   from it. Paging must use this: re-running `align()` per page re-parsed ~20 MB and rebuilt the
@@ -968,6 +1009,15 @@ Understand the split before touching diff/perf code:
   content change clears it.
 - **Every cancel point is before a pane write**, so cancellation never leaves a half-written
   comparison — there is nothing to roll back.
+- **`chunkedLoop` checks the signal on the way OUT, not only at a yield.** A loop whose last slice
+  covered the remaining items used to finish regardless, so a cancel landing there was silently
+  ignored and the phase reported success. (Callers re-check before writing, so nothing incorrect
+  reached the panes — but a cancellation that is only sometimes honoured is not one.)
+- **The editor write needs its own phase.** For the first file of a pair the other pane is empty,
+  so no transform runs and the entire cost is `editor.dispatch()` handing CodeMirror a 20 MB
+  document — seconds of synchronous work that no phase covered, leaving the panel parked on
+  "Parsing CSV data" while the tab locked. `ingestContentInner` now enters the `render` phase,
+  reports `Loading 22.9 MB into the editor`, and yields so the panel paints before it blocks.
 - **`WORKER_VERSION`** — the worker URL carries `?v=N`. Browsers cache Workers hard and a
   normal (even forced) reload does **not** pick up a new one: measured, the stale worker kept
   running the old message protocol and silently emitted zero progress frames. Bump it whenever
