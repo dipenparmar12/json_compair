@@ -136,7 +136,7 @@
               </label>
               
               <label class="setting-row">
-                <input type="checkbox" id="auto-csv-conversion" />
+                <input type="checkbox" id="auto-csv-conversion" checked />
                 <div class="setting-text">
                   <div class="setting-title">Auto CSV→JSON</div>
                   <div class="setting-desc">Automatically convert CSV to JSON on paste/drop</div>
@@ -3775,7 +3775,7 @@
         // Auto CSV conversion
         if (autoCSV) {
           const savedSetting = SettingsManager.get('autoCsv');
-          autoCSV.checked = !!savedSetting;
+          autoCSV.checked = savedSetting !== undefined ? !!savedSetting : true;
           autoCSV.addEventListener('change', (e) => {
             SettingsManager.set('autoCsv', e.target.checked);
           });
