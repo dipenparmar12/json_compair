@@ -1,3 +1,5 @@
+<!-- claude --resume 40b089ed-312a-4110-9768-7731d128191a -->
+
 # JSON Compare Tool
 
 A browser-based tool for comparing and formatting JSON data. This tool allows you to:

@@ -41,7 +41,7 @@ json_compair/
 │       ├── utils_zip.js    # ZIP snapshot import/export
 │       ├── utils_branch.js # Git-like branching for panels
 │       ├── viewport_diff.js # ViewportDiffManager, PerformanceMode, LargeFileDetector, PerformanceToast
-│       ├── json_align.js   # Block-level JSON aligner (window.JSONAlign) — gap-pads matching items/keys
+│       ├── json_align.js   # Record matcher + item/field diff model + block-level aligner (window.JSONAlign)
 │       ├── diff_ignore.js  # Exclude keys/patterns from the diff (window.DiffIgnore) — key-name matcher + line-scan
 │       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
@@ -60,6 +60,8 @@ json_compair/
 │       ├── json_flattener.js
 │       ├── json_to_table.js
 │       └── json_fuzzer.js
+│
+│       ├── progress.js     # ProcessingUI: progress panel, ETA, cancellation token
 │
 ├── docs/                   # Documentation & PRDs
 ├── tests/                  # Test files
@@ -181,10 +183,12 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "collapseUnchanged": false,    // Auto-collapse identical blocks
   "orientation": "a-b",          // a-b (side-by-side) or a-b-merge
   "revertControls": "a-to-b",    // a-to-b|b-to-a|none
-  "scanLimit": 6000,             // Max LCS scan effort (auto-capped by content size)
+  "scanLimit": 6000,             // MIN scan effort; raised as content needs (Diff Engine §3)
   "ignorePatterns": [],          // Key names / /regex/ excluded from the diff (see Diff Engine §7)
   "ignoreScope": "both",         // What a pattern matches: 'key' | 'value' | 'both'
   "ignoreStyled": true,          // Tint excluded matches gray (off = neutral, still no red/green)
+  "numToleranceEnabled": false,  // Treat near-equal numbers as identical (see Diff Engine §8)
+  "numTolerance": 0.001,         // Max |a-b| ignored when enabled (e.g. 0.001 ≈ 3 decimals)
 
   // Auto-Processing
   "autoCsv": true,               // Auto-convert CSV
@@ -208,7 +212,9 @@ window.SettingsManager
 
 // json_utils.js
 window.parseFlexibleJSON()
-window.sortJSONKeys()
+window.sortJSONKeys()          // alphabetize keys recursively (crude value-sort of object arrays)
+window.parseSortSpec(str)      // "category ASC, amount DESC" → [{field,dir,path}] (dot-notation nesting)
+window.sortJSONByFields(data, specs) // stable value-sort of a top-level array of objects by field(s)
 
 // utils_csv.js
 window.CSVUtils
@@ -237,10 +243,20 @@ window.DiffIgnore
   .makePredicate()      // (matcher, scope) → (key,aVal,bVal)=>bool for json_align
   .computeIgnoredLines()// (text, matcher, scope) → Set<1-based line no.> (key + value block)
 
-// json_align.js (v6) — ignore-aware
+// json_align.js (v6) — ignore/tolerance-aware, scales to large collections
 window.JSONAlign
-  .align(l, r, {ignore})   // block-align + normalize matched values → {ok,left,right,changed}
-  .normalize(l, r, ignore) // normalize only (block-diff off) → {ok,left,right,changed}
+  .align(l, r, opts)        // → {ok,left,right,changed,model,stats}
+                            //   opts: {ignore, numTol, view:'auto'|'pretty'|'window'|'full',
+                            //          from, size, budget}
+  .prepare(l, r, opts)      // parse+match+model ONCE → {ok, model, render({from,size,view})}
+  .prepareAsync(l, r, opts, ctl)  // same result, in interruptible slices (Diff Engine §11)
+                            //   ctl: { signal:{cancelled}, onPhase(key,total)->{onProgress} }
+                            //   rejects with err.cancelled === true when stopped
+  .diffModel(l, r, opts)    // item + FIELD level diff, no rendering; exact at ANY size
+                            //   → {ok, model:{items,totals,fields,idKey,strategy,path}}
+                            //   `path`: collection key, or null when the root is the array.
+                            //   Works for a root array AND for {data:[…]}-style envelopes.
+  .normalize(l, r, ignore, numTol) // normalize only (block-diff off)
   .stripGaps(text)
 ```
 
@@ -255,6 +271,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/utils_zip.js"></script>
 <script src="./utils/utils_branch.js"></script>
 <script src="./utils/viewport_diff.js"></script>  <!-- v6 only: performance managers -->
+<script src="./utils/progress.js"></script>       <!-- v6 only: progress panel + cancellation -->
 <script src="./utils/diff_ignore.js"></script>    <!-- v6 only: exclude keys/patterns from diff -->
 ```
 
@@ -447,6 +464,38 @@ node server.js
   (`canReconfigure()`). Full `recreateMergeView()` is now reserved for the one case
   reconfigure can't handle: an **orientation flip** (which can reorder the panes).
 
+### 2b. Settings persistence — three rules that were each broken once
+Every user-facing control must survive a reload. The bugs that motivated these rules:
+
+1. **Every key the settings panel reads back must be listed in `loadMergeSettings()`.**
+   `blockDiff` was not, so `settings.blockDiff` came back `undefined` at restore time and
+   `undefined !== false` silently re-enabled it on every reload — the stored value was correct
+   the whole time, nothing ever read it.
+2. **Transient performance postures must not be written to settings.**
+   `applyProactivePosture()` (large paste → force Collapse Unchanged) used to
+   `SettingsManager.set('collapseUnchanged', true)`. That turned a one-off render decision into
+   the user's permanent preference, which is what "the setting keeps coming back on" was.
+   It now flips only the live view + checkbox and sets `_collapseForcedBySize`;
+   `applyMergeSettings()` keeps persisting the *stored* value while that flag is set, and
+   touching either collapse control clears it (the choice is theirs again).
+3. **One storage key per setting.** `defaults` declared `autoFormatJson`/`autoSortKeys` while all
+   the code read/wrote `autoFormat`/`autoSort`, so the intended default never applied and
+   storage carried both names with disagreeing values. Names now match the readers.
+
+Round-trip check when adding a control: set it, reload, confirm the DOM control comes back —
+storage being right is not enough.
+
+### 2c. Snapshot / URL must restore the COMPARISON, not just the content
+`ZipSnapshotManager` already carried `settings.json`, and import wrote it to localStorage — but
+only `wordWrap`, `scrollLock` and `theme` were turned back into live state. The options that
+decide what the diff actually *says* (ignore patterns + scope + styling, numeric tolerance,
+block diff) were stored and never applied, so a reopened snapshot did not reproduce.
+`applyComparisonSettings()` re-derives all of them, resets the align memo and pristine
+snapshot, re-syncs the ignore/tolerance inputs, re-runs the transform and re-counts. Call it
+from every path that loads foreign settings (both ZIP import sites; the URL path already
+re-derives during startup). Settings are written with one `saveAll()`, not one
+`set()` round-trip per key.
+
 ### 3. CSV Auto-Detection Entry Points
 - Drag & drop
 - Paste
@@ -468,7 +517,11 @@ if (CSVUtils.isCSV(text) && settings.autoCsv) {
 
 ### Header Controls
 - Format JSON
-- Sort JSON keys
+- **Sort ▾ dropdown** (v6): "Sort by field value" — a text input taking a spec like
+  `category ASC, amount DESC` (comma-separated keys, per-key ASC/DESC default ASC, dot-notation
+  for nested keys) that value-sorts the **top-level array of objects in both panes** (ideal for
+  aligning two arrays before diffing); empty spec falls back to "Sort keys A→Z". Pure logic in
+  `utils.js` (`parseSortSpec` / `sortJSONByFields`); UI in `initializeSortPanel()` + `sortByFields()`.
 - Clear All
 - Theme selector (v6 only)
 - Settings panel toggle (⚙️)
@@ -487,6 +540,26 @@ Two sections:
 
 1. **Quick Toggles**: Collapse Unchanged, Highlight Changes
 2. **Full Settings**: All configuration options
+
+### Progressive-disclosure info tooltips (v6)
+To keep panels uncluttered, verbose descriptions are hidden and revealed on demand
+behind a subtle ⓘ icon (progressive disclosure). Implemented generically in
+`v6/index.html`:
+- **`enhanceInfoTips(root)`** runs once over the document at the end of `initializeApp`.
+  It finds every `.setting-desc` (→ ⓘ appended to the row's `.setting-title`) and every
+  `.ignore-desc` (→ ⓘ appended to the preceding `.settings-section-title`), tags the
+  description `.is-tip-source` (CSS `display:none !important`), and wires the icon.
+  Idempotent (`dataset.tipDone`), so authors keep writing `.setting-desc`/`.ignore-desc`
+  as before and new ones auto-convert — no per-row markup.
+- **`InfoTips`** (IIFE) manages ONE shared `.info-tip` popover portaled to `<body>` so a
+  scrolling panel's `overflow-y:auto` never clips it. Shows on hover/focus (desktop) and
+  tap/click (touch); dismisses on mouseleave/blur/Escape/scroll/resize/outside-click. Icon
+  click does `preventDefault` (so an ⓘ inside a `<label>` doesn't toggle its checkbox) and
+  the popover `stopPropagation`s its own clicks (so it doesn't trip panels' outside-click
+  close). `position()` places below the icon, flips above / clamps to `window.innerWidth`.
+- **CSS** (`app.css`): `.info-icon` (subtle bordered circle "i"), `.info-tip`
+  (`position:fixed; width:max-content; max-width:300px`), `.is-tip-source`. Font size
+  unchanged — this is presentation/hierarchy only. See memory [[v6-info-tooltips]].
 
 ### Status Bar
 Shows diff count and current mode (count = `mergeView.chunks.length`):
@@ -601,27 +674,81 @@ Understand the split before touching diff/perf code:
   refresh the diff after a content change.
 - The authoritative chunk list lives at `mergeView.chunks`.
 
-### 2. Status-bar count — `mergeView.chunks.length` (NOT a second diff anymore)
-- `updateDiffStatus()` (`v6/index.html` ~line 3230) just reads `mergeView.chunks.length`
-  and prints "N changed blocks". No separate DMP pass, no worker round-trip.
+### 2. Status-bar count — the structural model first, `mergeView.chunks` as fallback
+- For a **top-level array pair**, `updateDiffStatus()` reports `JSONAlign`'s model:
+  "*2,000 changed of 2,000 items · 6,370 field changes*". Those numbers come from our own
+  item/field diff (§10) and are **exact regardless of how much is rendered**.
+- Everything else (objects, non-JSON, alignment unavailable) still falls back to
+  `mergeView.chunks.length` → "N changed blocks".
+- `diffIsDegraded()` detects the case where CM6 gave up and returned one change spanning the
+  document, and says so ("Too large to compare precisely — use CSV→JSON…") instead of
+  printing a meaningless "1 changed block".
+- Viewport-diff mode is only consulted when there is **no** model — an approximate
+  "~5 differences in view" is strictly worse than an exact whole-collection count.
 - The old `diff_match_patch` full-diff count (and its >100 KB worker offload) was **removed**;
-  `diff_match_patch` is still `<script>`-loaded but effectively unused. This also fixed the
-  old count/render mismatch (DMP counted char chunks; MergeView renders line chunks).
+  `diff_match_patch` is still `<script>`-loaded but effectively unused.
 
-### 3. Adaptive scanLimit cap — prevents main-thread freezes (~line 1060)
-- CM6's MergeView diff is **synchronous** and grows ~O(scanLimit²) on dissimilar docs, so a
-  large `scanLimit` on big/different inputs freezes the tab (60000 measured ~66× slower than
-  6000 for *identical* diff detail). CM6 merge 6.7.2 has no diff `timeout`, so scanLimit is
-  the only lever (the stored `timeout` setting is inert).
-- `clampScanLimit()` caps the *applied* scanLimit by combined content size, independent of the
-  user/snapshot/URL value (`DIFF_SCAN_CAPS`): ≤256 KB trust the user · ≤2 MB → 10000 ·
-  ≤8 MB → 6000 · >8 MB → 4000. `buildDiffConfig()` wires this into every config build.
-- See memory [[v6-scanlimit-freeze]].
+### 3. scanLimit is a CORRECTNESS knob, not just a speed knob (~line 1669)
+- Read this before touching `clampScanLimit()`. In `@codemirror/merge` 6.7.2 the applied limit
+  is `scanLimit >> 1`, and `findSnake()` bails on **absolute character counts**:
+
+      min(lenA,lenB) > scanLimit*16  ->  crudeMatch()          (coarser, still useful)
+      min(lenA,lenB) > scanLimit*64  ->  [ONE Change spanning everything]
+
+- So a *low* scanLimit on a large document does not produce a slower or rougher diff — it
+  produces **no diff at all**, just one block covering the file. The previous table here
+  *lowered* scanLimit as content grew (≤2 MB → 10000, ≤8 MB → 6000, >8 MB → 4000), which drove
+  every large input straight into that second branch. That was the "large collections show a
+  single large diff" bug: measured, a 50-record pretty-printed pair already collapsed to 1
+  change at the default 6000, while 6 records worked — matching the original report exactly.
+- The fix is to bound the **text** (§9/10 renders a page of records) and then raise scanLimit to
+  whatever that bounded document needs. Three things matter, each learned the hard way:
+  - **Aim past BOTH thresholds.** Clearing only the `*64` cliff leaves CM6 in `crudeMatch`, whose
+    repeated `indexOf` over the whole range is wildly variable — measured 148 ms for a 4,800-line
+    page but **12 s** for a 2,400-line one. Full Myers needs `min(lenA,lenB) <= scanLimit*8`, so
+    the floor is `minSide/7`. On line-aligned content Myers is cheap and predictable: its cost
+    tracks the NUMBER of differences, not document size. This took page turns 2–6.7 s → ~100 ms.
+  - **Only raise on a bounded document** (`SCAN_RAISE_MAX_BYTES`, 3 MB). Past that no scanLimit is
+    both accurate and affordable, so the low protective cap stays and CM6 bails out cheaply.
+  - **Keep it low across the two-dispatch transition.** Writing both panes is two dispatches and
+    CM6 re-diffs on each, so one side is briefly the new window while the other is still the old
+    multi-MB document. A limit raised for the FINAL size turned that moment into full Myers on
+    300 KB vs 10 MB — a hard lock. `transformAndDispatch`/`gotoRecordPage` lower it before the
+    writes and raise it after; CM6 re-diffs on the reconfigure, so one cheap diff is wasted.
+  The user's value is a **minimum**, never a cap that breaks the diff.
+- The old ceiling still applies to **unaligned** content (`_alignedRender === false`: non-JSON,
+  or Block Diff off), where Myers really is quadratic and the crude fallback is protective.
+- `syncDiffConfig()` must run after **any content change**, not just settings changes —
+  scanLimit is a function of document length, so a value left over from smaller content
+  silently re-introduces the bail. See memory [[v6-scanlimit-freeze]].
+- **`reconfigure({diffConfig})` does NOT re-diff — the limit must be right BEFORE the write.**
+  In `@codemirror/merge` 6.7.2, `MergeView.reconfigure()` assigns `this.diffConf` and calls
+  `scheduleMeasure()`; chunks are rebuilt *only* inside `MergeView.dispatch()` on a doc change,
+  from the `diffConf` live at that instant. So "write the panes, then raise scanLimit" — which
+  is what this code did — leaves the visible diff computed at the low transition cap forever.
+  That was the whole "large collections render as one modified block" bug: measured on the
+  2,000 × 158 pair, the rendered page produced **1 chunk at the live limit vs 196 at the raised
+  one**, on byte-identical text. `writeAlignedPanes()` now orders it correctly — low cap for the
+  first write (where one pane is new and the other is still the old multi-MB doc), the final
+  limit before the write that settles the pair. A full-document replacement makes CM6 re-diff
+  the whole pair, so the last write is the one that counts.
+- `_chunkScanLimit` records what the visible chunks were **actually** computed with (updated on
+  every doc change by the autosave update listener); `ensureDiffFresh()` compares it with
+  `_appliedScanLimit` and calls `forceRediff()` — rewriting a pane with its own text, the only
+  lever the merge API gives us — when they disagree. Needed wherever the effort changes without
+  a content write: a Scan Limit settings change, or content that arrived already aligned.
+  `diffIsDegraded()` also tests against `_chunkScanLimit`, not the configured value.
+- Cost of a raised limit on aligned 158-field records, measured: 0.6 MB combined → 0.24 s,
+  1.5 MB → 1.2 s, 3 MB → 3.3 s, 6 MB → 12 s. That is why `SCAN_RAISE_MAX_BYTES` is 3 MB and
+  why bounding the **text** (the record window) is the mechanism above it, not a bigger limit.
 
 ### 4. In-place reconfigure + forced re-collapse (no more teardown on edit)
 - `canReconfigure()` gates on CM6 merge ≥ 6.7. When true, settings/edits call
   `mergeView.reconfigure(buildReconfigureConfig(...))` instead of full DOM teardown.
   `recreateMergeView()` now runs only for an **orientation flip**.
+- **Caveat:** reconfigure applies highlight/gutter/collapse/orientation/revert immediately, but
+  `diffConfig` is only *stored* — it takes effect on the next doc change. Anything that depends
+  on the diff being recomputed must follow it with `ensureDiffFresh()` (see §3).
 - `refreshMergeViewIfNeeded()` (called after format/sort/paste/CSV ingest and debounced edits,
   only while Collapse-Unchanged is on) reconfigures in place, then calls `forceRecollapse()`.
 - `forceRecollapse()` works around CM6's collapse being a singleton StateField that only folds
@@ -652,8 +779,128 @@ Understand the split before touching diff/perf code:
   same-docs + same-mode + same-predicate ⇒ skip the whole parse/align/stringify, failures included).
 - **Setting:** `blockDiff` (default **true**, toggle in settings panel). Off → `removeBlockAlignment()`
   strips gaps (only when the result is valid JSON) and CM6's default diff returns.
-- **Fallback:** any parse failure / non-JSON / >3 MB combined → `align()` returns `{ok:false}` →
-  no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
+- **Fallback:** any parse failure / non-JSON / >`MAX_BYTES` (24 MB) combined → `align()` returns
+  `{ok:false}` → no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
+
+### 9 / 10. Large collections — our own record matching + field model + windowed render
+- **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the
+  tab or reported "the entire collection as one modified record". Regression datasets:
+  `docs/test-cases-example/bwoser-tabs-freezed-on-this-data/*.csv` and
+  `docs/test-cases-example/6-did-not-show-diffs-test-data/*.csv` (2,000 records × 158 columns).
+- **Root cause:** CM6's diff cannot handle a multi-MB pair *at any scanLimit* — see §3 for the
+  exact bail conditions. An earlier attempt put each record on **one compact line**
+  (`alignArrayOneLine`) to shrink the line count. That fixed the freeze but destroyed the point
+  of the tool: a 158-field record became one 4,000-character line, so there was no visible
+  field-level diff. Both the freeze *and* the one-line workaround are gone.
+
+**How it works now — `json_align.js` stopped relying on CM6 to FIND differences:**
+
+0. **`findCollection()` locates the records first.** The root when both sides are arrays,
+   otherwise the shared object key holding the biggest array on both sides (depth 1). Envelope
+   shapes — `{data:[…]}`, `{results:[…]}`, `{items:[…]}` — used to bypass this entire module:
+   no model, no window, no pager, and the whole multi-MB document handed to CM6, which is
+   exactly the size where its diff gives up. They now get the same treatment as a bare array,
+   with the collection windowed *inside* a normally-aligned object shell (`renderWithShell()`
+   + `alignObject(…, override)`), so the panes still hold a complete, valid JSON object.
+   `model.path` names the key (null for a root array) — `idSource()` in index.html indexes
+   through it. Below `PRETTY_MAX_BYTES` nothing changes: still fully pretty-printed.
+1. **`matchArray()` pairs records itself.** In preference order:
+   - `'id'` — an **identity key** detected by `detectIdKey()`: a field whose values are unique on
+     *both* sides **and** largely overlap between them. Uniqueness alone is not enough — in a
+     homefacts export both sides have unique `UUID`s but every one was regenerated (0% overlap,
+     useless), while `ParcelNumberRaw`/`ATTOMId` overlap 100%. Anchors are then the
+     **longest increasing subsequence** over those ids (patience diff, O(n log n)).
+   - `'lcs'` — exact LCS for small arrays (`n*m <= MAX_LCS_CELLS`), where it is optimal and cheap.
+     Identity is *not* guessed below `ID_MIN_ITEMS` (4) — on a handful of elements almost any
+     field looks unique.
+   - `'hash'` — content-hash anchors + positional gap fill. No O(n·m) DP, no size cliff.
+
+   **Gap filling must not invent pairs (`shouldPair`).** Records the anchor pass could not match
+   are filled in positionally, and `shouldPair()` decides whether such a pair is "the same record,
+   modified" or two unrelated records. It used to test **key names only** — but every row of a CSV
+   export has identical keys, so it said yes to *anything*. Comparing two unrelated 70k/8k exports
+   (dataset 8, zero overlap on every column) therefore paired record k with record k and reported
+   **"8,000 changed · 55,988 field changes"** for changes that do not exist — and the resulting page
+   differed on 64 % of its lines, which CM6 cannot diff at any affordable scanLimit, so the panes
+   showed one undifferentiated block while the summary insisted there was something to see.
+   `shouldPair` now also requires **value agreement** (`PAIR_VALUE_RATIO`, 0.5) over the keys that
+   actually *vary* across the collection (`informativeKeys()`, sampled `INFO_SAMPLE`) — matching on
+   a column that holds the same value in every record proves nothing. Guessing "unrelated" only
+   costs a field diff; guessing "same" invents field changes *and* produces undiffable text, so the
+   bar is deliberately set high. Dataset 8 now reports `8,000 removed, 70,752 added, 0 field
+   changes · no records in common`, rendered as clean whole-record add/remove blocks. Datasets 6,
+   the attom/parcels pair and all six curated examples are byte-identical before/after.
+2. **`buildModel()` computes the item + field diff directly** — `{status, changed[], onlyA[],
+   onlyB[]}` per item plus totals and a field histogram. Exact at any size; this is what the UI
+   reports and lists.
+3. **`linkMoves()`** recovers field-level diffs for records that MOVED. Rendering has to stay
+   order-preserving (each pane must hold that side's records in that side's real order — a
+   reordered pane would no longer contain the user's document), so a record that moved far
+   renders as a removal plus an addition. That is right for layout and wrong for reporting, so
+   moves are detected by identity and reported as `status: 'moved'` **with their real field
+   diff**, without touching the layout.
+4. **`renderArray()` bounds what CM6 has to diff.**
+   - `view: 'window'` (auto above `PRETTY_MAX_BYTES`, 800 KB combined) renders only
+     `items[from, from+size)` at **full fidelity**, pretty-printed, field per line. `pageSizeFor()`
+     derives the page size from the average record size. The pane holds a real, complete,
+     valid-JSON slice — nothing is omitted from the records that are shown.
+   - `view: 'full'` renders everything: equal records compact (byte-identical both sides, so they
+     cost CM6 nothing and fold away), changed records pretty until `EXPAND_CHAR_BUDGET`.
+   - Below the threshold everything is pretty-printed exactly as before.
+- **The page size is MEASURED, not fixed (`calibrateRenderBudget` / `renderWindow`, index.html).**
+  A fixed character budget is the wrong unit, because CM6's diff is O((N+M)·D) and D varies
+  enormously between datasets. Measured on ~300 KB pages: dataset 6 (2 % of lines differ) 0.3 s;
+  attom/parcels (8 % differ) **12–20 s**, a locked tab; disjoint records (64 % differ) gives up
+  entirely. Nor can it be predicted from the line-diff ratio — 4× the ratio cost 70× the time.
+  So: render a small **probe** page (`PROBE_BUDGET`, 24k chars), run CM6's own exported `diff` on
+  it, and scale the real page so the predicted cost lands near `DIFF_TARGET_MS` (400 ms). Cost
+  grows ~quadratically with page bytes (measured exponent ≈ 2.1), so the page scales with the
+  square root of the headroom. This costs **nothing in diff quality** — chunk count tracks records
+  shown exactly (256 records → 256 chunks, 32 → 32), so a smaller page means fewer records per
+  page, never a coarser diff. Self-calibrating on purpose: a constant tuned on one machine would
+  be wrong on a slower one. Measured once per content change; page turns reuse it.
+  - **Extrapolation is capped** (`MAX_PROBE_SCALE` 16, `MAX_PROBE_SCALE_DISSIMILAR` 2). CM6
+    switches algorithm branches on absolute length (full Myers → `crudeMatch` → give up), so on a
+    mostly-different page the cost curve is not even monotonic — measured 60 → 102 → 6 → 22 → 1 ms
+    as the page grew. Extrapolating through that is meaningless, so those pages take one small step
+    up instead.
+  - Result: attom/parcels **12,574 ms → ~400 ms** with real field-level chunks; worst synchronous
+    CM6 cost across all regression datasets ~400 ms, stable across runs.
+  - A dissimilar page still hits the `MYERS_MAX_DIFF_RATIO` cap and comes back as one chunk. That
+    is deliberate: at ~100 % differing lines every line is marked changed either way, so 1 vs 108
+    chunks changes only prev/next granularity, not what is rendered — and letting Myers run to
+    completion there costs 490–770 ms per page for a result the Details panel already gives.
+- **UI:** a **record pager** (`1–62 of 2,000`, prev/next) appears only when the render is
+  windowed, and a **Details** panel (`#diff-details`) lists the complete breakdown — field
+  histogram + every changed/added/removed/moved item, filterable, click to jump to that record.
+  Both read the model, so they describe the whole dataset, not the visible page.
+  The status pill appends **"no records in common"** when nothing on either side matched anything
+  on the other, so a large "added" count reads as a verdict rather than as a result.
+- **`prepare()` — parse once, render many windows.** `JSONAlign.prepare(l, r, opts)` returns a
+  handle holding the parsed pair + match + model; `handle.render({from, size})` emits a window
+  from it. Paging must use this: re-running `align()` per page re-parsed ~20 MB and rebuilt the
+  match and model on every Next press. Measured 41 ms initial, 3 ms per subsequent page.
+- **Paging safety — two invariants, both violated at first:**
+  - While a window is showing, `_ignorePristine` holds the untransformed pair.
+    `applyBlockAlignment()` and `gotoRecordPage()` re-align **from that**, never from the panes —
+    re-aligning a window would window a window and lose the rest of the data.
+  - **Never persist a truncated view.** The autosave listener drops `_ignorePristine` on any doc
+    change that is not ours (including the user typing while a page is displayed), after which
+    `saveContent()` would happily write 61 records over a 2,000-record document. It now refuses
+    to save when the panes are truncated and no complete snapshot exists. Its size guard also has
+    to measure what will actually be WRITTEN (the pristine pair), not the panes — a ~600 KB
+    window guarding a 20 MB synchronous write sailed past `AUTOSAVE_MAX_BYTES` and stalled the
+    tab on every debounced change.
+- **`MAX_RENDER_CELLS_PER_PANEL` 220k → 2M.** It used to bound what MergeView had to *render*,
+  which meant dropping rows — a 2,000-row × 158-column export was silently cut to ~1,390 rows and
+  those rows were never compared at all. Rendering is now bounded by the record window, so this
+  only needs to bound parse + memory.
+- **Measured** on the 2,000 × 158 pair (~19.7 MB pretty): model in ~0.4 s; 2,000 items,
+  6,370 field changes, matched on `ParcelNumberRaw`; rendered page ~300 KB/side; CM6 returns
+  ~196 real chunks touching ~2 % of the rendered lines, in ~0.24 s — instead of 1 chunk
+  covering everything. Page turns ~0.25 s. Same numbers for the `{meta, data:[…]}` envelope
+  (197 chunks) and for a 60-record pretty render (190). Regression data:
+  `docs/test-cases-example/6-did-not-show-diffs-test-data/{one,two}.csv`.
 
 ### 7. Exclude keys/patterns from the diff — `diff_ignore.js` + normalization + `.cm-ignoredLine`
 - **Why:** ignore noisy fields (db `created_on`/`updated_at`, ids, hashes) that differ on every
@@ -674,8 +921,24 @@ Understand the split before touching diff/perf code:
   recaptures a fresh pair — a stale pristine can no longer resurrect replaced/cleared content
   (this was the "cleared data reappears after refresh" bug). Clear All persists the cleared
   state immediately via `StorageManager.clearStorage()` (empty pair in localStorage + deletes the
-  IndexedDB fallback record); per-pane Clear calls `restoreIgnorePristine()` first (surviving
-  pane keeps its real values) and then saves synchronously.
+  IndexedDB fallback record); per-pane Clear calls `restoreIgnorePristine(otherSide)` first
+  (surviving pane keeps its real values) and then saves synchronously.
+- **Clearing must not be O(document) — it was, three ways.** "Clear freezes the tab for a few
+  seconds" on a multi-MB pair came from work done *on the way out*:
+  1. Per-pane Clear called `restoreIgnorePristine()` **bare**, writing the whole pristine pair
+     back into BOTH panes — two full-document dispatches plus the diff each one triggers —
+     immediately before blanking one of them. It now takes a side argument and restores only
+     the pane that survives.
+  2. Both Clear paths tested emptiness with `doc.toString().trim()`, materializing multi-MB
+     strings to ask a question `docIsBlank()` answers in O(1). Same fix applied to
+     `refreshMergeViewIfNeeded()`, which runs on the debounced timer after *every* change.
+  3. The dispatches scheduled the usual debounced follow-ups; Clear All now cancels
+     `diffRefreshTimer`/`csvButtonTimer` alongside `autoSaveTimer`, since re-aligning and
+     re-sniffing CSV on two empty documents is pure waste.
+  `resetComparisonState()` drops `_alignHandle` (which pins both parsed documents),
+  `_renderBudget`, `_lastAlignMemo`, `_cancelledAlign`, `diffModel`, `diffStats` and the pager.
+  **Order matters:** call it *after* `saveContent()` on the per-pane path — that guard reads
+  `diffStats.truncated` to refuse writing a windowed pane over the full document.
 - **Match scope (`ignoreScope`, default `both`):** `window.DiffIgnore.makePredicate(matcher, scope)`
   — `'key'` tests the key name, `'value'` tests the property's primitive value, `'both'` either.
   Plain pattern = exact match; `/regex/flags` = RegExp. Selector lives in the ignore dropdown.
@@ -694,6 +957,89 @@ Understand the split before touching diff/perf code:
   re-render → recount. Compartment mounted in both editors (initial + `recreateMergeView`).
 - **Setting:** `ignorePatterns` (string[]) + `ignoreScope` ('key'|'value'|'both') + `ignoreStyled`
   (bool). Empty list → predicate `null` → zero overhead. See memory [[v6-ignore-keys-diff]].
+
+### 8. Numeric tolerance for floating-point diffs — `json_align.js` (`numTol`)
+- **Why:** ignore tiny floating-point noise (`19.99` vs `19.9905`, rounding drift) so values that
+  are "equal enough" don't show as diffs. Same problem shape as ignore keys — CM6 owns the diff — so
+  the **same solution**: normalize. When `|a - b| <= numTol` the LEFT number is emitted on BOTH
+  sides, so MergeView sees no change (collapses, not counted, no red/green).
+- **Mechanism (`eqKind(a,b,tol)` in json_align.js):** replaced `deepEqual` with a 3-way `eqKind`
+  returning `0` (differ), `1` (exactly equal), `2` (equal ONLY via tolerance). Kind `2` flips
+  `ctx.changed` so the caller snapshots `_ignorePristine` — reusing the **exact same** pristine /
+  restore / autosave path as ignore, so storage/export keep real numbers, not the normalized view.
+  `deepEqual` is now `eqKind(a,b,null) !== 0` (unchanged exact semantics for the ignore path).
+- **Coverage:** works at every level via recursion — object props, array elements (the LCS in
+  `lcsMatches` is tolerance-aware, so near-equal items *align* instead of read as add+remove), and
+  nested. Both `align()` (block-diff on, `{numTol}`) and `normalize()` (block-diff off, 4th arg).
+- **Wiring (index.html):** `numTolEnabled` + `numTolValue` globals, `numToleranceActive()` →
+  effective tol or null, `transformActive()` (block OR ignore OR tol) gates
+  `applyBlockAlignment`/`removeBlockAlignment` everywhere. `applyNumTolerance()` mirrors
+  `applyIgnorePatterns()` (restore pristine → persist → drop `_lastAlignMemo` → re-transform →
+  recount). `_lastAlignMemo` key includes `tol`. UI: enable checkbox + number input in the **Ignore
+  dropdown** ("Numeric tolerance" section), wired in `initializeIgnorePanel()`.
+- **Setting:** `numToleranceEnabled` (bool, default false) + `numTolerance` (number, default 0.001).
+  Off / value ≤ 0 → `numTol` null → zero overhead. **Gotcha:** the boundary is IEEE754-fuzzy —
+  `|19.991 - 19.99|` is `0.001000…012 > 0.001`, so exactly-at-tolerance pairs may or may not match.
+  See memory [[v6-numeric-tolerance-diff]].
+
+### 11. Progress, ETA and cancellation for long runs — `progress.js` + async pipeline
+- **Why:** a large comparison is a chain of individually-fast steps (CSV parse ≈ 0.25 s,
+  parse ≈ 0.1 s, match ≈ 0.1 s, field model ≈ 0.3 s, CM6's diff ≈ 0.25 s) that add up, and the
+  model/match passes are **linear in record count** — 0.3 s at 2,000 records is 3 s at 20,000.
+  Run synchronously with no feedback, that is indistinguishable from a frozen tab.
+- **`window.ProcessingUI`** (`utils/progress.js`) owns a non-blocking bottom-right panel:
+  phase label, determinate bar, `1,245 / 2,000`, elapsed, an EMA-smoothed ETA, optional heap
+  size, and a **Cancel** button. `start({title, phases:[{key,label,weight}]})` → a job;
+  `job.phase(key)` / `job.update(done,total,note)` drive it. Repaints are coalesced to one
+  per frame — a chunked loop calls `update()` thousands of times a second.
+  - It only appears after `SHOW_DELAY_MS` (400 ms); a bar that flashes for 80 ms is worse
+    than none. Most comparisons never show it.
+  - `fraction()` measures from the **first phase actually entered**, not the start of the
+    declared list — a JSON paste skips the CSV phase, and a bar that opens at 20 % because of
+    a step that will never run reads as broken.
+  - **`detach()` vs `finish()`:** two panes can ingest at once and the newer job takes over the
+    panel, but the older one is still working and must stay cancellable. Conflating the two
+    (the newer job calling `finish()` on the older) made `cancel()` early-return on
+    `job.finished` — one pane kept processing after Cancel and produced a nonsense
+    "61 changed, 1,939 removed" comparison against a stale pane.
+- **Cooperative chunking** (`json_align.js`): `chunkedLoop(n, body, ctl)` runs slices of
+  `SLICE_MS` (12 ms) and yields via **MessageChannel** — `setTimeout`'s ~4 ms clamp would
+  dominate at one yield per slice, and `requestAnimationFrame` never fires in a background tab.
+  `CHECK_EVERY` (64), not `SLICE_MS`, sets the *floor* on slice length, since the clock is only
+  read every N items; at 256 a 158-field record set ran 33 ms slices (over a frame).
+- **`prepareAsync(l, r, opts, ctl)`** is a verified drop-in twin of `prepare()` — identical
+  model, items, rendered text and stats, ~10 % slower from yielding. Phases: `parse` →
+  `identity` → `match` → `model`. Rendering stays synchronous (bounded by the record window,
+  ~10-20 ms at any collection size). `phaseCtl()` must copy `signal` onto each phase's control:
+  a reporter returned bare from `onPhase()` carries only `onProgress`, which silently made
+  every loop uncancellable.
+- **Cancellation is real, not cosmetic.** A Worker running a synchronous parse loop cannot
+  receive a "stop" message — its queue is not serviced until the loop returns — so
+  `cancelWorker()` **terminates** it (`initializeDiffWorker` is lazy, so the next call rebuilds
+  it). Main-thread work checks `ctl.signal.cancelled` at each yield. `cancelAllProcessing()` is
+  re-entrant (each job's handler calls back into it), snapshots `_liveJobs` before cancelling,
+  clears `_blockAligning` (a cancel can land between the two pane writes), and is also called
+  by `clearAll()` so an in-flight ingest can't write over freshly-cleared panes.
+- **Cancel stays cancelled:** `_cancelledAlign` records the doc pair that was stopped, so the
+  500 ms debounced re-align doesn't restart the exact work the user just cancelled. Any real
+  content change clears it.
+- **Every cancel point is before a pane write**, so cancellation never leaves a half-written
+  comparison — there is nothing to roll back.
+- **`chunkedLoop` checks the signal on the way OUT, not only at a yield.** A loop whose last slice
+  covered the remaining items used to finish regardless, so a cancel landing there was silently
+  ignored and the phase reported success. (Callers re-check before writing, so nothing incorrect
+  reached the panes — but a cancellation that is only sometimes honoured is not one.)
+- **The editor write needs its own phase.** For the first file of a pair the other pane is empty,
+  so no transform runs and the entire cost is `editor.dispatch()` handing CodeMirror a 20 MB
+  document — seconds of synchronous work that no phase covered, leaving the panel parked on
+  "Parsing CSV data" while the tab locked. `ingestContentInner` now enters the `render` phase,
+  reports `Loading 22.9 MB into the editor`, and yields so the panel paints before it blocks.
+- **`WORKER_VERSION`** — the worker URL carries `?v=N`. Browsers cache Workers hard and a
+  normal (even forced) reload does **not** pick up a new one: measured, the stale worker kept
+  running the old message protocol and silently emitted zero progress frames. Bump it whenever
+  `diff-worker.js` changes.
+- Only payloads over `PROGRESS_MIN_BYTES` (512 KB) take the interruptible path; below that the
+  synchronous path is done before the panel would appear.
 
 ### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on

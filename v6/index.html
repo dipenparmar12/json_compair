@@ -41,6 +41,7 @@
     <script src="./utils/utils_zip.js"></script>
     <script src="./utils/utils_branch.js"></script>
     <script src="./utils/viewport_diff.js"></script>
+    <script src="./utils/progress.js"></script>
     <script src="./utils/json_align.js"></script>
     <script src="./utils/diff_ignore.js"></script>
 
@@ -79,7 +80,28 @@
       <div class="intro">
         <div class="intro-left">
           <button id="btn-format" class="btn btn-primary">Format JSON</button>
-          <button id="btn-sort" class="btn">Sort Keys</button>
+
+          <!-- Sort dropdown: sort array items by field value(s), or sort keys A→Z -->
+          <div class="sort-dropdown menu-anchor">
+            <button id="btn-sort" class="btn" title="Sort JSON data">Sort ▾</button>
+            <div id="sort-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
+              <div class="settings-section-title">Sort by field value</div>
+              <div class="ignore-desc">
+                Reorder the top-level array of objects by one or more keys. Comma-separate
+                keys and add <code>ASC</code>/<code>DESC</code> per key (ascending by default).
+                Dot-notation for nested keys (<code>address.city</code>). Applies to both panels.
+                <br />e.g. <code>date DESC</code> · <code>category ASC, amount DESC</code>
+              </div>
+              <div class="ignore-input-row">
+                <input type="text" id="sort-input" class="ignore-input"
+                       placeholder="e.g. category ASC, amount DESC" autocomplete="off" spellcheck="false" />
+                <button id="sort-apply" class="btn btn-primary">Sort</button>
+              </div>
+              <div id="sort-error" class="ignore-error" style="display: none;"></div>
+              <div class="settings-section-title settings-section-divided">Other</div>
+              <button id="btn-sort-keys" class="dropdown-item">🔤 Sort keys A→Z (all levels)</button>
+            </div>
+          </div>
 
           <span class="toolbar-divider"></span>
 
@@ -262,6 +284,29 @@
                   <div class="setting-desc">Tint excluded matches with a subdued gray background. Off = fully neutral (still no red/green).</div>
                 </div>
               </label>
+
+              <div class="settings-section-title settings-section-divided">Numeric tolerance</div>
+              <div class="ignore-desc">
+                Ignore tiny floating-point differences: two numbers count as equal
+                when their difference is within the tolerance (e.g. <code>0.001</code>
+                treats values matching to 3 decimal places as identical — no red/green,
+                not counted).
+              </div>
+              <label class="setting-row">
+                <input type="checkbox" id="numtol-enabled" />
+                <div class="setting-text">
+                  <div class="setting-title">Enable numeric tolerance</div>
+                  <div class="setting-desc">Treat near-equal numbers as the same value in the diff.</div>
+                </div>
+              </label>
+              <label class="setting-row row-inline">
+                <span class="setting-text">
+                  <span class="setting-title">Tolerance</span>
+                  <span class="setting-desc">Max ignored difference (must be &gt; 0)</span>
+                </span>
+                <input type="number" id="numtol-value" class="settings-input-num"
+                       value="0.001" min="0" step="0.001" inputmode="decimal" />
+              </label>
             </div>
           </div>
         </div>
@@ -272,6 +317,14 @@
             <button id="btn-diff-next" class="btn btn-icon" title="Next difference (Alt+Down)" disabled>↓</button>
           </div>
           <div id="diff-summary" data-state="idle">Ready to compare JSON</div>
+          <!-- Record pager: shown only when the collection is too large to render
+               whole, so the panes hold one page of records at a time. -->
+          <div id="record-pager" class="record-pager" style="display: none">
+            <button id="btn-page-prev" class="btn btn-icon" title="Previous records">◀</button>
+            <span id="record-pager-label">–</span>
+            <button id="btn-page-next" class="btn btn-icon" title="Next records">▶</button>
+          </div>
+          <button id="btn-diff-details" class="btn btn-ghost" style="display: none" title="Field-level breakdown of every change">Details</button>
           <button id="btn-clear-all" class="btn btn-ghost" style="display: none">Clear All</button>
         </div>
 
@@ -321,7 +374,22 @@
       <div id="view-container"></div>
 
       <div id="conversion-error-area" style="display: none"></div>
-      
+
+      <!-- Field-level diff breakdown. Driven by the structural model, so it is
+           complete and exact no matter how many records are on screen. -->
+      <div id="diff-details" class="diff-details" style="display: none">
+        <div class="diff-details-head">
+          <strong>Differences</strong>
+          <input id="diff-details-filter" type="search" placeholder="Filter items or fields…" />
+          <button id="btn-diff-details-close" class="btn btn-icon" title="Close">✕</button>
+        </div>
+        <div id="diff-details-meta" class="diff-details-meta"></div>
+        <div class="diff-details-section">Fields by number of items affected</div>
+        <div id="diff-details-fields" class="diff-details-fields"></div>
+        <div class="diff-details-section">Items — click to jump</div>
+        <div id="diff-details-items" class="diff-details-items"></div>
+      </div>
+
       <!-- Footer with version info -->
       <div class="app-footer">
         <span>CodeMirror 6 (Modern)</span>
@@ -337,7 +405,10 @@
       import { EditorView } from "@codemirror/view";
       import { EditorState } from "@codemirror/state";
       import { json } from "@codemirror/lang-json";
-      import { MergeView, goToNextChunk, goToPreviousChunk } from "@codemirror/merge";
+      // `diff` is the same routine MergeView runs internally. We call it on a
+      // small probe page to MEASURE how expensive this particular pair is before
+      // choosing how much to render — see calibrateRenderBudget().
+      import { MergeView, goToNextChunk, goToPreviousChunk, diff as cmDiff } from "@codemirror/merge";
       
       // Import themes
       import { oneDark } from "@codemirror/theme-one-dark";
@@ -382,11 +453,21 @@
       import { lintKeymap } from "@codemirror/lint";
 
       // Import Compartment for dynamic configuration
-      import { Compartment, RangeSetBuilder } from "@codemirror/state";
+      import { Compartment, RangeSetBuilder, Transaction } from "@codemirror/state";
 
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
         if (update.docChanged) {
+          // CM6 rebuilds MergeView.chunks only inside its own dispatch(), from the
+          // diffConfig live at that instant. That rebuild has already happened by
+          // the time this listener runs, so this records the effort the CURRENT
+          // diff was actually computed with — which is what tells ensureDiffFresh()
+          // whether the on-screen diff is stale. See writeAlignedPanes().
+          _chunkScanLimit = _appliedScanLimit;
+
+          // New content means the earlier cancellation no longer applies.
+          _cancelledAlign = null;
+
           // Any doc change that is NOT our own normalization dispatch invalidates
           // the pre-normalization snapshot: the docs no longer correspond to it,
           // and persisting the stale pair would resurrect replaced/cleared content
@@ -408,8 +489,18 @@
 
           // Debounce merge view refresh for diff recalculation
           clearTimeout(window.diffRefreshTimer);
-          window.diffRefreshTimer = setTimeout(() => {
-            if (!userTyping) applyBlockAlignment();
+          window.diffRefreshTimer = setTimeout(async () => {
+            // Awaited: on a large pair the re-align is interruptible and
+            // finishes asynchronously, and everything below depends on the
+            // panes having settled first.
+            if (!userTyping) await applyBlockAlignment();
+            // Content changed size → the diff effort must follow it, whether or
+            // not alignment ran (raw/non-JSON text needs it too), and the diff
+            // on screen has to be recomputed at the new effort. Not while the
+            // user is typing: re-diffing means rewriting a pane, and their next
+            // keystroke re-diffs anyway.
+            syncDiffConfig();
+            if (!userTyping) ensureDiffFresh();
             refreshMergeViewIfNeeded();
           }, 500);
           
@@ -452,6 +543,27 @@
       let _ignorePristine = null; // { left, right } originals captured before normalization
 
       function ignoreActive() { return !!ignorePredicate; }
+
+      // ---- Numeric tolerance (treat near-equal numbers as identical) --------
+      // Same normalization trick as ignore: json_align copies the left number
+      // onto both sides when |a - b| <= tolerance, so MergeView sees no change
+      // (the field collapses, isn't counted, shows no red/green). Shares the
+      // _ignorePristine snapshot/restore + autosave machinery so real values are
+      // never persisted in place of the normalized view. See Diff Engine §7.
+      let numTolEnabled = false;  // enable/disable toggle (persisted)
+      let numTolValue = 0.001;    // max |a-b| ignored when enabled (persisted)
+
+      // Effective tolerance to feed json_align: a positive finite number, or
+      // null when the feature is off / mis-configured (null = zero overhead).
+      function numToleranceActive() {
+        return (numTolEnabled && typeof numTolValue === 'number' &&
+                isFinite(numTolValue) && numTolValue > 0) ? numTolValue : null;
+      }
+
+      // True when ANY transform (block align, ignore, tolerance) should run.
+      function transformActive() {
+        return blockDiffEnabled() || ignoreActive() || numToleranceActive() != null;
+      }
 
       // Coerce a stored value into a clean array of trimmed, de-duped, non-empty
       // pattern strings (tolerates arrays, a single string, or junk from URLs).
@@ -555,14 +667,19 @@
       // Restore the pre-normalization originals into both panes (undoes the
       // "copy left value onto right" that ignore-normalization performs). Guarded
       // by _blockAligning so it does not re-trigger the transform mid-restore.
-      function restoreIgnorePristine() {
+      // `only` ('left' | 'right') restores just that pane and drops the snapshot.
+      // Clearing one pane used to call this bare, which wrote the whole pristine
+      // pair back — on a multi-MB pair that is two full-document dispatches (plus
+      // the diff each one triggers) immediately before we throw one of them away.
+      // That was the multi-second stall on the per-pane Clear button.
+      function restoreIgnorePristine(only) {
         if (!_ignorePristine || !mergeView) { _ignorePristine = null; return; }
         const orig = _ignorePristine;
         _ignorePristine = null;
         _blockAligning = true;
         try {
-          setPaneIfChanged(mergeView.a, orig.left);
-          setPaneIfChanged(mergeView.b, orig.right);
+          if (only !== 'right') setPaneIfChanged(mergeView.a, orig.left);
+          if (only !== 'left') setPaneIfChanged(mergeView.b, orig.right);
         } finally {
           _blockAligning = false;
         }
@@ -580,11 +697,80 @@
         rebuildIgnoreMatcher();
         // Re-derive the view: normalize for the new set, or strip any leftover
         // gaps when nothing is active and block-diff is off.
-        if (blockDiffEnabled() || ignoreActive()) applyBlockAlignment();
+        if (transformActive()) applyBlockAlignment();
         else removeBlockAlignment();
         reconfigureIgnore();
         renderIgnoreList();
         updateDiffStatus();
+      }
+
+      // Apply an enable/disable or value change to numeric tolerance: restore the
+      // real (pre-normalized) values first so a disable / lowered tolerance
+      // reveals those diffs again, persist, drop the align memo (tolerance is
+      // part of its key), then re-run the transform (or strip gaps if nothing is
+      // left active) and refresh the count.
+      function applyNumTolerance() {
+        restoreIgnorePristine();
+        SettingsManager.set('numToleranceEnabled', numTolEnabled);
+        SettingsManager.set('numTolerance', numTolValue);
+        _lastAlignMemo = null;
+        if (transformActive()) applyBlockAlignment();
+        else removeBlockAlignment();
+        updateDiffStatus();
+      }
+
+      // Rebuild every piece of LIVE comparison state from stored settings.
+      //
+      // Importing a snapshot / opening a share URL used to write the settings to
+      // localStorage and then only refresh wordWrap, scrollLock and theme. The
+      // options that decide what the diff actually SAYS — ignore patterns and
+      // their scope, numeric tolerance, block diff — stayed at whatever the
+      // current session had, so a reopened comparison did not reproduce. This
+      // re-derives all of them, then re-runs the transform.
+      function applyComparisonSettings() {
+        ignorePatterns = normalizeIgnorePatterns(SettingsManager.get('ignorePatterns'));
+        const scope = SettingsManager.get('ignoreScope');
+        ignoreScope = ['key', 'value', 'both'].includes(scope) ? scope : 'both';
+        ignoreStyled = SettingsManager.get('ignoreStyled') !== false;
+        rebuildIgnoreMatcher();
+
+        numTolEnabled = SettingsManager.get('numToleranceEnabled') === true;
+        const t = parseFloat(SettingsManager.get('numTolerance'));
+        numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
+
+        wordWrapEnabled = SettingsManager.get('wordWrap') !== false;
+        scrollLocked = SettingsManager.get('scrollLock') !== false;
+        currentTheme = SettingsManager.get('theme') || 'default';
+        syncDocumentTheme(currentTheme);
+
+        // The transform result depends on all of the above, so the memo (keyed
+        // on doc + mode) must not short-circuit the next run.
+        _lastAlignMemo = null;
+        _ignorePristine = null;
+        recordPageFrom = 0;
+
+        updateIgnoreStyleClass();
+        reconfigureIgnore();
+        renderIgnoreList();
+        syncIgnoreAndToleranceInputs();
+        if (transformActive()) applyBlockAlignment();
+        else removeBlockAlignment();
+        syncDiffConfig();
+        updateDiffStatus();
+      }
+
+      // Push the restored ignore/tolerance values back into their form controls
+      // (the settings panel has its own initializer; these live in the Ignore
+      // dropdown and are not covered by it).
+      function syncIgnoreAndToleranceInputs() {
+        const scopeSel = document.getElementById('ignore-scope');
+        if (scopeSel) scopeSel.value = ignoreScope;
+        const styledChk = document.getElementById('ignore-styled');
+        if (styledChk) styledChk.checked = ignoreStyled;
+        const tolChk = document.getElementById('numtol-enabled');
+        if (tolChk) tolChk.checked = numTolEnabled;
+        const tolInput = document.getElementById('numtol-value');
+        if (tolInput) { tolInput.value = numTolValue; tolInput.disabled = !numTolEnabled; }
       }
 
       // Add one raw pattern. Returns an error string, or null on success.
@@ -696,6 +882,30 @@
             applyIgnorePatterns();  // re-derive the view for the new match scope
           });
         }
+
+        // Numeric tolerance: enable/disable checkbox + configurable value.
+        const tolChk = document.getElementById('numtol-enabled');
+        const tolInput = document.getElementById('numtol-value');
+        if (tolChk) {
+          tolChk.checked = numTolEnabled;
+          tolChk.addEventListener('change', () => {
+            numTolEnabled = tolChk.checked;
+            if (tolInput) tolInput.disabled = !numTolEnabled;
+            applyNumTolerance();
+          });
+        }
+        if (tolInput) {
+          tolInput.value = numTolValue;
+          tolInput.disabled = !numTolEnabled;
+          // 'change' (blur / Enter) not 'input', so we don't re-align on every
+          // keystroke. Ignore non-positive / non-numeric input (revert the box).
+          tolInput.addEventListener('change', () => {
+            const v = parseFloat(tolInput.value);
+            if (isFinite(v) && v > 0) { numTolValue = v; applyNumTolerance(); }
+            else { tolInput.value = numTolValue; }
+          });
+        }
+
         renderIgnoreList();
       }
 
@@ -807,6 +1017,136 @@
       // Global reference to merge view
       let mergeView = null;
 
+      // ---- Progressive disclosure: ⓘ info icons + on-demand tooltips ---------
+      // Verbose descriptions clutter the panels. InfoTips hides each description
+      // and shows it in a small popover on hover/focus (desktop) or tap (touch),
+      // triggered by a subtle ⓘ icon next to the title. One shared popover is
+      // portaled to <body> so a scrolling panel's overflow never clips it.
+      const InfoTips = (() => {
+        let pop = null, current = null, hideTimer = null;
+
+        function ensurePop() {
+          if (pop) return pop;
+          pop = document.createElement('div');
+          pop.className = 'info-tip';
+          pop.setAttribute('role', 'tooltip');
+          pop.style.display = 'none';
+          // Keep it open while the pointer is over the popover itself.
+          pop.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+          pop.addEventListener('mouseleave', hideSoon);
+          // Don't let clicks inside the tip bubble up to the panels'
+          // outside-click close handlers (the tip lives outside those panels).
+          pop.addEventListener('mousedown', (e) => e.stopPropagation());
+          pop.addEventListener('click', (e) => e.stopPropagation());
+          document.body.appendChild(pop);
+          return pop;
+        }
+
+        function position(icon) {
+          const r = icon.getBoundingClientRect();
+          const p = pop.getBoundingClientRect();
+          const vw = window.innerWidth || document.documentElement.clientWidth || 1024;
+          const vh = window.innerHeight || document.documentElement.clientHeight || 768;
+          let left = r.left;
+          let top = r.bottom + 6;
+          if (left + p.width > vw - 8) left = vw - 8 - p.width;
+          if (left < 8) left = 8;
+          if (top + p.height > vh - 8) top = r.top - 6 - p.height; // flip above
+          pop.style.left = Math.round(left) + 'px';
+          pop.style.top = Math.round(Math.max(8, top)) + 'px';
+        }
+
+        function show(icon) {
+          ensurePop();
+          const desc = icon._desc;
+          if (!desc) return;
+          clearTimeout(hideTimer);
+          pop.innerHTML = desc.innerHTML;
+          pop.style.visibility = 'hidden';
+          pop.style.display = 'block';
+          position(icon);                 // measure then place
+          pop.style.visibility = 'visible';
+          if (current && current !== icon) current.setAttribute('aria-expanded', 'false');
+          current = icon;
+          icon.setAttribute('aria-expanded', 'true');
+        }
+
+        function hide() {
+          if (pop) pop.style.display = 'none';
+          if (current) current.setAttribute('aria-expanded', 'false');
+          current = null;
+        }
+        function hideSoon() { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 120); }
+
+        function attach(icon, desc) {
+          icon._desc = desc;
+          icon.addEventListener('mouseenter', () => { clearTimeout(hideTimer); show(icon); });
+          icon.addEventListener('mouseleave', hideSoon);
+          icon.addEventListener('focus', () => show(icon));
+          icon.addEventListener('blur', hide);
+          // Tap / click toggles (touch has no hover) and must not toggle the
+          // surrounding <label>'s checkbox — hence preventDefault.
+          icon.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            (current === icon) ? hide() : show(icon);
+          });
+        }
+
+        // Global dismiss: Escape, scroll (any container), resize, outside click.
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+        window.addEventListener('scroll', () => { if (current) hide(); }, true);
+        window.addEventListener('resize', () => { if (current) hide(); });
+        document.addEventListener('click', (e) => {
+          if (current && e.target !== current && !current.contains(e.target) &&
+              (!pop || !pop.contains(e.target))) hide();
+        });
+
+        return { attach };
+      })();
+
+      function makeInfoIcon() {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'info-icon';
+        b.textContent = 'i';
+        b.setAttribute('aria-label', 'More information');
+        b.setAttribute('aria-expanded', 'false');
+        return b;
+      }
+
+      // Convert verbose descriptions into ⓘ tooltips within `root`. Idempotent
+      // (guarded per element), so it is safe to call once over the whole document.
+      //   • .setting-desc  → ⓘ appended to the row's .setting-title
+      //   • .ignore-desc   → ⓘ appended to the preceding .settings-section-title
+      function enhanceInfoTips(root) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+
+        root.querySelectorAll('.setting-desc').forEach((desc) => {
+          if (desc.dataset.tipDone) return;
+          const text = desc.closest('.setting-text') || desc.parentElement;
+          const title = text ? text.querySelector('.setting-title') : null;
+          if (!title) return;
+          const icon = makeInfoIcon();
+          title.appendChild(icon);
+          desc.classList.add('is-tip-source');
+          desc.dataset.tipDone = '1';
+          InfoTips.attach(icon, desc);
+        });
+
+        root.querySelectorAll('.ignore-desc').forEach((desc) => {
+          if (desc.dataset.tipDone) return;
+          let sib = desc.previousElementSibling;
+          while (sib && !sib.classList.contains('settings-section-title')) sib = sib.previousElementSibling;
+          const icon = makeInfoIcon();
+          if (sib) sib.appendChild(icon);
+          else desc.parentElement.insertBefore(icon, desc);
+          desc.classList.add('is-tip-source');
+          desc.dataset.tipDone = '1';
+          InfoTips.attach(icon, desc);
+        });
+      }
+
       // Initialize the application
       async function initializeApp() {
         // Initialize BranchManager first
@@ -823,10 +1163,8 @@
         // Apply settings from URL if present (before other initialization)
         if (urlContent && urlContent.settings) {
           try {
-            // Apply all settings from URL to SettingsManager
-            Object.keys(urlContent.settings).forEach(key => {
-              SettingsManager.set(key, urlContent.settings[key]);
-            });
+            // One write, not one localStorage read+write per key.
+            SettingsManager.saveAll(urlContent.settings);
             console.log('Settings loaded from URL:', urlContent.settings);
           } catch (err) {
             console.warn('Failed to apply URL settings:', err);
@@ -846,6 +1184,14 @@
           ? SettingsManager.get('ignoreScope') : 'both';
         ignoreStyled = SettingsManager.get('ignoreStyled') !== false;
         rebuildIgnoreMatcher();
+
+        // Numeric tolerance state (used by applyBlockAlignment, which runs at the
+        // end of initializeBranches). No compartment/plugin, so no pre-build step.
+        numTolEnabled = SettingsManager.get('numToleranceEnabled') === true;
+        {
+          const t = parseFloat(SettingsManager.get('numTolerance'));
+          numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
+        }
 
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
         const mergeSettings = loadMergeSettings();
@@ -894,6 +1240,9 @@
             (initialContent.left ? initialContent.left.length : 0) + (initialContent.right ? initialContent.right.length : 0)
           ),
         });
+        // The constructor diffs with exactly that config, so the initial chunks
+        // and the applied limit agree.
+        _chunkScanLimit = _appliedScanLimit;
 
         // Add per-pane control buttons
         addPaneControls();
@@ -926,7 +1275,12 @@
         initializeExtraSettingsPanel();
         initializeInfoDropdown();
         initializeIgnorePanel();
+        initDiffDetails();
         updateIgnoreStyleClass();
+
+        // Progressive disclosure: move verbose descriptions into ⓘ tooltips so
+        // the panels show titles + controls by default (details on hover/tap).
+        enhanceInfoTips(document);
 
         // Initialize branch system - load active branches if they exist
         await initializeBranches();
@@ -974,17 +1328,21 @@
         // content arrives via the editor `doc:` config, which does not fire the
         // change listener, so we trigger it explicitly here). When neither block
         // diff nor ignore is active, strip any gap lines a snapshot carried.
-        if (blockDiffEnabled() || ignoreActive()) applyBlockAlignment();
+        if (transformActive()) applyBlockAlignment();
         else removeBlockAlignment();
         updateDiffStatus();
       }
 
-      // Load merge settings from localStorage
+      // Load merge settings from localStorage.
+      // Every key the settings panel reads back MUST be listed here — a missing
+      // one reads as `undefined` at restore time and silently falls back to its
+      // hardcoded default, which is how Block Diff stopped persisting.
       function loadMergeSettings() {
         return {
           highlightChanges: SettingsManager.get('highlightChanges'),
           gutter: SettingsManager.get('gutter'),
           collapseUnchanged: SettingsManager.get('collapseUnchanged'),
+          blockDiff: SettingsManager.get('blockDiff'),
           orientation: SettingsManager.get('orientation'),
           revertControls: SettingsManager.get('revertControls'),
           scanLimit: SettingsManager.get('scanLimit'),
@@ -1040,7 +1398,12 @@
         document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-block-diff').addEventListener('change', applyMergeSettings);
-        document.getElementById('setting-collapse-unchanged').addEventListener('change', applyMergeSettings);
+        // Touching the collapse control makes it the user's choice again, so the
+        // size-forced override stops shadowing what gets persisted.
+        document.getElementById('setting-collapse-unchanged').addEventListener('change', () => {
+          _collapseForcedBySize = false;
+          applyMergeSettings();
+        });
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
@@ -1060,16 +1423,29 @@
       // Initialize Web Worker for off-thread CSV/JSON processing.
       // Uses an id-based request/response protocol so multiple callers can be
       // in flight at once (see callWorker).
+      // Bumped whenever utils/diff-worker.js changes. Workers are cached hard by
+      // the browser and, unlike page subresources, a normal reload does NOT pick
+      // up a new one — a stale worker kept running with the old message protocol
+      // (silently no CSV progress) even after a forced reload. A stable token
+      // keeps the worker cacheable while guaranteeing a new one after a release.
+      const WORKER_VERSION = '2';
+
       function initializeDiffWorker() {
         if (diffWorker) return diffWorker;
 
         try {
-          diffWorker = new Worker('./utils/diff-worker.js');
+          diffWorker = new Worker('./utils/diff-worker.js?v=' + WORKER_VERSION);
           diffWorker.onmessage = function(e) {
             const data = e.data || {};
             if (data.type === 'ready') { console.log('[DiffWorker] Ready'); return; }
             if (data.id != null && workerCallbacks.has(data.id)) {
               const cb = workerCallbacks.get(data.id);
+              // Progress is a stream: keep the callback registered until the
+              // final ok/error frame arrives.
+              if (data.type === 'progress') {
+                if (cb.onProgress) cb.onProgress(data);
+                return;
+              }
               workerCallbacks.delete(data.id);
               if (data.ok) cb.resolve(data.result);
               else cb.reject(new Error(data.error || 'Worker error'));
@@ -1092,12 +1468,12 @@
 
       // Promise-based RPC to the diff worker. Rejects when the worker is
       // unavailable so every caller can fall back to a main-thread path.
-      function callWorker(action, payload) {
+      function callWorker(action, payload, onProgress) {
         const w = initializeDiffWorker();
         if (!w) return Promise.reject(new Error('Worker unavailable'));
         return new Promise((resolve, reject) => {
           const id = ++workerCallSeq;
-          workerCallbacks.set(id, { resolve, reject });
+          workerCallbacks.set(id, { resolve, reject, onProgress });
           try {
             w.postMessage({ id, action, payload });
           } catch (err) {
@@ -1105,6 +1481,24 @@
             reject(err);
           }
         });
+      }
+
+      /**
+       * Stop whatever the worker is doing, right now.
+       *
+       * A Worker running a synchronous parse loop cannot receive a "please stop"
+       * message — its message queue is not serviced until the loop returns. So
+       * the only way to make Cancel actually immediate is to terminate it and
+       * let the next call build a fresh one (initializeDiffWorker is lazy, so
+       * that costs one worker boot, ~10 ms, on the next large paste).
+       */
+      function cancelWorker() {
+        if (!diffWorker) return;
+        try { diffWorker.terminate(); } catch (e) { /* already gone */ }
+        diffWorker = null;
+        const err = new CancelledError();
+        workerCallbacks.forEach((cb) => cb.reject(err));
+        workerCallbacks.clear();
       }
       
       // Initialize performance-related settings
@@ -1301,6 +1695,7 @@
             const val = e.target.checked;
             const setting = document.getElementById('setting-collapse-unchanged');
             if (setting) setting.checked = val;
+            _collapseForcedBySize = false;   // explicit choice beats the size override
             applyMergeSettings();
           });
         }
@@ -1420,42 +1815,144 @@
         updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
       }
 
-      // ---- Adaptive diff effort (prevents main-thread freezes) ---------------
-      // CM6's MergeView runs its line+character diff SYNCHRONOUSLY on the main
-      // thread, and its cost grows ~O(scanLimit^2) on the deepest Myers
-      // segments. So a large scanLimit on large, *dissimilar* documents locks
-      // the tab. Measured here on a ~1MB / ~20k-line pair of completely
-      // different JSON (the docs/test-cases-example snapshot):
-      //     scanLimit  6000 -> ~35ms    (155 chunks)
-      //     scanLimit 10000 -> ~48ms    (155 chunks)
-      //     scanLimit 25000 -> ~2360ms
-      //     scanLimit 60000 -> ~3200ms+ (155 chunks  <- same detail, ~66x slower)
-      // Diff DETAIL is already maxed out by ~6000 (identical chunk count), so a
-      // higher scanLimit buys only freezes. We therefore clamp the *applied*
-      // scanLimit by combined content size, independent of the (possibly
-      // imported via snapshot/URL, or hand-typed) user setting. Small documents
-      // still honor the user's value, where a thorough scan is cheap anyway.
-      // Note: CM6 merge 6.7.2 has no diff `timeout` option, so scanLimit is the
-      // only lever — the stored `timeout` setting is inert.
-      const DIFF_SCAN_CAPS = [
-        // [ maxCombinedBytes, scanLimitCap ]  — first matching row wins.
-        [ 256 * 1024,        Infinity ],  // <=256KB: trust the user (cheap anyway)
-        [ 2 * 1024 * 1024,   10000 ],     // <=2MB
-        [ 8 * 1024 * 1024,   6000 ],      // <=8MB
+      // ---- Adaptive diff effort ----------------------------------------------
+      // scanLimit is NOT just a speed knob — below a content-dependent threshold
+      // CM6 stops diffing and returns a single change covering everything. From
+      // @codemirror/merge 6.7.2 (the applied limit is `scanLimit >> 1`):
+      //
+      //     min(lenA,lenB) > scanLimit*16  ->  crudeMatch (coarser, still useful)
+      //     min(lenA,lenB) > scanLimit*64  ->  [one Change spanning the doc]
+      //
+      // Those are absolute CHARACTER counts. The old table here *lowered*
+      // scanLimit as content grew, which drove big inputs straight into that
+      // second branch — a 2,000-record collection reported as one diff. That was
+      // the "large collections show a single large diff" bug.
+      //
+      // What actually keeps things fast is bounding the TEXT (json_align renders
+      // a page of records; see json_align.js "SCALE"). Given a bounded document,
+      // scanLimit is then raised to whatever that document needs — aiming past
+      // BOTH thresholds, not just the second one:
+      //   floor = minSide/7  ->  min(lenA,lenB) <= scanLimit*8  ->  full Myers
+      // Clearing only the *64 cliff would leave CM6 in crudeMatch, whose repeated
+      // indexOf over the whole range is wildly variable: measured 148 ms for a
+      // 4,800-line page but 12 s for a 2,400-line one. Full Myers on ALIGNED
+      // content is cheap and predictable, because its cost is driven by the
+      // NUMBER of differences rather than by document size.
+      // The user's value acts as a minimum, never as a cap that breaks the diff.
+      //
+      // The exception is UNALIGNED content — non-JSON, or Block Diff off — which
+      // can be both huge and genuinely dissimilar. There Myers really is
+      // quadratic and the crude fallback is protective, so the old ceiling
+      // applies. `alignedRender` records which case we are in.
+      const SCAN_LIMIT_FLOOR = 6000;
+      const SCAN_LIMIT_MAX = 250000;      // beyond this, cost outweighs detail
+      // Raising scanLimit is only safe on a BOUNDED document. Past this size no
+      // scanLimit is both accurate and affordable, so a high one just buys the
+      // expensive middle band (crudeMatch's repeated indexOf over megabytes) or
+      // full Myers on a pair that cannot finish. Above it we keep the low
+      // protective cap, which makes CM6 bail out immediately and cheaply.
+      // Measured on aligned 158-field records (diff time at the needed limit):
+      //   0.6 MB combined → 0.24 s   1.5 MB → 1.2 s   3 MB → 3.3 s   6 MB → 12 s
+      // 3 MB is the affordability edge, which is why bounding the TEXT (the record
+      // window, json_align's renderArray) is the mechanism above it, not a bigger
+      // limit. The two constants agree: at 3 MB the needed limit is ~214k < 250k.
+      //
+      // This matters for transient states as much as final ones: writing the two
+      // panes is two dispatches, so there is a moment where one side is the new
+      // ~300 KB window and the other is still the old multi-MB document. CM6
+      // re-diffs on every dispatch (and ONLY on a dispatch — see
+      // writeAlignedPanes), and a scanLimit raised for the *previous* content
+      // turned that moment into full Myers on 300 KB vs 10 MB — a hard
+      // main-thread lock. Keeping large content on the low cap makes every
+      // intermediate state bail instantly instead.
+      const SCAN_RAISE_MAX_BYTES = 3 * 1024 * 1024;
+      const RAW_SCAN_CAPS = [
+        // [ maxCombinedBytes, scanLimitCap ] for unaligned text — first row wins.
+        [ 256 * 1024,        Infinity ],
+        [ 2 * 1024 * 1024,   10000 ],
+        [ 8 * 1024 * 1024,   6000 ],
       ];
-      const DIFF_SCAN_CAP_HUGE = 4000;    // >8MB: bail to a crude diff quickly
+      const RAW_SCAN_CAP_HUGE = 4000;
 
-      function clampScanLimit(userScanLimit, combinedLen) {
+      // True when both panes hold text that json_align produced (line-aligned,
+      // so CM6's diff terminates quickly even at a high scanLimit).
+      let _alignedRender = false;
+
+      /* How much of the rendered page actually differs, line for line (set from
+         JSONAlign's render stats). This is the second half of the scanLimit
+         story, and skipping it is what made the tab hang.
+
+         Myers costs O((N+M) * D). "Aligned" alone does NOT bound D — only
+         SIMILARITY does:
+
+           dataset 6 (2,000 x 158, ~2 fields differ per record →  2% of lines):
+             D is tiny, Myers exits immediately, a high limit is free.
+             301 KB page → 193 chunks in 270 ms at scanLimit 44,020.
+
+           dataset 7 (70,752 x 9, disjoint records → 64% of lines):
+             D is enormous. Myers burns the ENTIRE depth budget and then falls
+             back to crudeMatch anyway — returning the same 1-2 chunks it would
+             have produced instantly. Measured on a 301 KB page:
+                 12,000 →  1.9 s        44,020 → 32 s
+                 19,247 → 18.8 s       116,000 → 5,421 s  (90 MINUTES)
+             …and 97-100% of lines come back marked changed at every page size,
+             because there genuinely is no field-level diff to find.
+
+         So effort is only worth spending when it can pay off. Above this ratio
+         we keep the low protective cap and let CM6 bail out instantly; the
+         item/field model still reports the exact truth, and the Details panel
+         still lists every change. */
+      const MYERS_MAX_DIFF_RATIO = 0.25;
+      let _renderDiffRatio = 0;
+      // Last scanLimit handed to the live view, so syncDiffConfig() can skip a
+      // no-op reconfigure on every debounced edit.
+      let _appliedScanLimit = null;
+      // The scanLimit the chunks CM6 is currently showing were actually computed
+      // with. Not the same thing as _appliedScanLimit: reconfigure({diffConfig})
+      // only stores the value for the next doc change, so these drift apart
+      // whenever the limit moves without a write. Updated on every doc change by
+      // the autosave update listener; compared by ensureDiffFresh().
+      let _chunkScanLimit = null;
+      // True while Collapse Unchanged is on only because a large paste forced
+      // it. The checkbox shows the effective state, but the *stored* preference
+      // stays whatever the user chose until they touch the control themselves.
+      let _collapseForcedBySize = false;
+
+      // `aligned` / `ratio` default to the live render's state, but are passed
+      // explicitly by the budget probe, which has to predict the effort a page
+      // WILL get before that page is the live one.
+      function clampScanLimit(userScanLimit, combinedLen, aligned, ratio) {
+        if (aligned === undefined) aligned = _alignedRender;
+        if (ratio === undefined) ratio = _renderDiffRatio;
         let u = parseInt(userScanLimit, 10);
-        if (!Number.isFinite(u) || u <= 0) u = 6000;
-        let cap = DIFF_SCAN_CAP_HUGE;
-        for (const [bytes, c] of DIFF_SCAN_CAPS) {
-          if (combinedLen <= bytes) { cap = c; break; }
+        if (!Number.isFinite(u) || u <= 0) u = SCAN_LIMIT_FLOOR;
+
+        // Too dissimilar for CM6 to find anything, however hard it tries: cap
+        // hard so it bails instantly instead of grinding (see the note on
+        // MYERS_MAX_DIFF_RATIO). The user's Scan Limit is a minimum everywhere
+        // else, but it cannot be allowed to override this one — typing 116000
+        // here is a 90-minute main-thread freeze.
+        if (aligned && ratio > MYERS_MAX_DIFF_RATIO) {
+          return Math.min(u, RAW_SCAN_CAP_HUGE);
         }
-        const applied = cap === Infinity ? u : Math.min(u, cap);
-        if (applied < u && !clampScanLimit._warned) {
-          clampScanLimit._warned = true;
-          console.info(`[perf] scanLimit capped ${u} -> ${applied} for ${(combinedLen/1024/1024).toFixed(1)}MB of content to keep the diff responsive.`);
+
+        if (!aligned || combinedLen > SCAN_RAISE_MAX_BYTES) {
+          let cap = RAW_SCAN_CAP_HUGE;
+          for (const [bytes, c] of RAW_SCAN_CAPS) {
+            if (combinedLen <= bytes) { cap = c; break; }
+          }
+          return cap === Infinity ? u : Math.min(u, cap);
+        }
+
+        // Aligned: raise to whatever this document needs to stay out of the
+        // "one giant change" branch, and never below what the user asked for.
+        // /7 keeps min(lenA,lenB) under scanLimit*8 → full Myers, skipping the
+        // erratic crudeMatch band entirely.
+        const needed = Math.ceil((combinedLen / 2) / 7);
+        const applied = Math.min(SCAN_LIMIT_MAX, Math.max(u, needed));
+        if (applied > u && !clampScanLimit._warnedUp) {
+          clampScanLimit._warnedUp = true;
+          console.info(`[diff] scanLimit raised ${u} -> ${applied} so CM6 runs a full diff on this document (below ~${Math.ceil((combinedLen/2)/32)} it would collapse it into a single change).`);
         }
         return applied;
       }
@@ -1471,7 +1968,30 @@
       // Pass combinedLen when the content strings are already in hand.
       function buildDiffConfig(userScanLimit, combinedLen) {
         if (combinedLen == null) combinedLen = currentCombinedDocLen();
-        return { scanLimit: clampScanLimit(userScanLimit, combinedLen) };
+        _appliedScanLimit = clampScanLimit(userScanLimit, combinedLen);
+        return { scanLimit: _appliedScanLimit };
+      }
+
+      // Push a scanLimit appropriate to the CURRENT document size into the live
+      // view. Required after any content change, not just a settings change:
+      // scanLimit is a function of document length, and a value left over from
+      // smaller content makes CM6 abandon the diff and report one change
+      // covering everything (see the cliff described above).
+      //
+      // IMPORTANT: this only sets the effort for the NEXT diff. CM6 rebuilds
+      // chunks solely inside MergeView.dispatch() on a doc change — reconfigure()
+      // stores diffConfig and nothing else — so calling this after writing the
+      // panes leaves the visible diff computed at the OLD value. Pass
+      // `combinedLen` and call it BEFORE the write (see writeAlignedPanes), or
+      // follow it with ensureDiffFresh() when there is no write to piggyback on.
+      function syncDiffConfig(combinedLen) {
+        if (!mergeView || !canReconfigure()) return;
+        const want = clampScanLimit(SettingsManager.get('scanLimit'),
+                                    combinedLen == null ? currentCombinedDocLen() : combinedLen);
+        if (want === _appliedScanLimit) return;
+        _appliedScanLimit = want;
+        try { mergeView.reconfigure({ diffConfig: { scanLimit: want } }); }
+        catch (e) { console.warn('diffConfig reconfigure failed', e); }
       }
 
       // True when the live MergeView supports in-place reconfiguration
@@ -1521,7 +2041,11 @@
         SettingsManager.set('scrollLock', newScrollLock);
         SettingsManager.set('highlightChanges', newSettings.highlightChanges);
         SettingsManager.set('gutter', newSettings.gutter);
-        SettingsManager.set('collapseUnchanged', newSettings.collapseUnchanged);
+        // If collapse is only on because a large paste forced it, keep the
+        // user's stored preference — do not let the forced state become theirs.
+        SettingsManager.set('collapseUnchanged', _collapseForcedBySize
+          ? SettingsManager.get('collapseUnchanged') === true
+          : newSettings.collapseUnchanged);
         SettingsManager.set('orientation', newSettings.orientation);
         SettingsManager.set('revertControls', newSettings.revertControls);
         SettingsManager.set('scanLimit', newSettings.scanLimit);
@@ -1537,14 +2061,18 @@
         const orientationChanged = prevOrientation !== newSettings.orientation;
         if (canReconfigure() && !orientationChanged) {
           mergeView.reconfigure(buildReconfigureConfig(newSettings));
+          // reconfigure() stores diffConfig but never recomputes chunks, so a new
+          // Scan Limit would otherwise not take effect until the next edit.
+          ensureDiffFresh();
         } else {
           recreateMergeView(newSettings, newWordWrap);
         }
 
         // Apply block-diff change: turning it on aligns now; turning it off
-        // restores raw (un-gapped) text — unless ignore is still active, which
-        // keeps normalizing (without gaps) so ignored fields stay collapsed.
-        if (newBlockDiff || ignoreActive()) {
+        // restores raw (un-gapped) text — unless ignore or numeric tolerance is
+        // still active, which keeps normalizing (without gaps) so those fields
+        // stay collapsed.
+        if (newBlockDiff || ignoreActive() || numToleranceActive() != null) {
           applyBlockAlignment();
         } else if (prevBlockDiff) {
           removeBlockAlignment();
@@ -1562,9 +2090,9 @@
         const collapseUnchanged = document.getElementById('setting-collapse-unchanged')?.checked;
         if (!collapseUnchanged) return;
 
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-        if (!leftContent || !rightContent) return;
+        // Blankness only — don't materialize two multi-MB strings just to test
+        // it. This runs on the debounced timer after EVERY content change.
+        if (docIsBlank(mergeView.a.state.doc) || docIsBlank(mergeView.b.state.doc)) return;
 
         const currentSettings = {
           highlightChanges: document.getElementById('setting-highlight-changes')?.checked ?? true,
@@ -1600,6 +2128,94 @@
         mergeView.reconfigure({ collapseUnchanged: { margin: 3, minSize: 4 } });
       }
 
+      /* ---- Processing jobs: progress, ETA, cancellation ---------------------
+         Long comparisons are a sequence of individually-fast steps (CSV parse,
+         record match, field model, CM6's diff) that add up. A job owns the
+         progress panel for one such run, and owns what "Cancel" has to undo.
+
+         Cancel means stop EVERYTHING in flight, not just the run whose panel is
+         showing — two panes can be ingesting at once, and a user who presses
+         Cancel does not care which of them is on screen. */
+      const PROGRESS_PHASES = [
+        { key: 'csv',      label: 'Parsing CSV data',                  weight: 20 },
+        { key: 'parse',    label: 'Loading datasets',                  weight: 12 },
+        { key: 'identity', label: 'Detecting record identity',         weight: 8  },
+        { key: 'match',    label: 'Matching records',                  weight: 10 },
+        { key: 'model',    label: 'Generating field-level differences', weight: 30 },
+        { key: 'render',   label: 'Rendering comparison results',      weight: 20 },
+      ];
+      // Below this the whole pipeline finishes well inside the panel's show
+      // delay, so the interruptible path would only add overhead.
+      const PROGRESS_MIN_BYTES = 512 * 1024;
+
+      const _liveJobs = new Set();
+
+      function startProcessingJob(title) {
+        if (!window.ProcessingUI) return null;
+        const job = window.ProcessingUI.start({ title, phases: PROGRESS_PHASES });
+        job.onCancel(cancelAllProcessing);
+        _liveJobs.add(job);
+        return job;
+      }
+
+      function endProcessingJob(job) {
+        if (!job) return;
+        _liveJobs.delete(job);
+        job.finish();
+      }
+
+      // Content the user explicitly cancelled. Without this, the debounced
+      // re-align fires 500 ms later and restarts the exact work they just
+      // stopped — cancel has to stay cancelled until the content changes.
+      let _cancelledAlign = null;   // { docA, docB }
+
+      // Stop every in-flight operation and leave the app immediately usable.
+      // Re-entrant by nature: cancelling a job runs its handlers, which lead
+      // straight back here, so the first call does the work and the rest bail.
+      let _cancelling = false;
+      function cancelAllProcessing() {
+        if (_cancelling) return;
+        _cancelling = true;
+        try { cancelAllProcessingInner(); } finally { _cancelling = false; }
+      }
+
+      function cancelAllProcessingInner() {
+        // Snapshot before cancelling: each cancel mutates the set.
+        const jobs = Array.from(_liveJobs);
+        const hadWork = jobs.length > 0;
+        _liveJobs.clear();
+        // Synchronous worker loops can't be messaged; tear the worker down.
+        cancelWorker();
+        jobs.forEach((j) => { if (!j.cancelled) j.cancel(); });
+        // A cancel can land between the two pane writes, so clear the reentry
+        // guard explicitly — otherwise every later re-align would be skipped
+        // and the app would look alive but never update again.
+        _blockAligning = false;
+        if (!hadWork) return;   // e.g. Clear All with nothing running
+        // Don't let a queued debounce restart what was just cancelled.
+        clearTimeout(window.diffRefreshTimer);
+        _cancelledAlign = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc };
+        updateStatus('Processing cancelled — Clear All to start over');
+        setDiffSummary('idle', 'Cancelled — paste, drop or clear to start again');
+      }
+
+      // Adapter between a job and json_align's ctl contract.
+      function jobControl(job) {
+        if (!job) return undefined;
+        return {
+          signal: job.signal,
+          onPhase(key, total) {
+            job.phase(key);
+            job.update(0, total);
+            return { onProgress: (done, tot) => job.update(done, tot) };
+          },
+        };
+      }
+
+      function isCancellation(err) {
+        return !!(err && (err.cancelled || err.name === 'CancelledError'));
+      }
+
       // ---- Block-level (object-aware) JSON diff ------------------------------
       // CM6's MergeView can't take a custom diff, so instead of replacing the
       // engine we feed it a structurally-aligned version of both documents:
@@ -1620,6 +2236,103 @@
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
       }
 
+      // Re-run CM6's diff against the CURRENT diffConfig without changing the text.
+      // Rewriting a pane with its own content is a full-document change, and CM6
+      // widens a full-document change to a complete re-diff of the pair — which is
+      // the only lever the merge API gives us, since reconfigure({diffConfig})
+      // never recomputes chunks. Used when the effort has to change but no content
+      // write is coming (settings change, or content that arrived already aligned).
+      function forceRediff() {
+        if (!mergeView) return;
+        const view = mergeView.b;
+        const len = view.state.doc.length;
+        if (!len) return;
+        const text = view.state.doc.toString();
+        _blockAligning = true;
+        try {
+          view.dispatch({
+            changes: { from: 0, to: len, insert: text },
+            selection: view.state.selection,   // identical text ⇒ still in range
+            annotations: Transaction.addToHistory.of(false),
+            scrollIntoView: false,
+          });
+        } catch (e) {
+          console.warn('forced re-diff failed', e);
+        } finally {
+          _blockAligning = false;
+        }
+        // Same text, but a NEW immutable Text object — the alignment memo is keyed
+        // on doc identity, so leaving it would miss and re-align the whole
+        // document for nothing. Re-point it at the new docs instead.
+        if (_lastAlignMemo) {
+          _lastAlignMemo.docA = mergeView.a.state.doc;
+          _lastAlignMemo.docB = mergeView.b.state.doc;
+        }
+      }
+
+      // Make sure what is on screen was diffed at the effort the current content
+      // needs. Normally a no-op: _chunkScanLimit is refreshed on every doc change,
+      // so this only fires when the limit moved without a write.
+      function ensureDiffFresh() {
+        if (!mergeView || !canReconfigure()) return;
+        if (_appliedScanLimit == null || _chunkScanLimit === _appliedScanLimit) return;
+        forceRediff();
+      }
+
+      /**
+       * Write both panes and leave CM6's diff computed at the right effort.
+       *
+       * CM6 rebuilds MergeView.chunks ONLY inside its own dispatch(), from the
+       * diffConfig live at that instant; reconfigure({diffConfig}) just stores the
+       * value for next time. So the limit has to be correct BEFORE the write that
+       * settles the pair, not after it.
+       *
+       * This code used to raise it afterwards, which meant every large render
+       * stayed on the low transition cap. Past scanLimit*64 CM6 returns ONE change
+       * covering the whole document, so a 61-record page rendered as a single solid
+       * red/green block with nothing collapsed and no field-level detail — the
+       * reported bug. Measured on the 2,000 x 158 pair: 1 chunk before, 203 after.
+       *
+       * A full-document replacement makes CM6 re-diff the whole pair, so the LAST
+       * write is the one that counts. The FIRST write is the dangerous one — there
+       * one pane holds the new window while the other is still the old multi-MB
+       * document — so it runs on the low cap and bails out instantly.
+       */
+      function writeAlignedPanes(left, right) {
+        const finalLen = left.length + right.length;
+        const aStale = mergeView.a.state.doc.toString() !== left;
+        const bStale = mergeView.b.state.doc.toString() !== right;
+
+        function setEffort(aligned, len) {
+          _alignedRender = aligned;
+          syncDiffConfig(len);
+        }
+
+        _blockAligning = true;
+        try {
+          if (aStale && bStale) {
+            setEffort(false, Number.MAX_SAFE_INTEGER);  // mismatched pair: bail cheap
+            setPaneIfChanged(mergeView.a, left);
+            setEffort(true, finalLen);                  // settled pair: real effort
+            setPaneIfChanged(mergeView.b, right);
+          } else if (aStale || bStale) {
+            // Only one side moves, so the pair is already final at that write —
+            // no mismatched transition to protect against.
+            setEffort(true, finalLen);
+            if (aStale) setPaneIfChanged(mergeView.a, left);
+            else setPaneIfChanged(mergeView.b, right);
+          } else {
+            setEffort(true, finalLen);
+          }
+        } finally {
+          _blockAligning = false;
+        }
+        // Covers the "nothing to write" case (content already aligned, e.g. at
+        // startup or on a re-align that changed nothing) where the live chunks may
+        // still be from an earlier, lower effort.
+        ensureDiffFresh();
+      }
+
       // Transform both panes for diffing. Runs when Block Diff and/or ignore
       // patterns are active. Block Diff → structural gap-alignment; ignore →
       // normalize matched values so MergeView sees no change. No-op (raw text +
@@ -1630,41 +2343,329 @@
       // here (debounced change timer, afterContentChanged, applyIgnorePatterns,
       // branch init), so re-running on untouched docs is pure waste — skipping
       // it avoids a full parse+align+stringify of both documents.
-      let _lastAlignMemo = null; // { docA, docB, block, pred }
+      let _lastAlignMemo = null; // { docA, docB, block, pred, tol, page, view }
+
+      // ---- Large-collection record paging ------------------------------------
+      // For a top-level array too big to render whole, json_align emits a WINDOW
+      // of records at full fidelity and reports the complete item/field diff
+      // separately. `diffModel` is that complete answer (every item, every
+      // changed field, exact at any size); `diffStats` describes what is
+      // currently on screen. The panes only ever hold real, valid JSON — a
+      // contiguous slice of the data — and `_ignorePristine` keeps the full
+      // text for autosave/export.
+      let diffModel = null;        // JSONAlign model, or null when not an array pair
+      let diffStats = null;        // { view, from, to, itemsTotal, pageSize, truncated }
+      let recordView = 'auto';     // 'auto' (page when large) | 'full' (never page)
+      let recordPageFrom = 0;      // first item index rendered
+      let recordPageSize = null;   // null = size it from the data
+      // Reusable JSONAlign handle (parsed pair + match + model) for the content
+      // currently being shown. Paging renders a different window from this
+      // instead of re-parsing the whole document, which on a ~20 MB pair is the
+      // difference between an instant page turn and several seconds.
+      let _alignHandle = null;
+
+      /* ---- Render budget: size the page by MEASURED diff cost ---------------
+         The record window used to be a fixed character budget (400 KB/side).
+         That is the wrong unit, because CM6's diff cost is not a function of
+         size alone — it is O((N+M)·D), and D varies enormously between datasets.
+         Measured on 300 KB pages:
+
+           dataset 6  (2 % of lines differ) →    0.3 s
+           attom/parcels (8 % differ)       →   12-20 s   ← locks the tab
+           disjoint records (64 % differ)   →   bails out, one chunk, no diff
+
+         A single budget cannot serve all three, and guessing from the line-diff
+         ratio does not work either: 4x the ratio cost 70x the time.
+
+         So don't guess — measure. Render a small probe page, run CM6's own
+         `diff` on it, and scale the real page so the predicted cost lands near
+         DIFF_TARGET_MS. Cost grows ~quadratically with page bytes (measured
+         exponent ≈ 2.1 across datasets), so the page scales with the square
+         root of the headroom.
+
+         This is self-calibrating, which matters for a client-side tool: a
+         constant tuned on one machine would be wrong on a slower one. It also
+         costs nothing in diff QUALITY — chunk count tracks records shown
+         exactly (256 records → 256 chunks, 32 → 32), so a smaller page means
+         fewer records per page, never a coarser diff. The user pages through.
+
+         Result: attom/parcels 12,574 ms → ~400 ms with real field-level chunks
+         instead of a frozen tab. */
+      const DIFF_TARGET_MS = 400;      // budget for ONE synchronous CM6 diff
+      const PROBE_BUDGET = 24000;      // chars rendered for the measurement (~18 KB/side)
+      // How far the probe is allowed to extrapolate. Cost is smooth and ~quadratic
+      // while CM6 stays in full Myers, but the algorithm switches branches on
+      // absolute length (Myers → crudeMatch → give up), so on a mostly-different
+      // page the curve is not even monotonic — measured on the disjoint pair:
+      // 60 ms → 102 ms → 6 ms → 22 ms → 1 ms as the page grew. Extrapolating
+      // through that is meaningless, so those pages only get a small step up.
+      const MAX_PROBE_SCALE = 16;
+      const MAX_PROBE_SCALE_DISSIMILAR = 2;
+      let _renderBudget = null;        // calibrated chars; null = not measured yet
+
+      // The scanLimit a page of this size and similarity would actually run at.
+      function scanLimitForPage(combinedLen, ratio) {
+        return clampScanLimit(SettingsManager.get('scanLimit'), combinedLen, true, ratio);
+      }
+
+      // Time CM6's diff on the probe page, then scale the budget to the target.
+      function calibrateRenderBudget(probe) {
+        const combined = probe.left.length + probe.right.length;
+        const ratio = (probe.stats && typeof probe.stats.diffLineRatio === 'number')
+          ? probe.stats.diffLineRatio : 0;
+        let ms;
+        try {
+          const t0 = performance.now();
+          cmDiff(probe.left, probe.right, { scanLimit: scanLimitForPage(combined, ratio) });
+          ms = Math.max(1, performance.now() - t0);
+        } catch (e) {
+          console.warn('[diff] probe failed, using the default budget', e);
+          return window.JSONAlign.EXPAND_CHAR_BUDGET;
+        }
+        const cap = ratio > MYERS_MAX_DIFF_RATIO
+          ? MAX_PROBE_SCALE_DISSIMILAR : MAX_PROBE_SCALE;
+        const scale = Math.min(cap, Math.sqrt(DIFF_TARGET_MS / ms));
+        const want = Math.round(PROBE_BUDGET * scale);
+        const budget = Math.max(PROBE_BUDGET,
+                                Math.min(window.JSONAlign.EXPAND_CHAR_BUDGET, want));
+        console.info(`[diff] probe ${Math.round(ms)} ms on ${combined} chars (${(ratio * 100).toFixed(0)}% of lines differ) → render budget ${budget}`);
+        return budget;
+      }
+
+      /**
+       * Render the current window from `handle`, sizing the page to the measured
+       * cost of diffing THIS pair. Measures once per content change; page turns
+       * reuse the result (so Next stays instant).
+       */
+      function renderWindow(handle) {
+        const base = { view: recordView, from: recordPageFrom, size: recordPageSize };
+        if (_renderBudget != null) return handle.render({ ...base, budget: _renderBudget });
+
+        const probe = handle.render({ ...base, budget: PROBE_BUDGET });
+        // Small enough to show whole: there is no window to size, and the
+        // pretty render ignores the budget entirely.
+        if (!probe.stats || probe.stats.view !== 'window') return probe;
+
+        _renderBudget = calibrateRenderBudget(probe);
+        // The probe already IS the page at this budget — don't render it twice.
+        if (_renderBudget <= PROBE_BUDGET) return probe;
+        return handle.render({ ...base, budget: _renderBudget });
+      }
+
+      function recordPageCount() {
+        if (!diffStats || !diffStats.itemsTotal) return 1;
+        const size = Math.max(1, (diffStats.to - diffStats.from) || diffStats.pageSize || 1);
+        return Math.max(1, Math.ceil(diffStats.itemsTotal / size));
+      }
+
+      // Drop every piece of state that describes the CURRENT comparison: the
+      // parsed/matched handle (which holds both parsed documents — tens of MB on
+      // a large pair), the model the Details panel and status pill read, the
+      // pager position, the measured render budget and the align memo.
+      //
+      // Clearing content without this left the handle alive, so the old parsed
+      // pair stayed pinned in memory and the pager/Details panel kept describing
+      // records that are no longer loaded.
+      function resetComparisonState() {
+        _alignHandle = null;
+        _renderBudget = null;
+        _lastAlignMemo = null;
+        _cancelledAlign = null;
+        diffModel = null;
+        diffStats = null;
+        recordPageFrom = 0;
+      }
+
+      // Re-render at a new page. The transform must re-run from the FULL text
+      // (kept in _ignorePristine while a window is showing), never from the
+      // window currently in the panes.
+      function gotoRecordPage(from) {
+        if (!diffStats) return;
+        const size = Math.max(1, (diffStats.to - diffStats.from) || diffStats.pageSize || 1);
+        const max = Math.max(0, diffStats.itemsTotal - 1);
+        recordPageFrom = Math.max(0, Math.min(from, max));
+
+        if (_alignHandle) {
+          // Cheap path: same documents, different window (and the page budget is
+          // already calibrated, so no probe on a page turn).
+          const res = renderWindow(_alignHandle);
+          diffModel = res.model; diffStats = res.stats;
+          // Per-page: similarity varies between pages, and it decides the effort.
+          _renderDiffRatio = (res.stats && typeof res.stats.diffLineRatio === 'number')
+            ? res.stats.diffLineRatio : 0;
+          writeAlignedPanes(res.left, res.right);
+          _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
+                             block: blockDiffEnabled(), pred: ignorePredicate,
+                             tol: numToleranceActive(), page: recordPageFrom, view: recordView };
+        } else {
+          const src = _ignorePristine;
+          transformAndDispatch(src ? src.left : mergeView.a.state.doc.toString(),
+                               src ? src.right : mergeView.b.state.doc.toString());
+        }
+        refreshMergeViewIfNeeded();
+        updateDiffStatus();
+        const pageNo = Math.floor(recordPageFrom / size) + 1;
+        updateStatus(`Showing records ${recordPageFrom + 1}–${diffStats ? diffStats.to : recordPageFrom + size} (page ${pageNo} of ${recordPageCount()})`);
+      }
+
+      // Core: align/normalize the given left/right TEXT and write both panes.
+      // Returns true if it transformed & dispatched (caller can then skip a raw
+      // dispatch). Used by applyBlockAlignment (aligns the live panes) and by the
+      // ingest pipeline (aligns the incoming content against the other pane
+      // *before* the first render, so CM6 never diffs the unaligned text). Sets
+      // the pristine snapshot + memo exactly like the original single function.
+      function transformAndDispatch(L, R) {
+        const block = blockDiffEnabled();
+        const pred = ignorePredicate;
+        const tol = numToleranceActive();
+        _alignedRender = false;
+        _alignHandle = null;
+        _renderBudget = null;   // new content ⇒ re-measure the diff cost
+        let res = null;
+        if (window.JSONAlign && (block || pred || tol != null)) {
+          try {
+            if (block) {
+              // prepare() parses + matches + models once; the handle is kept so
+              // paging only has to re-render (see gotoRecordPage).
+              const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol });
+              if (h && h.ok) {
+                _alignHandle = h;
+                res = renderWindow(h);
+              } else {
+                res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
+              }
+            } else {
+              res = window.JSONAlign.normalize(L, R, pred, tol);
+            }
+          } catch (e) { res = null; }
+        }
+        return applyTransformResult(res, L, R, block, pred, tol);
+      }
+
+      /**
+       * Interruptible twin of transformAndDispatch, for payloads big enough that
+       * the synchronous version would visibly lock the tab. Same result; the
+       * expensive half (parse → identity → match → field model) runs in slices
+       * that report progress and stop when `job` is cancelled.
+       *
+       * Falls back to the sync path whenever the async one cannot apply
+       * (no block diff, or JSONAlign has no collection to work with).
+       */
+      async function transformAndDispatchAsync(L, R, job) {
+        const block = blockDiffEnabled();
+        const pred = ignorePredicate;
+        const tol = numToleranceActive();
+        if (!window.JSONAlign || !block || !window.JSONAlign.prepareAsync) {
+          return transformAndDispatch(L, R);
+        }
+        _alignedRender = false;
+        _alignHandle = null;
+        _renderBudget = null;   // new content ⇒ re-measure the diff cost
+
+        let res = null;
+        const h = await window.JSONAlign.prepareAsync(
+          L, R, { ignore: pred, numTol: tol }, jobControl(job));
+
+        if (h && h.ok) {
+          _alignHandle = h;
+          if (job) { job.phase('render'); job.update(0, 1, 'Building comparison view'); }
+          // Let the panel paint the render phase before CM6's own (synchronous,
+          // uninterruptible) diff runs inside the dispatch below.
+          await window.ProcessingUI.yieldToPaint();
+          if (job && job.cancelled) throw new CancelledError();
+          res = renderWindow(h);
+        } else {
+          // Not an array/collection pair (a plain object, say): the whole-value
+          // alignment is not divisible, but it is also not the case that scales.
+          try {
+            res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
+          } catch (e) { res = null; }
+        }
+        const out = applyTransformResult(res, L, R, block, pred, tol);
+        // Close the bar out at 100%: the panes are written and CM6 has diffed.
+        // Without this the last thing the user sees is a bar stuck at 80%.
+        if (job) job.update(1, 1, 'Done');
+        return out;
+      }
+
+      // Shared tail of both transform paths: publish the model, protect the
+      // user's real data, write the panes, memoize.
+      function applyTransformResult(res, L, R, block, pred, tol) {
+        let dispatched = false;
+        if (res && res.ok) {
+          // The item/field model is exact regardless of how much got rendered —
+          // it, not mergeView.chunks, is what the UI reports.
+          diffModel = res.model || null;
+          diffStats = res.stats || null;
+          // Must be set BEFORE writeAlignedPanes: it picks the scanLimit, and
+          // that decision depends on how similar the two rendered sides are.
+          _renderDiffRatio = (res.stats && typeof res.stats.diffLineRatio === 'number')
+            ? res.stats.diffLineRatio : 0;
+          // Snapshot the untransformed pair when the panes no longer hold it
+          // verbatim, so autosave/export keep the user's real data:
+          //  - normalization rewrote values (ignore / numeric tolerance), or
+          //  - the render is a WINDOW over a large collection (records outside
+          //    the current page are not in the pane at all).
+          const normalized = (pred || tol != null) && res.changed;
+          if (normalized || (res.stats && res.stats.truncated)) {
+            _ignorePristine = { left: L, right: R };
+          }
+          writeAlignedPanes(res.left, res.right);
+          dispatched = true;
+        } else {
+          diffModel = null; diffStats = null;
+          // Covers the paths that did NOT dispatch aligned text (normalize-only,
+          // alignment unavailable): the panes still changed, so re-derive the
+          // effort — and re-diff, since nothing is going to write after us.
+          syncDiffConfig();
+          ensureDiffFresh();
+        }
+        // Memoize against the post-dispatch docs (failures too) so the next call
+        // on unchanged content returns in O(1).
+        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
+                           block, pred, tol, page: recordPageFrom, view: recordView };
+        return dispatched;
+      }
 
       function applyBlockAlignment() {
         if (_blockAligning || !window.JSONAlign) return;
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
-        if (!block && !pred) return;
+        const tol = numToleranceActive();
+        if (!block && !pred && tol == null) return;
         const docA = mergeView.a.state.doc;
         const docB = mergeView.b.state.doc;
+        // Respect an explicit cancel until the content actually changes.
+        if (_cancelledAlign && _cancelledAlign.docA === docA && _cancelledAlign.docB === docB) return;
         if (_lastAlignMemo &&
             _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
-            _lastAlignMemo.block === block && _lastAlignMemo.pred === pred) return;
-        const L = docA.toString();
-        const R = docB.toString();
-        let res;
-        try {
-          res = block ? window.JSONAlign.align(L, R, { ignore: pred })
-                      : window.JSONAlign.normalize(L, R, pred);
-        } catch (e) { res = null; }
-        if (res && res.ok) {
-          // `changed` is true only while the input still holds un-normalized
-          // (differing) ignored values → it is "fresh" content. Snapshot the
-          // originals so ignore can be undone and autosave keeps real data.
-          if (pred && res.changed) _ignorePristine = { left: L, right: R };
-          _blockAligning = true;
-          try {
-            setPaneIfChanged(mergeView.a, res.left);
-            setPaneIfChanged(mergeView.b, res.right);
-          } finally {
-            _blockAligning = false;
-          }
+            _lastAlignMemo.block === block && _lastAlignMemo.pred === pred &&
+            _lastAlignMemo.tol === tol && _lastAlignMemo.page === recordPageFrom &&
+            _lastAlignMemo.view === recordView) return;
+        // While a window is showing, the panes hold only the current page —
+        // re-aligning from them would window a window and lose the rest of the
+        // data. _ignorePristine holds the untransformed pair; prefer it.
+        const src = _ignorePristine;
+        const L = src ? src.left : docA.toString();
+        const R = src ? src.right : docB.toString();
+
+        // A re-align after an edit costs the same as the original ingest, so on
+        // a large pair it gets the same interruptible treatment. Returns a
+        // promise; callers that don't await still end up with a correct UI
+        // because the async branch runs afterContentChanged() when it lands.
+        if (block && L.length + R.length > PROGRESS_MIN_BYTES
+            && window.JSONAlign.prepareAsync) {
+          const job = startProcessingJob('Updating comparison');
+          return transformAndDispatchAsync(L, R, job)
+            .then(() => { afterContentChanged(); })
+            .catch((err) => {
+              if (!isCancellation(err)) console.warn('[align] failed', err);
+            })
+            .finally(() => endProcessingJob(job));
         }
-        // Memoize against the post-dispatch docs (failures too) so the next
-        // call on unchanged content returns in O(1).
-        _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc, block, pred };
+
+        transformAndDispatch(L, R);
+        return Promise.resolve();
       }
 
       // Strip alignment gap lines from both panes (used when Block Diff is turned
@@ -1734,6 +2735,9 @@
           collapseUnchanged: newSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
           diffConfig: buildDiffConfig(newSettings.scanLimit, leftContent.length + rightContent.length),
         });
+        // The constructor diffs with exactly that config, so the fresh chunks and
+        // the applied limit agree.
+        _chunkScanLimit = _appliedScanLimit;
 
         // Re-add pane controls
         addPaneControls();
@@ -1814,10 +2818,14 @@
         clearBtn.className = 'copy-clear-btn'; // Add class for easy selection
         clearBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
-          // Un-normalize first so the surviving pane goes back to (and persists)
-          // its real values, and the pristine snapshot can't resurrect the
-          // cleared side on the next save.
-          restoreIgnorePristine();
+          // Stop in-flight work first: an ingest/align that lands after this
+          // would write its panes over the one we just cleared.
+          cancelAllProcessing();
+          // Un-normalize the SURVIVING pane only, so it goes back to (and
+          // persists) its real values. Restoring the side we are about to blank
+          // would just be a wasted multi-MB dispatch. Either way the snapshot is
+          // dropped, so it can't resurrect the cleared side on the next save.
+          restoreIgnorePristine(side === 'left' ? 'right' : 'left');
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: "" }
           });
@@ -1827,6 +2835,10 @@
           // the cleared content back.
           clearTimeout(window.autoSaveTimer);
           saveContent();
+          // Only after the save: saveContent() reads diffStats to refuse writing
+          // a truncated (windowed) pane over the full document, so the state has
+          // to still describe the old comparison at that point.
+          resetComparisonState();
 
           // Save cleared content to current branch
           const branchId = activeBranches[side];
@@ -1842,9 +2854,10 @@
 
           // If both panels are now empty, refresh the MergeView to remove stale collapsed widgets
           try {
-            const leftText = mergeView.a.state.doc.toString().trim();
-            const rightText = mergeView.b.state.doc.toString().trim();
-            if (!leftText && !rightText) {
+            // docIsBlank walks chunks and exits at the first visible char —
+            // never materialize + trim a multi-MB string just to ask "is it
+            // empty?" (the surviving pane can still be the whole document).
+            if (docIsBlank(mergeView.a.state.doc) && docIsBlank(mergeView.b.state.doc)) {
               const currentMergeSettings = loadMergeSettings();
               recreateMergeView(currentMergeSettings, wordWrapEnabled);
               updateClearButtonVisibility();
@@ -2734,7 +3747,6 @@
       // Setup button handlers
       function setupButtons() {
         const btnFormat = document.getElementById("btn-format");
-        const btnSort = document.getElementById("btn-sort");
   const btnShare = document.getElementById("btn-share");
   const btnImport = document.getElementById("btn-import");
         const fileImport = document.getElementById("file-import");
@@ -2743,8 +3755,8 @@
         const autoCSV = document.getElementById("auto-csv-conversion");
 
         btnFormat.onclick = formatJSON;
-        btnSort.onclick = sortJSON;
-        
+        initializeSortPanel();  // wires btn-sort (toggle), sort-apply, btn-sort-keys
+
         btnShare.onclick = shareURL;
         
         // Import snapshot
@@ -2877,6 +3889,138 @@
         }
       }
 
+      // Sort the top-level array of objects in BOTH panes by a field spec such as
+      // "category ASC, amount DESC" (see utils.parseSortSpec). Empty spec falls
+      // back to the default key sort. Each pane is handled independently: a pane
+      // that isn't a top-level array (or won't parse) is left untouched. Returns
+      // an error string to surface in the panel, or null on success.
+      async function sortByFields(spec) {
+        const specs = window.parseSortSpec(spec || '');
+        if (specs.length === 0) { sortJSON(); return null; }  // no criteria → app default
+
+        // While a window is showing, the panes hold ONE PAGE of a much larger
+        // collection. Sorting what is on screen and writing it back would
+        // silently discard every record outside that page — on the 70,752-record
+        // export that is 69,857 records gone. Always sort the complete pair;
+        // _ignorePristine is the untransformed original (same invariant as
+        // applyBlockAlignment / saveContent).
+        const src = _ignorePristine;
+        const texts = src
+          ? [src.left, src.right]
+          : [mergeView.a.state.doc.toString().trim(), mergeView.b.state.doc.toString().trim()];
+        if (!texts.some((t) => t && t.trim())) return 'Add content to a panel to sort.';
+
+        const big = (texts[0] || '').length + (texts[1] || '').length > PROGRESS_MIN_BYTES;
+        const job = big ? startProcessingJob('Sorting records') : null;
+        try {
+          if (job) {
+            job.phase('parse');
+            job.update(0, 2, 'Reading both panels');
+            await window.ProcessingUI.yieldToPaint();
+          }
+
+          let parsedAny = false, sortedAny = false;
+          const out = [];
+          for (let i = 0; i < texts.length; i++) {
+            const text = texts[i];
+            if (!text || !text.trim()) { out.push(null); continue; }
+            let parsed;
+            try { parsed = window.parseFlexibleJSON(text); }
+            catch (e) { out.push(null); continue; }   // leave an unparseable side untouched
+            parsedAny = true;
+            if (!Array.isArray(parsed)) { out.push(null); continue; }
+            sortedAny = true;
+            out.push(JSON.stringify(window.sortJSONByFields(parsed, specs), null, 3));
+            if (job) {
+              job.update(i + 1, 2, `Sorted ${fmtNum(parsed.length)} records`);
+              await window.ProcessingUI.yieldToPaint();
+              if (job.cancelled) throw new CancelledError();
+            }
+          }
+
+          if (!parsedAny) return 'Could not parse JSON — fix it and try again.';
+          if (!sortedAny) return 'Sort by field needs a top-level array of objects.';
+
+          const L = out[0] != null ? out[0] : texts[0];
+          const R = out[1] != null ? out[1] : texts[1];
+
+          // The order changed, so any page number we were on is meaningless.
+          recordPageFrom = 0;
+          _ignorePristine = null;     // the sorted pair is the new original
+          _lastAlignMemo = null;
+
+          if (transformActive() && L.trim() && R.trim()) {
+            if (job && L.length + R.length > PROGRESS_MIN_BYTES) {
+              await transformAndDispatchAsync(L, R, job);
+            } else {
+              transformAndDispatch(L, R);
+            }
+          } else {
+            _blockAligning = true;
+            try {
+              setPaneIfChanged(mergeView.a, L);
+              setPaneIfChanged(mergeView.b, R);
+            } finally { _blockAligning = false; }
+            syncDiffConfig();
+            ensureDiffFresh();
+          }
+
+          updateStatus('Sorted by ' + specs.map((s) => s.field + (s.dir < 0 ? ' ↓' : ' ↑')).join(', '));
+          updateDiffStatus();
+          refreshMergeViewIfNeeded();
+          return null;
+        } catch (err) {
+          if (isCancellation(err)) return null;
+          console.warn('[sort] failed', err);
+          return 'Sorting failed: ' + (err && err.message ? err.message : err);
+        } finally {
+          endProcessingJob(job);
+        }
+      }
+
+      // Wire the Sort dropdown: toggle open/close, the field-sort input/Apply, and
+      // the "Sort keys A→Z" fallback item.
+      function initializeSortPanel() {
+        const btn = document.getElementById('btn-sort');
+        const panel = document.getElementById('sort-panel');
+        const input = document.getElementById('sort-input');
+        const applyBtn = document.getElementById('sort-apply');
+        const keysBtn = document.getElementById('btn-sort-keys');
+        if (!btn || !panel) return;
+
+        const showErr = (msg) => {
+          const el = document.getElementById('sort-error');
+          if (!el) return;
+          if (msg) { el.textContent = msg; el.style.display = 'block'; }
+          else { el.textContent = ''; el.style.display = 'none'; }
+        };
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = panel.style.display !== 'none';
+          panel.style.display = open ? 'none' : 'block';
+          if (!open) { showErr(''); if (input) setTimeout(() => input.focus(), 0); }
+        });
+        document.addEventListener('click', (e) => {
+          if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            panel.style.display = 'none';
+          }
+        });
+
+        const runSort = async () => {
+          const err = await sortByFields(input ? input.value : '');
+          if (err) { showErr(err); return; }
+          showErr('');
+          panel.style.display = 'none';
+        };
+        if (applyBtn) applyBtn.addEventListener('click', runSort);
+        if (input) {
+          input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runSort(); } });
+          input.addEventListener('input', () => showErr(''));
+        }
+        if (keysBtn) keysBtn.addEventListener('click', () => { sortJSON(); panel.style.display = 'none'; });
+      }
+
       function buildJSONString(data, options = {}) {
         let content = data;
         if (options.autoSort && typeof window.sortJSONKeys === 'function') {
@@ -2947,23 +4091,19 @@
           // Use unified snapshot handler (supports both .zip and .json.gz)
           const data = await SnapshotHandler.importSnapshot(file);
           
-          // Apply settings from snapshot if present
+          // Apply settings from snapshot if present. Written in one batch (not
+          // one localStorage round-trip per key); applyComparisonSettings()
+          // below turns them into live state so the reopened comparison is
+          // computed exactly the way it was exported.
           if (data.settings && typeof data.settings === 'object') {
             try {
-              Object.keys(data.settings).forEach(key => {
-                SettingsManager.set(key, data.settings[key]);
-              });
+              SettingsManager.saveAll(data.settings);
               console.log('Settings loaded from snapshot:', data.settings);
-              
-              // Reload global settings
-              wordWrapEnabled = SettingsManager.get('wordWrap');
-              scrollLocked = SettingsManager.get('scrollLock');
-              currentTheme = SettingsManager.get('theme');
             } catch (err) {
               console.warn('Failed to apply snapshot settings:', err);
             }
           }
-          
+
           mergeView.a.dispatch({
             changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
           });
@@ -3004,6 +4144,10 @@
               recreateMergeView(currentSettings, wordWrapEnabled);
               initializeSettingsPanel();
               initializeThemeSelector();
+              // Ignore rules, numeric tolerance and block diff decide what the
+              // diff reports; without this they were stored but never applied,
+              // so an imported comparison did not reproduce.
+              applyComparisonSettings();
               
               // Update branch selectors with imported values
               updateBranchSelectors();
@@ -3025,23 +4169,19 @@
           // Use unified snapshot handler (supports both .zip and .json.gz)
           const data = await SnapshotHandler.importSnapshot(file);
           
-          // Apply settings from snapshot if present
+          // Apply settings from snapshot if present. Written in one batch (not
+          // one localStorage round-trip per key); applyComparisonSettings()
+          // below turns them into live state so the reopened comparison is
+          // computed exactly the way it was exported.
           if (data.settings && typeof data.settings === 'object') {
             try {
-              Object.keys(data.settings).forEach(key => {
-                SettingsManager.set(key, data.settings[key]);
-              });
+              SettingsManager.saveAll(data.settings);
               console.log('Settings loaded from snapshot:', data.settings);
-              
-              // Reload global settings
-              wordWrapEnabled = SettingsManager.get('wordWrap');
-              scrollLocked = SettingsManager.get('scrollLock');
-              currentTheme = SettingsManager.get('theme');
             } catch (err) {
               console.warn('Failed to apply snapshot settings:', err);
             }
           }
-          
+
           mergeView.a.dispatch({
             changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
           });
@@ -3082,6 +4222,10 @@
               recreateMergeView(currentSettings, wordWrapEnabled);
               initializeSettingsPanel();
               initializeThemeSelector();
+              // Ignore rules, numeric tolerance and block diff decide what the
+              // diff reports; without this they were stored but never applied,
+              // so an imported comparison did not reproduce.
+              applyComparisonSettings();
               
               // Update branch selectors with imported values
               updateBranchSelectors();
@@ -3280,10 +4424,17 @@
       //  tab stays alive, and coalesces the follow-up work into one pass.
       // ============================================================
 
-      // Cap on rendered "cells" (~object keys × rows) per panel. Wide CSVs
-      // (many columns) sample fewer rows; narrow CSVs sample many. This keeps
-      // the MergeView responsive instead of trying to render millions of lines.
-      const MAX_RENDER_CELLS_PER_PANEL = 150000;
+      // Cap on ingested "cells" (~object keys × rows) per panel. Wide CSVs
+      // (many columns) sample fewer rows; narrow CSVs sample many.
+      //
+      // This used to bound what MergeView had to RENDER, which meant dropping
+      // rows — a 2,000-row × 158-column export was silently cut to ~1,390 rows
+      // and those rows were never compared at all. Rendering is now bounded
+      // where it belongs, by json_align's record window (see json_align.js
+      // "SCALE"), so this only needs to bound parse + memory. Raised so real
+      // exports are compared in full; the row-cap disclosure toast and
+      // __ingestConvertAll escape hatch still apply beyond it.
+      const MAX_RENDER_CELLS_PER_PANEL = 2000000;
       // Raw CSV larger than this is always parsed in the worker.
       const OFFTHREAD_CSV_THRESHOLD = 100 * 1024;        // 100 KB
       // Combined content above this turns on collapse-unchanged before render.
@@ -3363,7 +4514,7 @@
 
       // Convert CSV → pretty JSON string off the main thread, sampling rows
       // for very large inputs. Returns { json, builtRows, approxTotalRows, truncated }.
-      async function csvToJsonStringOffThread(csvText, { autoSort = false, side } = {}) {
+      async function csvToJsonStringOffThread(csvText, { autoSort = false, side, job } = {}) {
         const columns = countColumns(csvText);
         const override = side ? ingestRowCapOverride[side] : false;
         const maxRows = override
@@ -3377,8 +4528,15 @@
               options: { coerceTypes: true },
               maxRows,
               autoSort
-            });
+            }, job && ((p) => {
+              if (p.phase === 'stringify') {
+                job.update(p.total, p.total, `Serializing ${fmtNum(p.rows)} records`);
+              } else {
+                job.update(p.done, p.total, `${fmtNum(p.rows)} rows parsed`);
+              }
+            }));
           } catch (err) {
+            if (isCancellation(err)) throw err;
             console.warn('[ingest] worker CSV parse failed, using main thread:', err);
           }
         }
@@ -3439,7 +4597,11 @@
           collapse.checked = true;
           const quick = document.getElementById('quick-collapse-unchanged');
           if (quick) quick.checked = true;
-          SettingsManager.set('collapseUnchanged', true);
+          // Deliberately NOT persisted. This is a transient posture for one large
+          // paste; writing it to settings permanently flipped a preference the
+          // user had turned off, which then "came back on by itself" after every
+          // reload. The live view is reconfigured; the stored choice is theirs.
+          _collapseForcedBySize = true;
           if (canReconfigure()) {
             mergeView.reconfigure(buildReconfigureConfig({
               highlightChanges: document.getElementById('setting-highlight-changes')?.checked ?? true,
@@ -3459,6 +4621,32 @@
       async function ingestContent(rawText, side, opts = {}) {
         if (rawText == null) return;
         const editor = side === 'left' ? mergeView.a : mergeView.b;
+        // Only large payloads get the progress panel + interruptible pipeline;
+        // anything smaller is done before the panel would even appear.
+        const otherLenNow = (side === 'left' ? mergeView.b : mergeView.a).state.doc.length;
+        const job = (rawText.length + otherLenNow > PROGRESS_MIN_BYTES)
+          ? startProcessingJob(side === 'left' ? 'Processing left panel' : 'Processing right panel')
+          : null;
+        try {
+          return await ingestContentInner(rawText, side, opts, editor, job);
+        } catch (err) {
+          if (isCancellation(err)) {
+            // Cancellation is a normal outcome, not a failure. The panes were
+            // never half-written (every cancel point is before a pane write), so
+            // there is nothing to roll back — just leave the app ready.
+            updateStatus('Processing cancelled');
+            return;
+          }
+          console.warn('[ingest] failed', err);
+          updateStatus('Processing failed: ' + (err && err.message ? err.message : err));
+          setDiffSummary('warn', 'Processing failed — try again or clear the panels');
+          return;
+        } finally {
+          endProcessingJob(job);
+        }
+      }
+
+      async function ingestContentInner(rawText, side, opts, editor, job) {
 
         const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
         const autoFormat = document.getElementById('auto-format-json')?.checked;
@@ -3487,9 +4675,10 @@
         if (!handled && (opts.forceCsv || (autoCSV && cheapLooksLikeCSV(rawText)))) {
           lastRawCsv[side] = rawText;
           setIngestBusy('Converting CSV…');
+          if (job) { job.phase('csv'); job.update(0, rawText.length, 'Reading file'); }
           await nextPaint();
           try {
-            const res = await csvToJsonStringOffThread(rawText, { autoSort, side });
+            const res = await csvToJsonStringOffThread(rawText, { autoSort, side, job });
             content = res.json;
             handled = true;
             if (res.truncated) showSampleNotice(side, res.builtRows, res.approxTotalRows);
@@ -3497,18 +4686,56 @@
               ? `CSV converted (first ${res.builtRows.toLocaleString()} of ~${res.approxTotalRows.toLocaleString()} rows)`
               : 'CSV converted to JSON');
           } catch (err) {
+            if (isCancellation(err)) throw err;   // handled by the caller
             updateStatus('CSV conversion failed: ' + (err && err.message ? err.message : err));
             showErrorMessage('CSV conversion failed: ' + (err && err.message ? err.message : err));
             return;
           }
         }
 
+        if (job && job.cancelled) throw new CancelledError();
+
         // 3) Proactive performance posture before the heavy render.
         await applyProactivePosture(content, side);
         await nextPaint();
 
-        // 4) One dispatch.
-        editor.dispatch({ changes: { from, to, insert: content } });
+        // 4) Dispatch. When a transform (block-diff / ignore / tolerance) is
+        //    active and the OTHER pane already holds content, align BOTH sides
+        //    *before* the first render so CM6 never diffs the unaligned text. For
+        //    CSV-derived JSON whose columns differ only in order, the raw text
+        //    differs on ~98% of lines while the records are the same — diffing
+        //    that (and re-diffing it through the collapse/count cascade below)
+        //    is what locks the main thread. Aligning first collapses it to the
+        //    handful of genuinely-changed fields. Only for a full-doc replace;
+        //    range/partial pastes dispatch normally and re-align on the debounce.
+        const fullReplace = (from === 0 && to === editor.state.doc.length);
+        const otherPane = side === 'left' ? mergeView.b : mergeView.a;
+        const otherText = otherPane.state.doc.toString();
+        let dispatched = false;
+        if (fullReplace && transformActive() && content.trim() && otherText.trim()) {
+          const L = side === 'left' ? content : otherText;
+          const R = side === 'left' ? otherText : content;
+          // Big pairs take the interruptible path so the panel keeps updating
+          // and Cancel stays clickable through match + model.
+          dispatched = (job && L.length + R.length > PROGRESS_MIN_BYTES)
+            ? await transformAndDispatchAsync(L, R, job)
+            : transformAndDispatch(L, R);
+        }
+        if (!dispatched) {
+          // The write itself is the whole cost when there is no transform to run
+          // (the first file of a pair, with the other pane still empty): handing
+          // CodeMirror a 20 MB document is seconds of synchronous work that no
+          // phase used to cover, so the panel sat on "Parsing CSV data" while the
+          // tab locked. Announce it and let the panel paint before we block.
+          if (job) {
+            job.phase('render');
+            job.update(0, 1, `Loading ${fmtBytes(content.length)} into the editor`);
+            await window.ProcessingUI.yieldToPaint();
+            if (job.cancelled) throw new CancelledError();
+          }
+          editor.dispatch({ changes: { from, to, insert: content } });
+          if (job) job.update(1, 1, 'Done');
+        }
 
         // 5) Coalesced follow-up.
         afterContentChanged({ checkSize: true });
@@ -3594,9 +4821,15 @@
       async function clearAll() {
         if (!confirm("Clear all content?")) return;
 
+        // Stop anything still running first, or an in-flight ingest would write
+        // its panes over the freshly-cleared editors a moment later.
+        cancelAllProcessing();
+
         // Drop the pre-normalization snapshot up front so nothing downstream
-        // (autosave, export) can persist the old content back.
+        // (autosave, export) can persist the old content back, and release the
+        // parsed pair / model / pager with it.
         _ignorePristine = null;
+        resetComparisonState();
 
         mergeView.a.dispatch({
           changes: { from: 0, to: mergeView.a.state.doc.length, insert: "" }
@@ -3610,7 +4843,12 @@
         // IndexedDB fallback) and cancel the autosave the dispatches above just
         // scheduled, so a refresh starts truly clean instead of re-saving stale
         // state.
+        // Also cancel the debounced follow-ups those dispatches just scheduled:
+        // re-aligning, re-diffing and re-sniffing CSV on two empty documents is
+        // pure waste that used to run 300-500 ms after every clear.
         clearTimeout(window.autoSaveTimer);
+        clearTimeout(window.diffRefreshTimer);
+        clearTimeout(window.csvButtonTimer);
         try {
           StorageManager.clearStorage();
         } catch (err) {
@@ -3657,7 +4895,31 @@
 
       // Save content to storage (called by auto-save extension)
       function saveContent() {
-        const total = mergeView.a.state.doc.length + mergeView.b.state.doc.length;
+        // What gets WRITTEN is the pristine pair when one exists (ignore /
+        // tolerance normalization, or a windowed render of a large collection),
+        // otherwise the panes. Size the guard against that, not against the
+        // panes: with a window showing, the panes are a ~300 KB page while the
+        // pristine pair is the whole multi-MB document, so measuring the panes
+        // waved a 20 MB synchronous write straight past the 4 MB limit and
+        // stalled the tab on every debounced change.
+        const pristine = _ignorePristine;
+
+        // Never write a partial document over the user's data. While a large
+        // collection is paged, the panes hold ONE WINDOW of it; the whole thing
+        // lives in `pristine`. If that snapshot is gone (an edit invalidated it)
+        // we have nothing complete to save, and persisting the panes would drop
+        // every record outside the current page — on reload the file would come
+        // back as just those 60 records.
+        if (diffStats && diffStats.truncated && !pristine) {
+          updateClearButtonVisibility();
+          updateDiffStatus();
+          updatePaneButtonVisibility();
+          return;
+        }
+
+        const total = pristine
+          ? pristine.left.length + pristine.right.length
+          : mergeView.a.state.doc.length + mergeView.b.state.doc.length;
 
         if (total > AUTOSAVE_MAX_BYTES) {
           // Too large for localStorage. Skip the synchronous multi-MB
@@ -3674,11 +4936,11 @@
           }
         } else {
           window.__autosaveSkipNotified = false;
-          // When ignore-normalization is active the right pane shows the left's
-          // value for ignored fields — persist the pre-normalized originals so a
-          // reload / export keeps real data rather than the normalized view.
-          const leftContent = _ignorePristine ? _ignorePristine.left : mergeView.a.state.doc.toString();
-          const rightContent = _ignorePristine ? _ignorePristine.right : mergeView.b.state.doc.toString();
+          // Materialized only once we know it is small enough to write — the
+          // whole point of the guard above is to skip this toString() on
+          // multi-MB content.
+          const leftContent = pristine ? pristine.left : mergeView.a.state.doc.toString();
+          const rightContent = pristine ? pristine.right : mergeView.b.state.doc.toString();
           try {
             StorageManager.saveToStorage(leftContent, rightContent);
           } catch (e) {
@@ -3767,7 +5029,10 @@
         }
 
         // Optional viewport-diff mode computes its own (visible-area) count.
-        if (viewportDiffManager?.enabled) {
+        // Only consulted when there is no structural model: an approximate
+        // "~5 differences in view" is strictly worse than an exact item and
+        // field count for the whole collection.
+        if (!diffModel && viewportDiffManager?.enabled) {
           const result = viewportDiffManager.calculateViewportDiff();
           if (result) {
             setDiffSummary('diff', viewportDiffManager.getDiffStatusMessage() || 'Calculating…');
@@ -3776,14 +5041,231 @@
           }
         }
 
+        // Prefer the structural model: it counts every item and every changed
+        // field across the WHOLE collection, independent of how much is
+        // rendered. mergeView.chunks only ever describes the visible text, and
+        // on a large document it is the thing that used to collapse to "1".
+        if (diffModel) {
+          const t = diffModel.totals;
+          if (!t.changed && !t.added && !t.removed && !t.moved) {
+            const ignoredHere = !!ignoreMatcher || numToleranceActive() != null;
+            setDiffSummary('same', ignoredHere ? 'No differences (excluded matches ignored)' : 'No differences');
+          } else {
+            const bits = [];
+            if (t.changed) bits.push(`${fmtNum(t.changed)} changed`);
+            if (t.added) bits.push(`${fmtNum(t.added)} added`);
+            if (t.removed) bits.push(`${fmtNum(t.removed)} removed`);
+            if (t.moved) bits.push(`${fmtNum(t.moved)} moved`);
+            let msg = `${bits.join(', ')} of ${fmtNum(t.total)} items`;
+            if (t.fieldChanges) msg += ` · ${fmtNum(t.fieldChanges)} field change${t.fieldChanges !== 1 ? 's' : ''}`;
+            // Nothing on either side could be matched to anything on the other.
+            // Say so: the panes correctly show whole-record adds and removes,
+            // and without this the user reads "70,752 added" as a result rather
+            // than as "these two files have no records in common".
+            if (!t.same && !t.changed && !t.moved && (t.added || t.removed)) {
+              msg += ' · no records in common';
+            }
+            setDiffSummary('diff', msg);
+          }
+          updateRecordPager();
+          renderDiffDetails();
+          updateDiffNavState();
+          return;
+        }
+
         const chunkCount = countVisibleChunks();
         if (chunkCount === 0) {
           const ignoredHere = !!ignoreMatcher && (mergeView?.chunks?.length || 0) > 0;
           setDiffSummary('same', ignoredHere ? 'No differences (excluded matches ignored)' : 'No differences');
+        } else if (diffIsDegraded()) {
+          // CM6 gave up and returned one change spanning the document. Reporting
+          // "1 changed block" here reads as a result; it is the absence of one.
+          setDiffSummary('warn', _renderDiffRatio > MYERS_MAX_DIFF_RATIO
+            ? 'These records differ too much for line-by-line highlighting — open Details for the exact breakdown'
+            : 'Too large to compare precisely — use CSV→JSON so records can be matched individually');
         } else {
           setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }
+        updateRecordPager();
         updateDiffNavState();
+      }
+
+      function fmtNum(n) { return Number(n).toLocaleString(); }
+
+      function fmtBytes(n) {
+        if (n < 1024) return n + ' B';
+        if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+        return (n / 1048576).toFixed(1) + ' MB';
+      }
+
+      // True when CM6 abandoned the diff and returned a single change covering
+      // (essentially) the whole document — its `min(lenA,lenB) > scanLimit*64`
+      // branch, where scanLimit is already halved internally. Detected rather
+      // than guessed: one chunk that spans most of both sides, on content past
+      // that threshold, is the crude fallback and not a real result.
+      function diffIsDegraded() {
+        const chunks = mergeView?.chunks;
+        if (!chunks || chunks.length !== 1) return false;
+        const aLen = mergeView.a.state.doc.length, bLen = mergeView.b.state.doc.length;
+        // The limit the visible chunks were computed with, which is not always the
+        // one currently configured (see ensureDiffFresh).
+        const internal = (_chunkScanLimit || _appliedScanLimit || 6000) >> 1;
+        if (Math.min(aLen, bLen) <= internal * 64) return false;
+        const c = chunks[0];
+        const spanA = (c.toA - c.fromA) / Math.max(1, aLen);
+        const spanB = (c.toB - c.fromB) / Math.max(1, bLen);
+        return spanA > 0.5 && spanB > 0.5;
+      }
+
+      // ---- Record pager -------------------------------------------------------
+      function updateRecordPager() {
+        const pager = document.getElementById('record-pager');
+        const label = document.getElementById('record-pager-label');
+        const prev = document.getElementById('btn-page-prev');
+        const next = document.getElementById('btn-page-next');
+        const details = document.getElementById('btn-diff-details');
+        if (!pager) return;
+
+        if (details) details.style.display = diffModel ? '' : 'none';
+
+        if (!diffStats || !diffStats.truncated) {
+          pager.style.display = 'none';
+          return;
+        }
+        pager.style.display = '';
+        const size = Math.max(1, (diffStats.to - diffStats.from) || 1);
+        label.textContent = `${fmtNum(diffStats.from + 1)}–${fmtNum(diffStats.to)} of ${fmtNum(diffStats.itemsTotal)}`;
+        label.title = `Records ${diffStats.from + 1}–${diffStats.to} of ${diffStats.itemsTotal} shown. `
+          + `All ${diffStats.itemsTotal} are compared — open Details for the full breakdown.`;
+        prev.disabled = diffStats.from <= 0;
+        next.disabled = diffStats.to >= diffStats.itemsTotal;
+        prev.onclick = () => gotoRecordPage(diffStats.from - size);
+        next.onclick = () => gotoRecordPage(diffStats.to);
+      }
+
+      // ---- Field-level details panel -----------------------------------------
+      // Renders straight off the structural model, so it lists every changed
+      // item and field in the collection — not just what fits on screen.
+      const DD_MAX_ROWS = 500;   // keep the DOM small; filter narrows it down
+
+      function renderDiffDetails() {
+        const box = document.getElementById('diff-details');
+        if (!box || box.style.display === 'none') return;
+        const meta = document.getElementById('diff-details-meta');
+        const fieldsEl = document.getElementById('diff-details-fields');
+        const itemsEl = document.getElementById('diff-details-items');
+        const q = (document.getElementById('diff-details-filter').value || '').trim().toLowerCase();
+
+        if (!diffModel) {
+          meta.textContent = '';
+          fieldsEl.innerHTML = '';
+          itemsEl.innerHTML = '<div class="dd-empty">Load two JSON arrays to see a field-level breakdown.</div>';
+          return;
+        }
+
+        const t = diffModel.totals;
+        const matched = diffModel.idKey
+          ? `matched on <code>${escapeHtml(diffModel.idKey)}</code>`
+          : `matched by ${diffModel.strategy === 'lcs' ? 'content' : diffModel.strategy}`;
+        meta.innerHTML = `${fmtNum(t.total)} items ${matched} — `
+          + `<strong>${fmtNum(t.changed)}</strong> changed, ${fmtNum(t.added)} added, `
+          + `${fmtNum(t.removed)} removed, ${fmtNum(t.moved || 0)} moved, `
+          + `<strong>${fmtNum(t.fieldChanges)}</strong> field changes`;
+
+        // Field histogram, most-affected first.
+        const fields = Object.keys(diffModel.fields)
+          .map(k => [k, diffModel.fields[k]])
+          .filter(([k]) => !q || k.toLowerCase().includes(q))
+          .sort((a, b) => b[1] - a[1]);
+        const top = fields.length ? fields[0][1] : 1;
+        fieldsEl.innerHTML = fields.length
+          ? fields.map(([k, n]) => `<div class="dd-field-row">
+                <span class="dd-field-name" title="${escapeHtml(k)}">${escapeHtml(k)}</span>
+                <span class="dd-bar"><span style="width:${Math.round(n / top * 100)}%"></span></span>
+                <span class="dd-count">${fmtNum(n)}</span>
+              </div>`).join('')
+          : '<div class="dd-empty">No fields match that filter.</div>';
+
+        // Changed items. Clicking one pages to it.
+        const src = idSource();   // parsed once per render, not per row
+        const rows = [];
+        for (let p = 0; p < diffModel.items.length && rows.length < DD_MAX_ROWS; p++) {
+          const it = diffModel.items[p];
+          if (it.status === 'same') continue;
+          // A move is one record occupying two rows (a removal and an addition
+          // that share an identity). List it once, from the left-hand side.
+          if (it.status === 'moved' && it.a === null) continue;
+          const keys = it.changed.concat(it.onlyA.map(k => k + ' (left only)'))
+                                 .concat(it.onlyB.map(k => k + ' (right only)'));
+          const label = itemLabel(it, src);
+          if (q && !label.toLowerCase().includes(q) && !keys.some(k => k.toLowerCase().includes(q))) continue;
+          rows.push(`<div class="dd-item-row" data-index="${p}" title="Jump to this record">
+              <span class="dd-badge ${it.status}">${it.status}</span>
+              <span class="dd-field-name">${escapeHtml(label)}${keys.length ? ' — ' + escapeHtml(keys.join(', ')) : ''}</span>
+            </div>`);
+        }
+        itemsEl.innerHTML = rows.length
+          ? rows.join('') + (rows.length >= DD_MAX_ROWS
+              ? `<div class="dd-empty">Showing the first ${DD_MAX_ROWS}. Use the filter to narrow down.</div>` : '')
+          : '<div class="dd-empty">No items match that filter.</div>';
+
+        itemsEl.querySelectorAll('.dd-item-row').forEach(row => {
+          row.onclick = () => gotoRecordPage(parseInt(row.dataset.index, 10));
+        });
+      }
+
+      // Parsed copies of both sides, used only to label rows with their identity
+      // value. Cached against the exact text objects so a filter keystroke never
+      // re-parses a multi-MB document.
+      let _idSourceCache = null; // { key, left, right }
+
+      function idSource() {
+        if (!diffModel || !diffModel.idKey) return null;
+        const L = _ignorePristine ? _ignorePristine.left : mergeView.a.state.doc.toString();
+        const R = _ignorePristine ? _ignorePristine.right : mergeView.b.state.doc.toString();
+        if (_idSourceCache && _idSourceCache.key === L.length + ':' + R.length + ':' + diffModel.idKey) {
+          return _idSourceCache;
+        }
+        try {
+          // The model describes the COLLECTION, which for an envelope shape
+          // ({data:[...]}) lives one key down — index the same array it counted.
+          const at = (v) => (diffModel.path == null || !v) ? v : v[diffModel.path];
+          _idSourceCache = {
+            key: L.length + ':' + R.length + ':' + diffModel.idKey,
+            left: at(JSON.parse(L)), right: at(JSON.parse(R))
+          };
+        } catch (e) { _idSourceCache = null; }
+        return _idSourceCache;
+      }
+
+      // A human handle for a record: its identity value when we found one.
+      function itemLabel(it, src) {
+        const idx = it.a !== null ? it.a : it.b;
+        const base = `#${idx + 1}`;
+        if (!src) return base;
+        const side = it.a !== null ? src.left : src.right;
+        const rec = side && side[idx];
+        const v = rec && rec[diffModel.idKey];
+        return v === undefined || v === null ? base : `${base} ${diffModel.idKey}=${v}`;
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c =>
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      }
+
+      function initDiffDetails() {
+        const btn = document.getElementById('btn-diff-details');
+        const box = document.getElementById('diff-details');
+        const close = document.getElementById('btn-diff-details-close');
+        const filter = document.getElementById('diff-details-filter');
+        if (!btn || !box) return;
+        btn.addEventListener('click', () => {
+          box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+          renderDiffDetails();
+        });
+        close.addEventListener('click', () => { box.style.display = 'none'; });
+        filter.addEventListener('input', renderDiffDetails);
       }
 
       // Count diff chunks, skipping any whose changed lines lie entirely within

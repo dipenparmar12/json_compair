@@ -247,8 +247,13 @@
     KEY: "json_compair_settings",
     defaults: {
       autoCsv: false,
-      autoFormatJson: true,     // Auto-format JSON on paste/drop
-      autoSortKeys: false,      // Auto-sort keys on paste/drop
+      // Read and written as `autoFormat` / `autoSort` everywhere in the app.
+      // They were also declared here as `autoFormatJson` / `autoSortKeys`, which
+      // nothing read — so the intended "auto-format on" default never applied,
+      // and storage ended up carrying both names with disagreeing values. One
+      // name each, matching the readers.
+      autoFormat: true,         // Auto-format JSON on paste/drop
+      autoSort: false,          // Auto-sort keys on paste/drop
       showOnlyDiffs: false,
       wordWrap: true,       // Default word wrap enabled
       scrollLock: true,     // Default scroll lock enabled
@@ -261,6 +266,8 @@
       ignorePatterns: [],   // Key names / /regex/ excluded from the diff (grayed out)
       ignoreScope: "both",  // What patterns match: 'key' | 'value' | 'both'
       ignoreStyled: true,   // Show excluded matches with a subdued gray tint
+      numToleranceEnabled: false, // Treat near-equal numbers as identical in the diff
+      numTolerance: 0.001,  // Max |a-b| ignored when numToleranceEnabled (e.g. 0.001 ≈ 3 dp)
 
       orientation: "a-b",
       revertControls: "none",
@@ -361,7 +368,6 @@
       left: JSON.stringify(
         {
           user_id: 10482,
-          legacy_id: "USR-2021-994",
           username: "alex_developer",
           status: "pending_verification",
           role: "editor",
@@ -370,7 +376,6 @@
             last_name: "Morgan",
             email: "alex.morgan@example.com",
             phone: "+1-555-019-2834",
-            avatar_url: "https://cdn.example.com/avatars/user-10482.jpg",
             address: {
               street: "742 Evergreen Terrace",
               city: "Springfield",
@@ -384,8 +389,7 @@
             last_login: "2026-07-20T14:22:10Z",
             login_count: 42,
             email_verified: false
-          },
-          roles: ["content_creator", "beta_tester"]
+          }
         },
         null,
         2
@@ -397,27 +401,16 @@
           status: "active",
           role: "admin",
           profile: {
-            first_name: "Alexander",
+            first_name: "Alex",
             last_name: "Morgan",
             email: "alex.morgan@example.com",
             phone: "+1-555-019-2834",
-            avatar_url: "https://cdn.example.com/avatars/v2/user-10482.webp",
             address: {
               street: "742 Evergreen Terrace",
-              suite: "Building B, Suite 400",
               city: "Springfield",
               state: "IL",
               postal_code: "62704",
               country: "USA"
-            }
-          },
-          preferences: {
-            theme: "dark",
-            language: "en-US",
-            notifications: {
-              email: true,
-              push: false,
-              sms: true
             }
           },
           account: {
@@ -426,8 +419,7 @@
             login_count: 87,
             email_verified: true,
             mfa_enabled: true
-          },
-          roles: ["content_creator", "beta_tester", "system_administrator"]
+          }
         },
         null,
         2
@@ -438,7 +430,6 @@
         {
           status_code: 200,
           message: "Success",
-          data_version: "1.0",
           page: 1,
           per_page: 2,
           total_records: 4,
@@ -467,27 +458,19 @@
       right: JSON.stringify(
         {
           status_code: 200,
-          message: "Operation completed successfully",
-          data_version: "2.0",
-          meta: {
-            pagination: {
-              current_page: 1,
-              per_page: 2,
-              total_records: 5,
-              total_pages: 3,
-              has_next: true
-            },
-            response_time_ms: 42
-          },
+          message: "Success",
+          page: 1,
+          per_page: 2,
+          total_records: 5,
           products: [
             {
               id: "PROD-101",
               name: "Wireless Noise-Canceling Headphones",
-              category: "Audio & Sound",
+              category: "Audio",
               price: 179.99,
               in_stock: true,
               rating: 4.8,
-              tags: ["audio", "wireless", "bluetooth", "noise-canceling"]
+              tags: ["audio", "wireless", "bluetooth"]
             },
             {
               id: "PROD-102",
@@ -495,8 +478,7 @@
               category: "Peripherals",
               price: 129.50,
               in_stock: true,
-              rating: 4.6,
-              tags: ["office", "keyboard", "rgb"]
+              tags: ["office", "keyboard"]
             }
           ]
         },
@@ -791,11 +773,84 @@
     });
   }
 
+  // ---- Sort array items by field value(s) --------------------------------
+  // Parse a sort spec like "category ASC, amount DESC" or "state, city, zipCode"
+  // into descriptors [{ field, dir, path }]. Direction defaults to ascending;
+  // a trailing " ASC" / " DESC" (case-insensitive) sets it. Dot-notation in a
+  // field name addresses nested values ("address.city"). Returns [] for junk.
+  function parseSortSpec(spec) {
+    if (typeof spec !== 'string') return [];
+    const out = [];
+    spec.split(',').forEach((raw) => {
+      const token = raw.trim();
+      if (!token) return;
+      let field = token, dir = 1;
+      const m = token.match(/^(.+?)\s+(asc|desc)$/i);
+      if (m) { field = m[1].trim(); dir = m[2].toLowerCase() === 'desc' ? -1 : 1; }
+      if (!field) return;
+      out.push({ field, dir, path: field.split('.').map((p) => p.trim()).filter(Boolean) });
+    });
+    return out;
+  }
+
+  // Read a (possibly nested) value by path array. undefined if any hop missing.
+  function getByPath(obj, path) {
+    let v = obj;
+    for (let i = 0; i < path.length; i++) {
+      if (v === null || typeof v !== 'object') return undefined;
+      v = v[path[i]];
+    }
+    return v;
+  }
+
+  // Compare two non-null primitives (numbers numeric, else locale/numeric-aware
+  // case-insensitive string compare; objects/arrays fall back to JSON string).
+  function compareScalar(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return a === b ? 0 : (a < b ? -1 : 1);
+    if (typeof a === 'boolean' && typeof b === 'boolean') return a === b ? 0 : (a ? 1 : -1);
+    const as = (a !== null && typeof a === 'object') ? JSON.stringify(a) : String(a);
+    const bs = (b !== null && typeof b === 'object') ? JSON.stringify(b) : String(b);
+    return as.localeCompare(bs, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  // Build a multi-key comparator from parsed specs. null/undefined always sort
+  // last (independent of direction); ties fall through to the next key.
+  function makeFieldComparator(specs) {
+    return function (x, y) {
+      for (let i = 0; i < specs.length; i++) {
+        const s = specs[i];
+        const a = getByPath(x, s.path);
+        const b = getByPath(y, s.path);
+        const aNull = a === undefined || a === null;
+        const bNull = b === undefined || b === null;
+        if (aNull || bNull) {
+          if (aNull && bNull) continue;
+          return aNull ? 1 : -1;  // missing values last, either direction
+        }
+        const c = compareScalar(a, b);
+        if (c !== 0) return c * s.dir;
+      }
+      return 0;
+    };
+  }
+
+  // Sort a top-level array of objects by the given specs (parsed or a raw spec
+  // string). Returns a NEW array; non-arrays and empty specs return the input
+  // unchanged. Array.prototype.sort is stable, so equal items keep their order.
+  function sortJSONByFields(data, specs) {
+    if (typeof specs === 'string') specs = parseSortSpec(specs);
+    if (!Array.isArray(specs) || specs.length === 0) return data;
+    if (!Array.isArray(data)) return data;
+    return data.slice().sort(makeFieldComparator(specs));
+  }
+
   // Expose utilities on the global window for compatibility
   window.URLManager = URLManager;
   window.StorageManager = StorageManager;
   window.DefaultTemplates = DefaultTemplates;
   window.sortJSONKeys = sortJSONKeys;
   window.sortJSONArray = sortJSONArray;
+  window.parseSortSpec = parseSortSpec;
+  window.sortJSONByFields = sortJSONByFields;
   window.SettingsManager = SettingsManager;
 })();
