@@ -667,14 +667,19 @@
       // Restore the pre-normalization originals into both panes (undoes the
       // "copy left value onto right" that ignore-normalization performs). Guarded
       // by _blockAligning so it does not re-trigger the transform mid-restore.
-      function restoreIgnorePristine() {
+      // `only` ('left' | 'right') restores just that pane and drops the snapshot.
+      // Clearing one pane used to call this bare, which wrote the whole pristine
+      // pair back — on a multi-MB pair that is two full-document dispatches (plus
+      // the diff each one triggers) immediately before we throw one of them away.
+      // That was the multi-second stall on the per-pane Clear button.
+      function restoreIgnorePristine(only) {
         if (!_ignorePristine || !mergeView) { _ignorePristine = null; return; }
         const orig = _ignorePristine;
         _ignorePristine = null;
         _blockAligning = true;
         try {
-          setPaneIfChanged(mergeView.a, orig.left);
-          setPaneIfChanged(mergeView.b, orig.right);
+          if (only !== 'right') setPaneIfChanged(mergeView.a, orig.left);
+          if (only !== 'left') setPaneIfChanged(mergeView.b, orig.right);
         } finally {
           _blockAligning = false;
         }
@@ -2085,9 +2090,9 @@
         const collapseUnchanged = document.getElementById('setting-collapse-unchanged')?.checked;
         if (!collapseUnchanged) return;
 
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-        if (!leftContent || !rightContent) return;
+        // Blankness only — don't materialize two multi-MB strings just to test
+        // it. This runs on the debounced timer after EVERY content change.
+        if (docIsBlank(mergeView.a.state.doc) || docIsBlank(mergeView.b.state.doc)) return;
 
         const currentSettings = {
           highlightChanges: document.getElementById('setting-highlight-changes')?.checked ?? true,
@@ -2453,6 +2458,24 @@
         return Math.max(1, Math.ceil(diffStats.itemsTotal / size));
       }
 
+      // Drop every piece of state that describes the CURRENT comparison: the
+      // parsed/matched handle (which holds both parsed documents — tens of MB on
+      // a large pair), the model the Details panel and status pill read, the
+      // pager position, the measured render budget and the align memo.
+      //
+      // Clearing content without this left the handle alive, so the old parsed
+      // pair stayed pinned in memory and the pager/Details panel kept describing
+      // records that are no longer loaded.
+      function resetComparisonState() {
+        _alignHandle = null;
+        _renderBudget = null;
+        _lastAlignMemo = null;
+        _cancelledAlign = null;
+        diffModel = null;
+        diffStats = null;
+        recordPageFrom = 0;
+      }
+
       // Re-render at a new page. The transform must re-run from the FULL text
       // (kept in _ignorePristine while a window is showing), never from the
       // window currently in the panes.
@@ -2795,10 +2818,14 @@
         clearBtn.className = 'copy-clear-btn'; // Add class for easy selection
         clearBtn.onclick = async () => {
           const editor = side === 'left' ? mergeView.a : mergeView.b;
-          // Un-normalize first so the surviving pane goes back to (and persists)
-          // its real values, and the pristine snapshot can't resurrect the
-          // cleared side on the next save.
-          restoreIgnorePristine();
+          // Stop in-flight work first: an ingest/align that lands after this
+          // would write its panes over the one we just cleared.
+          cancelAllProcessing();
+          // Un-normalize the SURVIVING pane only, so it goes back to (and
+          // persists) its real values. Restoring the side we are about to blank
+          // would just be a wasted multi-MB dispatch. Either way the snapshot is
+          // dropped, so it can't resurrect the cleared side on the next save.
+          restoreIgnorePristine(side === 'left' ? 'right' : 'left');
           editor.dispatch({
             changes: { from: 0, to: editor.state.doc.length, insert: "" }
           });
@@ -2808,6 +2835,10 @@
           // the cleared content back.
           clearTimeout(window.autoSaveTimer);
           saveContent();
+          // Only after the save: saveContent() reads diffStats to refuse writing
+          // a truncated (windowed) pane over the full document, so the state has
+          // to still describe the old comparison at that point.
+          resetComparisonState();
 
           // Save cleared content to current branch
           const branchId = activeBranches[side];
@@ -2823,9 +2854,10 @@
 
           // If both panels are now empty, refresh the MergeView to remove stale collapsed widgets
           try {
-            const leftText = mergeView.a.state.doc.toString().trim();
-            const rightText = mergeView.b.state.doc.toString().trim();
-            if (!leftText && !rightText) {
+            // docIsBlank walks chunks and exits at the first visible char —
+            // never materialize + trim a multi-MB string just to ask "is it
+            // empty?" (the surviving pane can still be the whole document).
+            if (docIsBlank(mergeView.a.state.doc) && docIsBlank(mergeView.b.state.doc)) {
               const currentMergeSettings = loadMergeSettings();
               recreateMergeView(currentMergeSettings, wordWrapEnabled);
               updateClearButtonVisibility();
@@ -4794,8 +4826,10 @@
         cancelAllProcessing();
 
         // Drop the pre-normalization snapshot up front so nothing downstream
-        // (autosave, export) can persist the old content back.
+        // (autosave, export) can persist the old content back, and release the
+        // parsed pair / model / pager with it.
         _ignorePristine = null;
+        resetComparisonState();
 
         mergeView.a.dispatch({
           changes: { from: 0, to: mergeView.a.state.doc.length, insert: "" }
@@ -4809,7 +4843,12 @@
         // IndexedDB fallback) and cancel the autosave the dispatches above just
         // scheduled, so a refresh starts truly clean instead of re-saving stale
         // state.
+        // Also cancel the debounced follow-ups those dispatches just scheduled:
+        // re-aligning, re-diffing and re-sniffing CSV on two empty documents is
+        // pure waste that used to run 300-500 ms after every clear.
         clearTimeout(window.autoSaveTimer);
+        clearTimeout(window.diffRefreshTimer);
+        clearTimeout(window.csvButtonTimer);
         try {
           StorageManager.clearStorage();
         } catch (err) {

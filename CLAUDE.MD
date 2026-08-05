@@ -921,8 +921,24 @@ Understand the split before touching diff/perf code:
   recaptures a fresh pair — a stale pristine can no longer resurrect replaced/cleared content
   (this was the "cleared data reappears after refresh" bug). Clear All persists the cleared
   state immediately via `StorageManager.clearStorage()` (empty pair in localStorage + deletes the
-  IndexedDB fallback record); per-pane Clear calls `restoreIgnorePristine()` first (surviving
-  pane keeps its real values) and then saves synchronously.
+  IndexedDB fallback record); per-pane Clear calls `restoreIgnorePristine(otherSide)` first
+  (surviving pane keeps its real values) and then saves synchronously.
+- **Clearing must not be O(document) — it was, three ways.** "Clear freezes the tab for a few
+  seconds" on a multi-MB pair came from work done *on the way out*:
+  1. Per-pane Clear called `restoreIgnorePristine()` **bare**, writing the whole pristine pair
+     back into BOTH panes — two full-document dispatches plus the diff each one triggers —
+     immediately before blanking one of them. It now takes a side argument and restores only
+     the pane that survives.
+  2. Both Clear paths tested emptiness with `doc.toString().trim()`, materializing multi-MB
+     strings to ask a question `docIsBlank()` answers in O(1). Same fix applied to
+     `refreshMergeViewIfNeeded()`, which runs on the debounced timer after *every* change.
+  3. The dispatches scheduled the usual debounced follow-ups; Clear All now cancels
+     `diffRefreshTimer`/`csvButtonTimer` alongside `autoSaveTimer`, since re-aligning and
+     re-sniffing CSV on two empty documents is pure waste.
+  `resetComparisonState()` drops `_alignHandle` (which pins both parsed documents),
+  `_renderBudget`, `_lastAlignMemo`, `_cancelledAlign`, `diffModel`, `diffStats` and the pager.
+  **Order matters:** call it *after* `saveContent()` on the per-pane path — that guard reads
+  `diffStats.truncated` to refuse writing a windowed pane over the full document.
 - **Match scope (`ignoreScope`, default `both`):** `window.DiffIgnore.makePredicate(matcher, scope)`
   — `'key'` tests the key name, `'value'` tests the property's primitive value, `'both'` either.
   Plain pattern = exact match; `/regex/flags` = RegExp. Selector lives in the ignore dropdown.
