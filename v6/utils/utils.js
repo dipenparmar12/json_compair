@@ -246,7 +246,7 @@
   const SettingsManager = {
     KEY: "json_compair_settings",
     defaults: {
-      autoCsv: false,
+      autoCsv: true,
       // Read and written as `autoFormat` / `autoSort` everywhere in the app.
       // They were also declared here as `autoFormatJson` / `autoSortKeys`, which
       // nothing read — so the intended "auto-format on" default never applied,
