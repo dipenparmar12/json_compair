@@ -174,7 +174,7 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   // Editor Settings
   "wordWrap": true,              // Line wrapping
   "scrollLock": true,            // Synchronized scrolling
-  "theme": "light",              // light|dark|oneDark|default
+  "theme": "default",            // default (system)|light|dark|oneDark
 
   // Diff Settings
   "blockDiff": true,             // Object-aware (block-level) JSON diff (see Diff Engine §6)

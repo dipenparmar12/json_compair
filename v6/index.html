@@ -12,6 +12,19 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, minimum-scale=1.0"
     />
+    <script>
+      (function() {
+        try {
+          var raw = localStorage.getItem('json_compair_settings');
+          var settings = raw ? JSON.parse(raw) : null;
+          var theme = (settings && settings.theme) ? settings.theme : 'default';
+          var isDark = theme === 'dark' || theme === 'oneDark' ||
+            ((theme === 'default' || !theme) && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+          document.documentElement.classList.toggle('cm-theme-dark', isDark);
+        } catch (e) {}
+      })();
+    </script>
     <link rel="shortcut icon" href="../img/onlinetextcompare.png" />
     <link rel="stylesheet" href="./css/ccsiteV6.css" />
     <link rel="stylesheet" type="text/css" href="./css/app.css" />
@@ -348,7 +361,7 @@
               </select>
               <div class="dropdown-label">Theme</div>
               <select id="theme-selector" class="settings-select dropdown-select">
-                <option value="default">🎨 Default</option>
+                <option value="default">🎨 Default (System)</option>
                 <option value="light">☀️ Light</option>
                 <option value="dark">🌙 Dark</option>
                 <option value="oneDark">🌃 One Dark</option>
@@ -743,6 +756,18 @@
         currentTheme = SettingsManager.get('theme') || 'default';
         syncDocumentTheme(currentTheme);
 
+        if (mergeView && mergeView.a && mergeView.b) {
+          const themeExt = getThemeExtension(currentTheme);
+          mergeView.a.dispatch({
+            effects: themeCompartment.reconfigure(themeExt)
+          });
+          mergeView.b.dispatch({
+            effects: themeCompartment.reconfigure(themeExt)
+          });
+        }
+        const themeSelector = document.getElementById('theme-selector');
+        if (themeSelector) themeSelector.value = currentTheme;
+
         // The transform result depends on all of the above, so the memo (keyed
         // on doc + mode) must not short-circuit the next run.
         _lastAlignMemo = null;
@@ -958,6 +983,14 @@
         }
       }, { dark: true });
 
+      // Helper to check if a theme setting resolves to dark mode
+      function isThemeDark(themeName) {
+        if (themeName === 'dark' || themeName === 'oneDark') return true;
+        if (themeName === 'light') return false;
+        // 'default' or unrecognised -> adapt to system preference
+        return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      }
+
       // Function to get theme extension based on setting
       function getThemeExtension(themeName) {
         switch (themeName) {
@@ -967,8 +1000,9 @@
             return darkTheme;
           case "oneDark":
             return oneDark;
+          case "default":
           default:
-            return []; // Default (no custom theme)
+            return isThemeDark(themeName) ? darkTheme : [];
         }
       }
       
@@ -1751,7 +1785,7 @@
       // Initialize theme selector (separate from settings panel)
       function initializeThemeSelector() {
         const themeSelector = document.getElementById('theme-selector');
-        themeSelector.value = currentTheme;
+        themeSelector.value = currentTheme || 'default';
         themeSelector.addEventListener('change', applyTheme);
       }
 
@@ -1785,7 +1819,7 @@
       // editors. Sets the data-theme attribute (drives tokens + new chrome rules)
       // and toggles the legacy .cm-theme-dark class (drives existing component rules).
       function syncDocumentTheme(themeName) {
-        const dark = themeName === 'dark' || themeName === 'oneDark';
+        const dark = isThemeDark(themeName);
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
         document.documentElement.classList.toggle('cm-theme-dark', dark);
       }
@@ -1807,12 +1841,37 @@
         });
         
         const themeNames = { 
-          default: 'Default', 
+          default: 'Default (System)', 
           light: 'Light', 
           dark: 'Dark',
           oneDark: 'One Dark'
         };
         updateStatus(`Theme changed to: ${themeNames[currentTheme] || currentTheme}`);
+      }
+
+      // Listen for system/OS theme changes when theme setting is 'default'
+      if (window.matchMedia) {
+        const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleSystemThemeChange = () => {
+          const activeTheme = SettingsManager.get('theme') || 'default';
+          if (activeTheme === 'default') {
+            syncDocumentTheme('default');
+            const themeExtension = getThemeExtension('default');
+            if (mergeView && mergeView.a && mergeView.b) {
+              mergeView.a.dispatch({
+                effects: themeCompartment.reconfigure(themeExtension)
+              });
+              mergeView.b.dispatch({
+                effects: themeCompartment.reconfigure(themeExtension)
+              });
+            }
+          }
+        };
+        if (systemThemeQuery.addEventListener) {
+          systemThemeQuery.addEventListener('change', handleSystemThemeChange);
+        } else if (systemThemeQuery.addListener) {
+          systemThemeQuery.addListener(handleSystemThemeChange);
+        }
       }
 
       // ---- Adaptive diff effort ----------------------------------------------
