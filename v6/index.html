@@ -6533,9 +6533,26 @@
         // on a large document it is the thing that used to collapse to "1".
         if (diffModel) {
           const t = diffModel.totals;
-          if (!t.changed && !t.added && !t.removed && !t.moved) {
+          const nothingInModel = !t.changed && !t.added && !t.removed && !t.moved;
+
+          // The model describes ONE collection. For an envelope shape that is
+          // the array at model.path, NOT the whole document — and findCollection
+          // will happily pick a small nested array (say `tags`) out of two
+          // objects that differ everywhere else. When that array is identical
+          // the model's verdict is not the document's, and announcing "No
+          // differences" over visible red and green is the worst answer this
+          // tool can give. Defer to what is actually rendered.
+          if (nothingInModel && diffModel.path != null && countVisibleChunks() > 0) {
+            updateRecordPager();
+            renderDiffDetails();
+            // falls through to the chunk-count branch below
+          } else if (nothingInModel) {
             const ignoredHere = !!ignoreMatcher || numToleranceActive() != null;
             setDiffSummary('same', ignoredHere ? 'No differences (excluded matches ignored)' : 'No differences');
+            updateRecordPager();
+            renderDiffDetails();
+            updateDiffNavState();
+            return;
           } else {
             const bits = [];
             if (t.changed) bits.push(`${fmtNum(t.changed)} changed`);
@@ -6552,11 +6569,11 @@
               msg += ' · no records in common';
             }
             setDiffSummary('diff', msg);
+            updateRecordPager();
+            renderDiffDetails();
+            updateDiffNavState();
+            return;
           }
-          updateRecordPager();
-          renderDiffDetails();
-          updateDiffNavState();
-          return;
         }
 
         const chunkCount = countVisibleChunks();
@@ -6653,7 +6670,11 @@
         const matched = diffModel.idKey
           ? `matched on <code>${escapeHtml(diffModel.idKey)}</code>`
           : `matched by ${diffModel.strategy === 'lcs' ? 'content' : diffModel.strategy}`;
-        meta.innerHTML = `${fmtNum(t.total)} items ${matched} — `
+        // Name the collection when it is not the whole document, so a breakdown
+        // of `data` (or of a small nested array) is not read as a breakdown of
+        // everything the panels hold.
+        const where = diffModel.path == null ? '' : ` in <code>${escapeHtml(diffModel.path)}</code>`;
+        meta.innerHTML = `${fmtNum(t.total)} items${where} ${matched} — `
           + `<strong>${fmtNum(t.changed)}</strong> changed, ${fmtNum(t.added)} added, `
           + `${fmtNum(t.removed)} removed, ${fmtNum(t.moved || 0)} moved, `
           + `<strong>${fmtNum(t.fieldChanges)}</strong> field changes`;
