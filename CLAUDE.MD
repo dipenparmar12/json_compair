@@ -282,7 +282,16 @@ window.JSONAlign
                             //   `path`: collection key, or null when the root is the array.
                             //   Works for a root array AND for {data:[…]}-style envelopes.
   .normalize(l, r, ignore, numTol) // normalize only (block-diff off)
+  .setIndent(str)           // '  ' | '   ' | '    ' | '\t' — every later render.
+                            //   The app pushes the indentWidth setting in here; without
+                            //   it alignment re-rendered at 2 spaces and the Indent
+                            //   control did nothing while Block Diff was on.
   .stripGaps(text)
+
+// Every render's stats carry `itemLines: {from, offset, lines[]}` — the 0-based line
+// each rendered item starts on (`offset` covers the {data:[…]} object shell). This is
+// what lets the Details list scroll to a record; it is exact in pretty, full and
+// windowed modes, for a root array and for an envelope.
 ```
 
 ### Loading Pattern
@@ -498,6 +507,13 @@ exists and refuses (with a notice) when the panes are partial and no complete co
 `mergeView.a.state.doc.toString()` directly is a bug unless you specifically want *what is
 on screen* (e.g. `recreateMergeView`).
 
+**The ingest pipeline was one of those bugs.** `ingestContentInner()` read the OTHER pane
+with `otherPane.state.doc.toString()` to decide what to align the incoming content against.
+When that pane was already showing one window of a large collection, the new comparison was
+computed against the visible page. Measured: pasting 5,000 records opposite a pane windowed
+to 1,328 reported **"33 changed, 3,672 added"** instead of "125 changed" — a wrong answer,
+produced silently, on data the user had just pasted. It reads `_ignorePristine` first now.
+
 ### 5. `commitPair(L, R)` — the only way to write a rewritten pair
 
 Format, Minify, Clean, Fix and Sort all need the same six steps, and each one has been
@@ -506,6 +522,29 @@ align memo (keyed on the old docs), route through `transformAndDispatch` when a 
 is active, and write inside `_blockAligning` so the autosave listener does not null the
 pristine pair. Use `transformPanes(fn, label)` for per-pane text transforms; it reports
 each side's outcome separately.
+
+**`transformAndDispatch` returns whether it actually wrote, and the return value is not
+optional.** It writes the panes only when the transform SUCCEEDED; when alignment cannot
+run — the other pane is not parseable JSON, the pair is over `MAX_BYTES`, `align()` threw —
+`applyTransformResult` resets state and leaves the editors untouched. `commitPair` used to
+ignore that, so the rewritten pair was **silently discarded**: repairing the left panel
+while the right one was still broken left both panes exactly as they were, under a green
+"Fixed the left panel — 1 issue repaired" notice. That was the whole of "JSON repair
+sometimes works and sometimes doesn't", and it hit Format, Minify, Clean and Sort the same
+way. `commitPair` now falls back to writing the pair itself (and clears `_lastAlignMemo`,
+which `applyTransformResult` had just keyed to the pre-write docs).
+
+**Minify and Block Diff are mutually exclusive**, because alignment re-serializes both
+panes pretty-printed — that is what it is for. Minify therefore turns Block Diff off
+(`setBlockDiff(false)`) and says so in a notice with a one-click restore. Before that it
+wrote minified text that alignment re-expanded ~50 ms later, i.e. a menu item that did
+nothing.
+
+**The `indentWidth` setting has to reach `json_align` too.** Format re-serialized at the
+chosen width and alignment immediately re-rendered both panes at a hard-coded two spaces,
+so the Indent control did nothing at all while Block Diff was on (the default).
+`indentString()` + `syncAlignIndent()` push it into `JSONAlign.setIndent()` before every
+transform, and changing the select re-renders straight away.
 
 ### 6. Linting — the package was loaded but unused
 
@@ -521,6 +560,33 @@ cheap. Capped at `LINT_MAX_BYTES` (2 MB) and skipped for content that does not o
 `{`/`[`. Duplicate keys are reported as warnings — legal JSON, silently lossy through
 `JSON.parse`, and a genuine source of "the diff says they match but they don't".
 
+**The red dot is ours now — `LintPop` + `initLintGutterUX()`.** `lintGutter()` is mounted
+with `tooltipFilter: () => []`, which suppresses the library's own gutter tooltip, because
+it had two defects that made "click the red dot and fix it" unreliable and neither is
+fixable from outside `@codemirror/lint`:
+
+1. It is **hover-only**, and `trackHoverOn()` closes it from a `window` mousemove as soon
+   as the pointer is >10 px outside the ~12 px marker and not yet inside `.cm-tooltip-lint`.
+   Moving toward the Fix button crosses exactly that dead band, so the tooltip vanished
+   from under the cursor before it could be clicked.
+2. Its action buttons resolve through `findDiagnostic(..., diagnostic)`, which matches on
+   **object identity**. Our linter builds fresh diagnostic objects on every run and this app
+   dispatches programmatically constantly (block alignment, ignore normalization, autosave),
+   so any re-lint between opening the tooltip and pressing the button turned that button
+   into a silent no-op.
+
+`LintPop` replaces it: hover to read (220 ms), **click to pin**, and buttons wired straight
+to `openRepairPreview` / `jumpTo` with no identity lookup in between. Diagnostics are
+recomputed on demand and memoized on the immutable `Text` object, so they can never be
+stale. Delegated `mouseover`/`mousedown` listeners on `document` (markers are created and
+destroyed on every lint pass, so per-element wiring would have to be redone constantly).
+Note the popover re-anchors after "Next", so its scroll-to-close guard ignores scrolls
+within 300 ms of opening.
+
+Also fixed here: `.cm-tooltip.cm-tooltip-lint` matched nothing — that class is on the `<ul>`
+INSIDE `.cm-tooltip`, never on the same element — so the inline diagnostic tooltip kept
+CM6's light-theme default on a dark page.
+
 ### 7. Disclosure surfaces — three channels, not one
 
 `#diff-summary` was doing four jobs (diff result, busy, errors, general status) and every
@@ -529,15 +595,36 @@ overwrote 50 ms later. Errors were frequently invisible.
 
 - **`#diff-summary`** — the comparison result, and nothing else. (`data-state="busy"` now
   has a style; it was set in JS and never defined in CSS.)
-- **`showNotice(kind, message, {actions, timeout, key})`** — a persistent, dismissible
-  strip for errors, warnings and undo affordances.
+- **`showNotice(kind, message, {actions, timeout, key})`** — dismissible toasts for errors,
+  warnings and undo affordances. **They are `position: fixed`, bottom-left, and take no
+  layout space.** As an in-flow block between the toolbar and the panels, every notice
+  pushed the editors down and back up again, moving the diff out from under the reader's
+  cursor. Bottom-LEFT specifically: the progress panel owns bottom-right and each pane's
+  branch selector sits at its own bottom-right. Errors and warnings persist; `ok`/`info`
+  expire after `DEFAULT_NOTICE_MS`, except when they carry an action (an Undo that vanishes
+  before it is read is worse than no Undo), and hovering one cancels its timer.
 - **Pane chips** (`updatePaneChip`) — what each panel holds, whether it is valid, and the
   one action that fixes it. Cost is capped twice: `CHIP_MAX_BYTES` (4 MB) to describe at
   all, `CHIP_REPAIR_MAX_BYTES` (512 KB) before attempting a trial repair.
+  **The chip must track every doc change, not just ingest.** It used to hang off
+  `afterContentChanged()` alone, which only runs for the ingest pipeline — so typing broken
+  JSON by hand, a native paste (`handlePaste` bows out when no auto-processing is on), an
+  undo or a revert-chunk left the chip stale. Measured: two panes of invalid JSON with both
+  chips still reading "Left panel" and no Fix button anywhere. The debounced doc-change
+  listener now calls `scheduleChipUpdate(400)`.
+
+**`autoFixJson` belongs in every auto-processing gate.** Both `handlePaste()` and
+`ingestContentInner()` tested `autoCSV || autoFormat || autoSort` and nothing else, so
+turning those three off also turned off repair-on-paste — with "Auto Fix JSON" still
+ticked and doing nothing. Fixing one gate without the other just moves the dead spot.
 
 **Repair is never silent.** Manual repair previews what it will change and applies as one
 undoable transaction; auto-repair on paste (`autoFixJson`, default on) always leaves a
-notice naming what it did, with **Undo**. Default-on rather than default-off because v6
+notice naming what it did, with **Undo**. `fixBothPanes()` decides which panels need work
+by calling `JSON.parse` on the CURRENT text, never by reading `paneAnalysis` — that cache
+is filled on a 250 ms debounce, so pressing Fix JSON straight after a paste answered "Both
+panels are already valid JSON" about two broken panels. Panels queue: applying one offers
+the next, cancelling clears the queue. Default-on rather than default-off because v6
 already repaired pasted JSON — that is what `parseFlexibleJSON` was — it just did it badly
 and told nobody. What changed is disclosure, not capability.
 
@@ -686,6 +773,19 @@ if (CSVUtils.isCSV(text) && settings.autoCsv) {
 - **Format JSON** + `▾` menu — Format · **Fix JSON** · **Minify** · **Clean up text** ·
   indent width (2/3/4/tab). Format works on ONE pane; it used to refuse unless both were
   filled, which also meant one broken pane blocked formatting of the good one.
+  Minify turns Block Diff off (Ingest §5) and Indent is honoured live (`syncAlignIndent`).
+
+**Toolbar menus: wire each toggle EXACTLY once, and close the others.** Two defects lived here:
+
+  1. `setupButtons()` listed `initializeFormatPanel()` / `initializeRepairModal()` /
+     `initializeFileOpen()` **twice**, so every handler was registered twice — and a toggle
+     wired twice opens then immediately closes. The Format ▾ caret therefore appeared to do
+     nothing at all, which made the whole menu (Fix JSON, Minify, Clean up, Indent)
+     unreachable from the toolbar.
+  2. Every toggle calls `e.stopPropagation()`, which means the other menus' outside-click
+     handlers never fire, so Settings, Ignore, Sort, Format and More could all be open at
+     once, stacked over each other. Each toggle now calls `closeMenus(itsOwnPanelId)` first,
+     and Escape closes them all (`initializeMenuKeys`). New menus must join `MENU_PANEL_IDS`.
 - **Sort ▾ dropdown** (v6): "Sort by field value" — a text input taking a spec like
   `category ASC, amount DESC` (comma-separated keys, per-key ASC/DESC default ASC, dot-notation
   for nested keys) that value-sorts the **top-level array of objects in both panes** (ideal for
@@ -735,8 +835,16 @@ Above the editors: what each panel holds, whether it is valid, and the one actio
 it (`Fix` / `Go to error` / `To JSON`). See **Ingest, Repair & Linting §7**.
 
 ### Notice strip
-Persistent, dismissible errors and warnings with actions (Undo, Fix, Go to error), separate
-from the diff pill — which the next `updateDiffStatus()` overwrites 50 ms later.
+Dismissible errors and warnings with actions (Undo, Fix, Go to error), separate from the diff
+pill — which the next `updateDiffStatus()` overwrites 50 ms later. **Floating toasts**
+(`position: fixed`, bottom-left, zero layout space) so a notice never pushes the editors down
+and back up under the reader's cursor. See Ingest §7 for the corner choice and the timeout
+rules.
+
+### Lint popover
+The red gutter dot is a control: hover to read, click to pin, with Fix JSON / Go to error /
+Next wired straight to our own functions. Replaces `@codemirror/lint`'s gutter tooltip, which
+could not be moved into and whose buttons went stale. See Ingest §6.
 
 ### Status Bar
 Shows diff count and current mode (count = `mergeView.chunks.length`):
@@ -774,10 +882,18 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
 10. Paste broken JSON — the chip says why, Fix previews, Ctrl+Z restores
 11. Window a large collection, then Export — must contain every record, not the page
 12. Sort a CSV panel by column name, and a text panel by line
-9. Paste `Hello, world.` — the pane must contain that text, not `[]`
-10. Paste broken JSON — chip says why, Fix previews, Ctrl+Z restores
-11. Window a large collection, then Export — must contain every record, not the page
-12. Sort a CSV panel by column name, and a text panel by line
+13. Break BOTH panels, then Format ▾ → Fix JSON — the caret must open the menu, the preview
+    must appear for one panel, applying it must offer the other, and the panes must really
+    change (see Ingest §5: this whole path was a no-op)
+14. Type broken JSON by hand with every auto-processing setting off — the chip must still
+    turn amber and offer Fix
+15. Click the red gutter dot, then move the pointer onto the popover and press Fix JSON —
+    the popover must survive the trip and the button must do something
+16. Trigger any notice — the editors must not move
+17. Open Details on a pair with hundreds of changes and click rows top and bottom — both
+    panes must scroll to that record and flash it, windowed or not
+18. Set Indent to 4 with Block Diff on — the panes must re-render at 4 immediately
+19. Minify — the panes must actually be one line each
 
 ## Common Tasks
 
@@ -876,6 +992,19 @@ Understand the split before touching diff/perf code:
 - `diffIsDegraded()` detects the case where CM6 gave up and returned one change spanning the
   document, and says so ("Too large to compare precisely — use CSV→JSON…") instead of
   printing a meaningless "1 changed block".
+- **The model describes ONE collection, not the document.** For an envelope it is the array at
+  `model.path`, and `findCollection()` will happily pick a small nested array (say `tags`) out of
+  two objects that differ everywhere else. When that array is identical the model's verdict is
+  not the document's: `{name, age:36, tags:[…]}` vs `{name, age:37, tags:[…]}` reported
+  **"No differences"** over visible red and green — the worst answer this tool can give.
+  `updateDiffStatus()` now defers to `countVisibleChunks()` whenever the model says nothing
+  changed, `model.path != null`, and chunks exist. The Details meta names the collection
+  (`5,000 items in data matched on id`) for the same reason.
+- **The viewport estimate must never overwrite the exact count.** `ViewportDiffManager`'s
+  `onDiffCalculated` fires on every scroll and called `updateStatus()`, writing
+  "~18 differences in view" straight over "60 changed of 1,500 items · 120 field changes" —
+  less useful, and next to a Details panel listing all 60, simply contradictory. It is skipped
+  whenever `diffModel` exists.
 - Viewport-diff mode is only consulted when there is **no** model — an approximate
   "~5 differences in view" is strictly worse than an exact whole-collection count.
 - The old `diff_match_patch` full-diff count (and its >100 KB worker offload) was **removed**;
@@ -1069,6 +1198,20 @@ Understand the split before touching diff/perf code:
   Both read the model, so they describe the whole dataset, not the visible page.
   The status pill appends **"no records in common"** when nothing on either side matched anything
   on the other, so a large "added" count reads as a verdict rather than as a result.
+- **Clicking a Details row actually goes there — `revealRecord()` / `scrollToRecord()`.** It used
+  to call `gotoRecordPage(index)` and stop, which paged the window when the render was truncated
+  and did **nothing whatsoever** in the common case where everything was already rendered; even
+  when it did page, the record was never scrolled to or marked, so you still had to hunt for it.
+  Three things were needed:
+  - `stats.itemLines` from json_align (see the API listing above) — the line each item starts on.
+  - **Scroll the scroller directly.** `EditorView.scrollIntoView` is applied in CM6's next measure
+    pass and inside this MergeView it measurably does not land: with the target block 851 px down
+    an 824 px viewport the scroller stayed at 0. `scrollToRecord` dispatches the effect *and* sets
+    `view.scrollDOM.scrollTop` from `view.lineBlockAt(pos)`, then repeats once after 180 ms
+    because a page rewrite and `forceRecollapse()` both change line heights afterwards.
+  - A fading `.cm-recordFlash` line decoration (`flashLineField`). Two panes full of red and green
+    give the eye nothing to land on; scrolling alone is not feedback.
+  Clicking a **field** row filters the item list to that field.
 - **`prepare()` — parse once, render many windows.** `JSONAlign.prepare(l, r, opts)` returns a
   handle holding the parsed pair + match + model; `handle.render({from, size})` emits a window
   from it. Paging must use this: re-running `align()` per page re-parsed ~20 MB and rebuilt the
@@ -1304,6 +1447,6 @@ Potential improvements (check `todo.md` for current priorities):
 
 ---
 
-**Last Updated**: 2026-08-27
+**Last Updated**: 2026-08-28
 **Current Version**: v6 (CodeMirror 6) is primary, v5 (CodeMirror 5) is legacy
 **Status**: Active development on `main` branch
