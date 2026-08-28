@@ -2376,6 +2376,28 @@ button:disabled,
     border-left-color: var(--accent, #4a90d9);
 }
 
+/* The row you last jumped to keeps its place while you read the panes. */
+.dd-item-row.is-active {
+    background: rgba(74, 144, 217, 0.14);
+    border-left-color: var(--accent, #4a90d9);
+}
+[data-theme="dark"] .dd-item-row.is-active {
+    background: rgba(74, 144, 217, 0.22);
+}
+
+/* Field rows filter the item list, so they need to read as controls too. */
+.dd-field-row {
+    cursor: pointer;
+    border-left: 3px solid transparent;
+}
+.dd-field-row:hover {
+    background: var(--hover-bg, rgba(0, 0, 0, 0.04));
+    border-left-color: var(--accent, #4a90d9);
+}
+[data-theme="dark"] .dd-field-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
 .dd-field-name {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     flex: 1 1 auto;
@@ -2436,6 +2458,27 @@ button:disabled,
 [data-theme="dark"] .dd-badge.added   { background: rgba(64, 160, 88, 0.25);  color: #8ed6a4; }
 [data-theme="dark"] .dd-badge.removed { background: rgba(200, 72, 72, 0.25);  color: #f0a0a0; }
 [data-theme="dark"] .dd-badge.moved   { background: rgba(140, 100, 200, 0.28); color: #c0a8f0; }
+
+/* --- "here is the record you asked for" flash ----------------------------
+   Scrolling a record into view is not enough feedback when both panes are
+   full of red and green — the eye has nothing to land on. Fades out on its
+   own so it never competes with the diff colours. */
+.cm-recordFlash {
+    background-color: rgba(74, 144, 217, 0.28) !important;
+    box-shadow: inset 3px 0 0 var(--accent, #4a90d9);
+    animation: record-flash 1.8s ease-out forwards;
+}
+[data-theme="dark"] .cm-recordFlash {
+    background-color: rgba(74, 144, 217, 0.34) !important;
+}
+@keyframes record-flash {
+    0%   { opacity: 1; }
+    55%  { opacity: 1; }
+    100% { opacity: 0.25; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cm-recordFlash { animation: none; }
+}
 
 /* ============================================================
    Processing panel — progress / ETA / cancel for long operations
@@ -2575,4 +2618,425 @@ button:disabled,
         width: auto;
         bottom: 12px;
     }
+}
+
+/* ==========================================================================
+   Ingest & repair surfaces
+   Added with the JSON auto-fix / linting work. Three problems these solve:
+     - errors had nowhere to live except #diff-summary, which the next
+       updateDiffStatus() overwrote 50 ms later  -> .notice-strip
+     - nothing anywhere reported whether a panel held valid JSON  -> .pane-chip
+     - repair had to be previewable to be trustworthy             -> .repair-modal
+   ========================================================================== */
+
+/* --- busy state on the diff pill (was declared in JS but never styled) ---- */
+#diff-summary[data-state="busy"] {
+    color: var(--text-muted);
+    border-color: var(--border-strong);
+    background: var(--bg-muted);
+}
+#diff-summary[data-state="busy"]::before {
+    background: var(--text-faint);
+    animation: diff-busy-pulse 1.1s ease-in-out infinite;
+}
+@keyframes diff-busy-pulse {
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #diff-summary[data-state="busy"]::before { animation: none; }
+}
+
+/* --- notice strip (floating toasts) --------------------------------------
+   These used to be an in-flow block between the toolbar and the panels, so
+   every notice pushed the editors down and back up again — the diff you were
+   reading jumped under the cursor. They are overlaid now: fixed to the
+   bottom-left corner, out of the way of the progress panel (bottom-right)
+   and the per-pane branch selectors (bottom of each pane), and taking no
+   layout space at all, so nothing moves when one appears.
+   --------------------------------------------------------------------------- */
+.notice-strip {
+    position: fixed;
+    left: var(--space-3);
+    bottom: 52px;                       /* clear of the app footer */
+    z-index: 3000;                      /* under .proc-panel (4000) + modals */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+    width: min(460px, calc(100vw - 32px));
+    max-height: min(60vh, 520px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 2px;                       /* room for the focus ring */
+    /* The stack itself must never eat clicks meant for the editor beneath. */
+    pointer-events: none;
+}
+.notice-strip:empty { display: none; }
+
+.notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-radius: var(--radius);
+    background: var(--bg-elev);
+    box-shadow: var(--shadow, 0 4px 16px rgba(0, 0, 0, 0.12));
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text);
+    pointer-events: auto;
+    animation: notice-in 140ms ease-out;
+}
+@keyframes notice-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .notice { animation: none; }
+}
+.notice[data-kind="warn"]  { border-left-color: #e0a020; }
+.notice[data-kind="error"] { border-left-color: #d1242f; }
+.notice[data-kind="info"]  { border-left-color: var(--accent); }
+.notice[data-kind="ok"]    { border-left-color: #2da44e; }
+
+.notice-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.notice-actions { display: flex; gap: var(--space-1); flex: 0 0 auto; flex-wrap: wrap; }
+.notice-actions .btn { padding: 2px 8px; font-size: 12px; }
+.notice-close {
+    flex: 0 0 auto;
+    border: 0;
+    background: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 13px;
+    line-height: 1.3;
+}
+.notice-close:hover { color: var(--text); }
+
+/* Narrow viewports: the progress panel goes full width at the bottom, so put
+   the notices above it rather than beside it. */
+@media (max-width: 720px) {
+    .notice-strip {
+        left: 12px;
+        right: 12px;
+        width: auto;
+        bottom: 96px;
+    }
+}
+
+/* --- per-pane content chips ---------------------------------------------- */
+.pane-chips {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) 0;
+}
+.pane-chip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: 4px var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-muted);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.pane-chip-dot {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-faint);
+}
+.pane-chip-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pane-chip-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+.pane-chip-actions .btn { padding: 1px 7px; font-size: 11.5px; }
+
+.pane-chip[data-state="empty"]   { opacity: 0.6; }
+.pane-chip[data-state="valid"] .pane-chip-dot   { background: #2da44e; }
+.pane-chip[data-state="fixable"] .pane-chip-dot { background: #e0a020; }
+.pane-chip[data-state="fixable"] {
+    color: #8a5a00;
+    border-color: #e0b050;
+    background: rgba(224, 176, 80, 0.10);
+}
+.pane-chip[data-state="invalid"] .pane-chip-dot { background: #d1242f; }
+.pane-chip[data-state="invalid"] {
+    color: #a4232c;
+    border-color: #e0949a;
+    background: rgba(209, 36, 47, 0.07);
+}
+.pane-chip[data-state="text"] .pane-chip-dot { background: var(--text-faint); }
+
+[data-theme="dark"] .pane-chip[data-state="fixable"] {
+    color: #f0c674;
+    border-color: #8a6a20;
+    background: rgba(224, 176, 80, 0.10);
+}
+[data-theme="dark"] .pane-chip[data-state="invalid"] {
+    color: #ff9a9a;
+    border-color: #7a2a30;
+    background: rgba(209, 36, 47, 0.12);
+}
+
+/* --- repair preview modal ------------------------------------------------- */
+.repair-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+}
+.repair-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+}
+.repair-modal-body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(720px, 100%);
+    max-height: min(80vh, 640px);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    font-family: var(--font-ui);
+}
+.repair-modal-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+}
+.repair-modal-head h2 {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+.repair-summary {
+    padding: var(--space-3) var(--space-4);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+}
+.repair-summary ul { margin: var(--space-2) 0 0; padding-left: 18px; }
+.repair-summary li { margin: 2px 0; color: var(--text-muted); }
+.repair-changes {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: var(--space-3) var(--space-4);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.repair-diff-row {
+    display: grid;
+    grid-template-columns: 3.5em 1fr;
+    gap: var(--space-2);
+    padding: 1px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.repair-diff-row .ln { color: var(--text-faint); text-align: right; user-select: none; }
+.repair-diff-row[data-kind="del"] { background: var(--diff-del-line); }
+.repair-diff-row[data-kind="add"] { background: var(--diff-add-line); }
+.repair-diff-gap {
+    padding: 2px 0 2px 4.5em;
+    color: var(--text-faint);
+    font-size: 11px;
+}
+.repair-modal-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border);
+}
+.repair-modal-spacer { flex: 1 1 auto; }
+.repair-hint { font-size: 11.5px; color: var(--text-faint); }
+
+/* --- format menu, clean options, sort options ----------------------------- */
+.format-group { display: inline-flex; }
+.format-group #btn-format { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.btn-caret {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    margin-left: 1px;
+    padding-left: 7px;
+    padding-right: 7px;
+}
+.dropdown-hint {
+    color: var(--text-faint);
+    font-size: 11px;
+    margin-left: 6px;
+}
+.clean-options {
+    display: grid;
+    gap: 2px;
+    max-height: 190px;
+    overflow-y: auto;
+    padding: var(--space-1) 0 var(--space-2);
+}
+.clean-options label {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 1px 2px;
+}
+.clean-options label:hover { color: var(--text); }
+.clean-options input { margin-top: 2px; flex: 0 0 auto; }
+
+.sort-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2) 0 0;
+}
+.sort-target {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    padding: 0 0 var(--space-2);
+}
+.sort-target b { color: var(--text); font-weight: 600; }
+
+/* --- lint gutter / diagnostics ------------------------------------------- */
+/* CM6 ships defaults, but they assume a light background. */
+/* The marker is the primary "something is wrong here, fix it" affordance, so
+   it has to look and behave like a control: pointer cursor, a hit area wider
+   than the 12px dot, and a visible hover state. */
+.cm-lint-marker {
+    width: 0.9em;
+    height: 0.9em;
+    cursor: pointer;
+    box-sizing: content-box;
+    padding: 2px 3px;
+    margin: -2px -3px;
+    border-radius: 3px;
+    transition: background-color 120ms ease;
+}
+.cm-lint-marker:hover { background-color: rgba(209, 36, 47, 0.16); }
+.cm-diagnostic { font-family: var(--font-ui); font-size: 12px; }
+.cm-diagnostic-error { border-left-color: #d1242f; }
+.cm-diagnostic-warning { border-left-color: #e0a020; }
+/* The class lives on the <ul> INSIDE .cm-tooltip, never on the same element,
+   so the old `.cm-tooltip.cm-tooltip-lint` selector matched nothing and the
+   inline diagnostic tooltip kept CM6's light-theme default on a dark page. */
+.cm-tooltip:has(> .cm-tooltip-lint),
+.cm-tooltip .cm-tooltip-lint {
+    background: var(--bg-elev);
+    border-radius: var(--radius);
+    color: var(--text);
+}
+.cm-tooltip:has(> .cm-tooltip-lint) {
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+}
+
+/* --- pinned lint popover (replaces CM6's hover-only gutter tooltip) -------
+   Why this exists rather than styling the library's tooltip: that one closes
+   itself from a window mousemove the moment the pointer leaves the ~12px
+   marker, so the Fix button inside it could not be reached. See LintPop in
+   v6/index.html.
+   -------------------------------------------------------------------------- */
+.lint-pop {
+    position: fixed;
+    z-index: 3500;              /* over the editors, under .proc-panel (4000) */
+    display: none;
+    width: max-content;
+    max-width: 340px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 10px);
+    background: var(--bg-elev);
+    box-shadow: var(--shadow, 0 4px 16px rgba(0, 0, 0, 0.18));
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text);
+}
+.lint-pop.is-open { display: block; }
+
+.lint-pop-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: 6px;
+}
+.lint-pop-badge {
+    flex: 0 0 auto;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+.lint-pop-badge.error   { background: rgba(209, 36, 47, 0.12); color: #a4232c; }
+.lint-pop-badge.warning { background: rgba(224, 160, 32, 0.14); color: #8a5a00; }
+[data-theme="dark"] .lint-pop-badge.error   { background: rgba(209, 36, 47, 0.22); color: #ff9a9a; }
+[data-theme="dark"] .lint-pop-badge.warning { background: rgba(224, 176, 80, 0.18); color: #f0c674; }
+
+.lint-pop-where {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.lint-pop-close {
+    flex: 0 0 auto;
+    border: 0;
+    background: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 13px;
+    line-height: 1.3;
+}
+.lint-pop-close:hover { color: var(--text); }
+
+.lint-pop-msg { overflow-wrap: anywhere; }
+.lint-pop-msg + .lint-pop-msg { margin-top: 4px; }
+.lint-pop-note {
+    margin-top: 6px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.lint-pop-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: 10px;
+}
+.lint-pop-actions .btn { padding: 3px 10px; font-size: 12px; }
+
+@media (max-width: 720px) {
+    .pane-chips { grid-template-columns: 1fr; }
+    .repair-modal-body { max-height: 90vh; }
 }

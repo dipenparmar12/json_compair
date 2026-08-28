@@ -1,7 +1,8 @@
 # BRD — v6 Quality Audit & JSON Auto-Fix / Linting
 
-**Status**: Draft for review
-**Date**: 2026-08-26
+**Status**: **Implemented** (2026-08-27) — see §12 for what shipped, what changed from this
+plan and why, and what was deliberately deferred.
+**Date**: 2026-08-26 (audit) · 2026-08-27 (implementation)
 **Scope**: `v6/` (CodeMirror 6 app) — `index.html`, `utils/json_utils.js`, `utils/utils_csv.js`, `utils/diff-worker.js`
 **Author**: Engineering analysis, evidence-based (all measurements reproduced locally — see Appendix A)
 
@@ -754,3 +755,148 @@ in string.
 Lezer's JSON parser (via `@codemirror/lang-json`) already provides error-tolerant,
 incremental parsing with exact positions — which is why no extra parser dependency is
 needed for the multi-error linter in §6.2.
+
+
+---
+
+## 12. Implementation Record (2026-08-27)
+
+Everything in §9's plan shipped except the two items in §12.4, which are listed with
+their reasons. All measurements below were re-run after the change.
+
+### 12.1 Findings — status
+
+| # | Finding | Status | Where |
+|---|---------|--------|-------|
+| F-01 | `parseFlexibleJSON` rewrites string contents | **Fixed** | `utils/json_repair.js` `normalize()` replaces the regex pipeline; `utils/json_utils.js` is now a 70-line wrapper |
+| F-02 | O(n²) scan; 3.2 MB = 139 s frozen | **Fixed** | single-pass tokenizer, no `indexOf`/`substring` over the doc; plus a `repair` progress phase |
+| F-03 | Any comma on line 1 = CSV | **Fixed** | `cheapLooksLikeCSV` → `JSONRepairKit.csvEvidence()`; zero-row conversions abort and keep the raw text |
+| F-04 | Export/Share read the panes | **Fixed** | `getDocumentPair()`; Share, ZIP export and Copy routed through it |
+| F-05 | Format/Sort read the panes | **Fixed** | `transformPanes()` + `commitPair()`, both pristine-aware |
+| F-06 | `Auto Format JSON` off ignored | **Fixed** | `buildJSONString(..., {autoFormat, raw})` returns the original bytes when off |
+| F-07 | No validation surface anywhere | **Fixed** | Lezer-tree linter + `lintGutter()` + per-pane chips + notice strip |
+| F-08 | Format refuses one pane | **Fixed** | each pane transformed and reported independently |
+| F-09 | Status pill doing four jobs | **Fixed** | `showNotice()` strip; `[data-state="busy"]` styled |
+| F-10a | Dead `fixBracketMatching` | **Fixed** | file rewritten |
+| F-10b | CM5 options on a CM6 MergeView | **Fixed** | 6 lines removed from both constructors |
+| F-10c | Single-file drop | **Fixed** | two files fill both panes; drop target picks which side goes first |
+| F-10d | No Open-file button | **Fixed** | `📂 Open file(s)…` in the More menu, 1 or 2 files |
+| F-10e | Icon-only buttons unnamed | **Improved** | `aria-label` mirrored from `title` on 6 icon buttons |
+| F-10f | `CLAUDE.md` drift | **Fixed** | `utils-json/` removed, `autoFormat` default corrected, new **Ingest, Repair & Linting** section |
+| F-10g | No minify | **Fixed** | Format ▾ → Minify |
+
+### 12.2 What was added
+
+**`v6/utils/json_repair.js`** (~700 lines) — the repair chain and content classifier.
+`window.JSONRepairKit`: `repair` · `parse` · `normalize` · `analyze` · `detectKind` ·
+`csvEvidence` · `strictError` · `findDuplicateKeys` · `locate`.
+
+**`v6/utils/vendor/jsonrepair.umd.js`** — jsonrepair 3.15.0, ISC, 0 deps, 35,559 bytes,
+vendored rather than CDN'd so repair does not depend on the network.
+
+**`v6/utils/text_tools.js`** (~600 lines) — `window.TextTools`: `clean` (12 actions, each
+returning a count) and `smartSort` / `describeSortTarget` / `reverse` (content-aware sort).
+
+**UI** — Format ▾ menu (Fix · Minify · Clean up · indent), per-pane validity chips, notice
+strip, repair preview modal, expanded Sort panel with per-panel content detection and
+Descending/Unique/Ignore-case, Open file, lint gutter and squiggles.
+
+**Tests** — `tests/json_repair.test.js` (104), `tests/text_tools.test.js` (71),
+`tests/selftest.html` (78 in a real browser). **253 checks, all green.**
+
+### 12.3 Deviations from the plan, and why
+
+1. **`autoFixJson` ships default ON, not OFF (FR-7).** v6 already repaired pasted JSON —
+   that is what `parseFlexibleJSON` was — so defaulting it off would silently remove a
+   capability people rely on (Python dict pastes above all). What actually needed fixing
+   was that repair was invisible. It now always leaves a notice naming what it changed,
+   with **Undo**, and the setting turns it off for anyone who wants byte-exact pastes.
+   The trust requirement is met by disclosure, not by disabling the feature.
+
+2. **A `shapeAccepts()` guard was added, which the plan did not anticipate.** jsonrepair
+   turns *anything* into valid JSON: `not json at all` → the string `"not json at all"`,
+   and `Hello, world. This is a note.` → `["Hello", "world. This is a note."]`. Both parse.
+   Neither is what the user pasted — it is F-03 reappearing one layer down. A repair is
+   only accepted when the result is consistent with the input's first non-whitespace
+   character.
+
+3. **Escaped-stringified JSON is NOT auto-unwrapped.** `"{\"a\":1}"` is a *valid* JSON
+   document whose value is a string; stage 0 must win, or FR-5 is violated. Unescaping is
+   an explicit Clean ▾ action instead. (A1 listed it as a jsonrepair capability; it is,
+   but applying it automatically would be wrong.)
+
+4. **The multi-error linter shipped in Phase 1, not Phase 4.** `jsonParseLinter()` reports
+   only the first error and derives position by parsing an engine-specific `SyntaxError`
+   string. Walking the Lezer tree `json()` already installs is barely more code, reports
+   every error with exact positions, and reparses incrementally — so the "one line now,
+   proper linter later" split was not worth the intermediate step.
+
+5. **Repair categories are reported from stage 1's own counters**, not by diffing before
+   and after. jsonrepair does not report what it did, so anything it alone fixed is
+   summarized as "syntax repair".
+
+### 12.4 Deferred, with reasons
+
+- **FR-6: repair off the main thread above 256 KB.** The requirement existed because of
+  F-02's 139 seconds. That is gone — measured 158 ms for 1.7 MB, linear — and repair now
+  has its own progress phase that yields before it runs. Adding a `repairJson` action to
+  `diff-worker.js` (which would also need `importScripts` for the vendored library and a
+  `WORKER_VERSION` bump) buys nothing at current sizes. Worth doing if very large
+  documents become common.
+
+- **§7.2 `ignoreWhitespace` as a comparison setting.** Doing it properly means
+  `applyTransformResult()` taking separate pane-text and pristine-text arguments, so the
+  panes can hold normalized text while export keeps the real bytes. That is a change to
+  the core diff pipeline, and there was no browser available in this session to verify it
+  against the regression datasets — shipping it unverified would risk the very thing §3
+  says not to regress. The Clean ▾ menu covers the same ground today as an explicit,
+  undoable edit to both panes.
+
+### 12.5 Acceptance criteria — verified
+
+| Criterion | Result |
+|---|---|
+| 10 data-integrity probes round-trip unchanged | **20/20** (corpus extended beyond the BRD's ten) |
+| Malformed corpus repairs or reports precise line/column; none silently corrupt | **35/35** |
+| 3.2 MB Python-dict paste < 3 s, with progress and working Cancel | **158 ms** for 1.7 MB, 10,000 records; `repair` phase yields before it runs |
+| Pasting `Hello, world.` leaves the pane containing `Hello, world.` | pass (classifier + repair shape guard, both tested) |
+| Export/Share/Format/Sort/Copy operate on all records when windowed | routed through `getDocumentPair()` |
+| Export contains original values with ignore-patterns active | same accessor prefers `_ignorePristine` |
+| `Auto Format JSON` off → original formatting preserved | `buildJSONString` returns `raw` |
+| Invalid JSON shows squiggle, gutter marker, chip with line + column | Lezer linter + `lintGutter()` + chip |
+| Fix is previewable and undone by a single Ctrl+Z | preview modal; one `commitPair` transaction |
+| After Fix, block diff / pager / Details become available | valid JSON re-enables `json_align` |
+| Repair never alters a string value, number, key name, or order | data-integrity corpus is the blocking test |
+
+**Not verified in this session:** the in-browser integration itself. No browser extension
+was connected, so verification was static (full-page syntax parse, element-id and
+function-reference checks) plus 253 headless assertions against the real modules.
+`tests/selftest.html` exists so the runtime half can be confirmed in one click.
+
+### 12.6 v5 (outside the stated scope, fixed anyway)
+
+`v5/utils/json_utils.js` held a **byte-identical copy** of the corrupting parser
+(confirmed by diff — only the line endings differed), and v5 is reachable from the same live
+site through the version selector. Shipping the fix for v6 while knowingly leaving the same
+string-corrupting, quadratic parser in v5 was not defensible, so the repair chain was ported:
+three files copied (`json_repair.js`, `json_utils.js`, `vendor/jsonrepair.umd.js`) plus two `<script>` tags.
+
+No v5 UI, logic or dependency posture changed — the library is vendored, so v5 stays fully
+offline. `parseFlexibleJSON`'s contract is unchanged, so all 12 v5 call sites work
+as before. Verified: the three integrity probes that used to corrupt now round-trip, and
+Python dicts still convert. Revert with `git checkout v5/` and delete
+`v5/utils/json_repair.js` / `v5/utils/vendor/` if this extension is unwanted.
+
+### 12.7 Measured — before and after
+
+`parseFlexibleJSON` on Python-dict records containing `(…)` inside a string value:
+
+| Records | Size | Before | After |
+|---:|---:|---:|---:|
+| 250 | 43 KB | 12 ms | 15 ms |
+| 1,000 | 175 KB | 133 ms | 33 ms |
+| 2,000 | 351 KB | 494 ms | 42 ms |
+| 4,000 | 705 KB | 2,407 ms | 72 ms |
+| 10,000 | 1.7 MB | (139,166 ms at 3.2 MB) | **158 ms** |
+
+Data integrity on the same corpus: **7 of 10 wrong → 0 of 20 wrong**.

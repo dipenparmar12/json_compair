@@ -49,7 +49,12 @@
 
     <!-- Utility scripts -->
     <script src="./utils/utils.js"></script>
+    <!-- jsonrepair 3.15.0 (ISC, 0 deps) — vendored, not CDN: repair is on the
+         critical ingest path and must not depend on the network. -->
+    <script src="./utils/vendor/jsonrepair.umd.js"></script>
+    <script src="./utils/json_repair.js"></script>
     <script src="./utils/json_utils.js"></script>
+    <script src="./utils/text_tools.js"></script>
     <script src="./utils/utils_csv.js"></script>
     <script src="./utils/utils_zip.js"></script>
     <script src="./utils/utils_branch.js"></script>
@@ -92,27 +97,68 @@
     <div id="container">
       <div class="intro">
         <div class="intro-left">
-          <button id="btn-format" class="btn btn-primary">Format JSON</button>
+          <!-- Format splits into a primary action + a menu of the things that
+               used to have nowhere to live: repair, minify, text cleanup and
+               indent width. -->
+          <div class="format-group menu-anchor">
+            <button id="btn-format" class="btn btn-primary" title="Pretty-print JSON in both panels">Format JSON</button>
+            <button id="btn-format-menu" class="btn btn-primary btn-caret" title="More formatting actions"
+                    aria-haspopup="true" aria-expanded="false" aria-label="More formatting actions">▾</button>
+            <div id="format-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
+              <button id="btn-fix-json" class="dropdown-item">🛠 Fix JSON <span class="dropdown-hint">repair syntax</span></button>
+              <button id="btn-minify" class="dropdown-item">🗜 Minify <span class="dropdown-hint">one line</span></button>
+              <div class="settings-section-title settings-section-divided">Plain text</div>
+              <div class="ignore-desc">
+                Whitespace and invisible characters — zero-width spaces, BOMs and
+                non-breaking spaces copied from web pages produce differences you
+                cannot see the cause of.
+              </div>
+              <button id="btn-clean-text" class="dropdown-item">🧹 Clean up text</button>
+              <div id="clean-options" class="clean-options"></div>
+              <div class="settings-section-title settings-section-divided">Indent</div>
+              <select id="indent-width" class="settings-select dropdown-select" title="Spaces used when formatting">
+                <option value="2">2 spaces</option>
+                <option value="3">3 spaces</option>
+                <option value="4">4 spaces</option>
+                <option value="tab">Tab</option>
+              </select>
+            </div>
+          </div>
 
           <!-- Sort dropdown: sort array items by field value(s), or sort keys A→Z -->
           <div class="sort-dropdown menu-anchor">
             <button id="btn-sort" class="btn" title="Sort JSON data">Sort ▾</button>
             <div id="sort-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
               <div class="settings-section-title">Sort by field value</div>
+              <!-- Sort adapts to what each panel actually holds; this line
+                   reports the detection so the spec grammar below is not a
+                   guess. -->
+              <div id="sort-target" class="sort-target"></div>
               <div class="ignore-desc">
-                Reorder the top-level array of objects by one or more keys. Comma-separate
-                keys and add <code>ASC</code>/<code>DESC</code> per key (ascending by default).
-                Dot-notation for nested keys (<code>address.city</code>). Applies to both panels.
-                <br />e.g. <code>date DESC</code> · <code>category ASC, amount DESC</code>
+                Comma-separate keys and add <code>ASC</code>/<code>DESC</code> per key
+                (ascending by default). Dot-notation for nested keys (<code>address.city</code>).
+                Each panel is sorted independently, using whatever it holds:
+                <br />• <b>JSON</b> — object key, e.g. <code>category ASC, amount DESC</code>
+                <br />• <b>CSV/TSV</b> — column name or number, e.g. <code>price DESC</code>
+                <br />• <b>NDJSON</b> — record field, e.g. <code>ts DESC</code>
+                <br />• <b>Text</b> — whitespace column number, e.g. <code>2 DESC</code>
+                <br />Leave it empty to sort by whole value / whole line.
               </div>
               <div class="ignore-input-row">
-                <input type="text" id="sort-input" class="ignore-input"
-                       placeholder="e.g. category ASC, amount DESC" autocomplete="off" spellcheck="false" />
+                <input type="text" id="sort-input" class="ignore-input" list="sort-fields"
+                       placeholder="empty = sort by value · or e.g. amount DESC" autocomplete="off" spellcheck="false" />
+                <datalist id="sort-fields"></datalist>
                 <button id="sort-apply" class="btn btn-primary">Sort</button>
+              </div>
+              <div class="sort-options">
+                <label class="toolbar-toggle" title="Reverse the result"><input type="checkbox" id="sort-desc" /> Descending</label>
+                <label class="toolbar-toggle" title="Drop repeated items"><input type="checkbox" id="sort-unique" /> Unique</label>
+                <label class="toolbar-toggle" title="Treat A and a as the same"><input type="checkbox" id="sort-ignorecase" /> Ignore case</label>
               </div>
               <div id="sort-error" class="ignore-error" style="display: none;"></div>
               <div class="settings-section-title settings-section-divided">Other</div>
               <button id="btn-sort-keys" class="dropdown-item">🔤 Sort keys A→Z (all levels)</button>
+              <button id="btn-sort-reverse" class="dropdown-item">🔃 Reverse current order</button>
             </div>
           </div>
 
@@ -169,6 +215,20 @@
                 <div class="setting-text">
                   <div class="setting-title">Auto Sort Keys</div>
                   <div class="setting-desc">Automatically sort JSON keys on paste/drop</div>
+                </div>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" id="auto-fix-json" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Auto Fix JSON</div>
+                  <div class="setting-desc">
+                    Repair broken JSON on paste — trailing commas, single quotes,
+                    unquoted keys, comments, missing brackets, Python syntax.
+                    A repair is never silent: it always leaves a notice saying
+                    what changed, with Undo. Turn this off to paste exactly what
+                    you copied and repair on demand from the panel chip instead.
+                  </div>
                 </div>
               </label>
               
@@ -326,16 +386,16 @@
 
         <div class="intro-center">
           <div class="diff-nav">
-            <button id="btn-diff-prev" class="btn btn-icon" title="Previous difference (Alt+Up)" disabled>↑</button>
-            <button id="btn-diff-next" class="btn btn-icon" title="Next difference (Alt+Down)" disabled>↓</button>
+            <button id="btn-diff-prev" class="btn btn-icon" title="Previous difference (Alt+Up)" disabled aria-label="Previous difference (Alt+Up)">↑</button>
+            <button id="btn-diff-next" class="btn btn-icon" title="Next difference (Alt+Down)" disabled aria-label="Next difference (Alt+Down)">↓</button>
           </div>
           <div id="diff-summary" data-state="idle">Ready to compare JSON</div>
           <!-- Record pager: shown only when the collection is too large to render
                whole, so the panes hold one page of records at a time. -->
           <div id="record-pager" class="record-pager" style="display: none">
-            <button id="btn-page-prev" class="btn btn-icon" title="Previous records">◀</button>
+            <button id="btn-page-prev" class="btn btn-icon" title="Previous records" aria-label="Previous records">◀</button>
             <span id="record-pager-label">–</span>
-            <button id="btn-page-next" class="btn btn-icon" title="Next records">▶</button>
+            <button id="btn-page-next" class="btn btn-icon" title="Next records" aria-label="Next records">▶</button>
           </div>
           <button id="btn-diff-details" class="btn btn-ghost" style="display: none" title="Field-level breakdown of every change">Details</button>
           <button id="btn-clear-all" class="btn btn-ghost" style="display: none">Clear All</button>
@@ -348,6 +408,13 @@
             <div id="extra-settings-panel" class="dropdown-panel">
               <button id="btn-share" class="dropdown-item">📤 Export / Share</button>
               <button id="btn-import" class="dropdown-item">📥 Import Snapshot</button>
+              <!-- Files could previously ONLY arrive by drag & drop, which is
+                   undiscoverable and impossible from the keyboard. Two files
+                   selected at once fill left and right. -->
+              <button id="btn-open-file" class="dropdown-item">📂 Open file(s)… <span class="dropdown-hint">1 or 2</span></button>
+              <input type="file" id="file-open" multiple
+                     accept=".json,.csv,.tsv,.txt,.ndjson,.log,.md,application/json,text/csv,text/plain"
+                     style="display: none" />
               <input type="file" id="file-import" accept=".zip,.gz,.gzip,application/zip,application/gzip,application/octet-stream,.json" style="display: none" />
               <div class="dropdown-label">Examples</div>
               <select id="select-templates" class="settings-select dropdown-select">
@@ -384,9 +451,59 @@
         </div>
       </div>
 
+      <!-- Errors and warnings live here, NOT in #diff-summary. That pill is
+           overwritten by the next updateDiffStatus() 50 ms later, so errors
+           routed through it were frequently invisible. These persist until
+           dismissed or superseded.
+
+           Rendered as FIXED, bottom-left toasts (see .notice-strip in app.css).
+           As an in-flow block it pushed the editors down and back up on every
+           notice, which moved the diff out from under the reader's cursor. -->
+      <div id="notice-strip" class="notice-strip" role="status" aria-live="polite"></div>
+
+      <!-- Per-pane content chips: what the panel holds, whether it is valid,
+           and the one action that fixes it. This is the surface v6 had none of:
+           broken JSON used to produce no error anywhere, and silently disabled
+           block diff, the record pager and the Details panel with no
+           explanation. -->
+      <div id="pane-chips" class="pane-chips">
+        <div class="pane-chip" id="pane-chip-left" data-side="left" data-state="empty">
+          <span class="pane-chip-dot" aria-hidden="true"></span>
+          <span class="pane-chip-text" id="pane-chip-left-text">Left panel</span>
+          <span class="pane-chip-actions" id="pane-chip-left-actions"></span>
+        </div>
+        <div class="pane-chip" id="pane-chip-right" data-side="right" data-state="empty">
+          <span class="pane-chip-dot" aria-hidden="true"></span>
+          <span class="pane-chip-text" id="pane-chip-right-text">Right panel</span>
+          <span class="pane-chip-actions" id="pane-chip-right-actions"></span>
+        </div>
+      </div>
+
       <div id="view-container"></div>
 
       <div id="conversion-error-area" style="display: none"></div>
+
+      <!-- Repair preview. Repair is never applied without showing what it did:
+           a diff tool that rewrites input silently cannot be trusted for the job
+           it exists to do. -->
+      <div id="repair-modal" class="repair-modal" style="display: none" role="dialog"
+           aria-modal="true" aria-labelledby="repair-modal-title">
+        <div class="repair-modal-backdrop" data-repair-dismiss></div>
+        <div class="repair-modal-body">
+          <div class="repair-modal-head">
+            <h2 id="repair-modal-title">Fix JSON</h2>
+            <button class="btn btn-icon" id="repair-modal-close" title="Close" aria-label="Close">✕</button>
+          </div>
+          <div id="repair-modal-summary" class="repair-summary"></div>
+          <div id="repair-modal-changes" class="repair-changes"></div>
+          <div class="repair-modal-foot">
+            <span id="repair-modal-hint" class="repair-hint"></span>
+            <span class="repair-modal-spacer"></span>
+            <button class="btn" id="repair-modal-cancel">Cancel</button>
+            <button class="btn btn-primary" id="repair-modal-apply">Apply fix</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Field-level diff breakdown. Driven by the structural model, so it is
            complete and exact no matter how many records are on screen. -->
@@ -394,7 +511,7 @@
         <div class="diff-details-head">
           <strong>Differences</strong>
           <input id="diff-details-filter" type="search" placeholder="Filter items or fields…" />
-          <button id="btn-diff-details-close" class="btn btn-icon" title="Close">✕</button>
+          <button id="btn-diff-details-close" class="btn btn-icon" title="Close" aria-label="Close">✕</button>
         </div>
         <div id="diff-details-meta" class="diff-details-meta"></div>
         <div class="diff-details-section">Fields by number of items affected</div>
@@ -417,7 +534,7 @@
       // Import CodeMirror 6 core and extensions
       import { EditorView } from "@codemirror/view";
       import { EditorState } from "@codemirror/state";
-      import { json } from "@codemirror/lang-json";
+      import { json, jsonParseLinter } from "@codemirror/lang-json";
       // `diff` is the same routine MergeView runs internally. We call it on a
       // small probe page to MEASURE how expensive this particular pair is before
       // choosing how much to render — see calibrateRenderBudget().
@@ -447,6 +564,7 @@
         defaultHighlightStyle,
         bracketMatching,
         foldKeymap,
+        syntaxTree,
       } from "@codemirror/language";
       import {
         history,
@@ -463,10 +581,36 @@
         closeBracketsKeymap,
         completionKeymap,
       } from "@codemirror/autocomplete";
-      import { lintKeymap } from "@codemirror/lint";
+      import { lintKeymap, linter, lintGutter, forceLinting } from "@codemirror/lint";
 
       // Import Compartment for dynamic configuration
-      import { Compartment, RangeSetBuilder, Transaction } from "@codemirror/state";
+      import { Compartment, RangeSetBuilder, Transaction, StateField, StateEffect } from "@codemirror/state";
+
+      // ---------------------------------------------------------------------
+      // Transient "this is the record you asked for" highlight.
+      //
+      // Scrolling a record into view is not enough feedback when both panes are
+      // full of red and green: the eye has nothing to land on. A line highlight
+      // that fades after a moment says "here", without adding a persistent
+      // decoration that would compete with the diff colours.
+      // ---------------------------------------------------------------------
+      const flashLineEffect = StateEffect.define();          // line start | null
+      const flashLineDeco = Decoration.line({ class: 'cm-recordFlash' });
+      const flashLineField = StateField.define({
+        create() { return Decoration.none; },
+        update(deco, tr) {
+          deco = deco.map(tr.changes);
+          for (const e of tr.effects) {
+            if (e.is(flashLineEffect)) {
+              deco = e.value == null
+                ? Decoration.none
+                : Decoration.set([flashLineDeco.range(e.value)]);
+            }
+          }
+          return deco;
+        },
+        provide: (f) => EditorView.decorations.from(f)
+      });
 
       // Auto-save extension for CodeMirror 6
       const autoSaveExtension = EditorView.updateListener.of((update) => {
@@ -698,6 +842,54 @@
         }
       }
 
+      // ---------------------------------------------------------------------
+      // The ONE accessor for "what is actually in this comparison".
+      //
+      // The panes are not the document. Two things make them differ:
+      //
+      //   1. A large collection is rendered as a WINDOW — the panes hold ~60 of
+      //      2,000 records while the whole thing lives in _ignorePristine.
+      //   2. With ignore-patterns or numeric tolerance active, the right pane
+      //      holds the LEFT pane's values for matched fields, so the panes
+      //      contain values the user never wrote.
+      //
+      // saveContent() and sortByFields() already got this right; Share, Export,
+      // Format, Sort-keys and Copy all read the panes, so Export shipped 60 of
+      // 2,000 records and wrote normalized values as if they were real data.
+      // Every whole-document consumer goes through here now.
+      //
+      // @param {{require?: boolean}} opts
+      // @returns {{left, right, truncated, source: 'pristine'|'panes'}|null}
+      //          null (with a notice) when the panes are a partial view and no
+      //          complete snapshot exists — refusing beats exporting a fragment.
+      function getDocumentPair(opts) {
+        opts = opts || {};
+        const pristine = _ignorePristine;
+        if (pristine) {
+          return { left: pristine.left, right: pristine.right, truncated: false, source: 'pristine' };
+        }
+        const truncated = !!(diffStats && diffStats.truncated);
+        if (truncated && opts.require !== false) {
+          showNotice('warn',
+            'Only part of this collection is on screen and the full copy was lost by an edit. ' +
+            'Reload the panel (or undo) before exporting, so you do not save a fragment.');
+          return null;
+        }
+        return {
+          left: mergeView.a.state.doc.toString(),
+          right: mergeView.b.state.doc.toString(),
+          truncated: truncated,
+          source: 'panes'
+        };
+      }
+
+      /** The text of one side, honouring the same rule as getDocumentPair. */
+      function getPaneDocument(side) {
+        const pair = getDocumentPair();
+        if (!pair) return null;
+        return side === 'left' ? pair.left : pair.right;
+      }
+
       // Apply a change to the pattern list / scope: restore originals first (so a
       // removed pattern un-normalizes), persist, recompile, re-run the transform
       // with the new set, re-skin panes, and refresh the UI + count.
@@ -857,6 +1049,33 @@
         else { el.textContent = ''; el.style.display = 'none'; }
       }
 
+      // ---------------------------------------------------------------------
+      // Toolbar menus: one open at a time.
+      //
+      // Every toggle calls e.stopPropagation(), which means the OTHER menus'
+      // outside-click handlers never fire — so Settings, Ignore, Sort, Format
+      // and More could all be open at once, stacked on top of each other. Each
+      // toggle now closes the rest first.
+      // ---------------------------------------------------------------------
+      const MENU_PANEL_IDS = ['format-panel', 'sort-panel', 'settings-panel',
+                              'ignore-panel', 'extra-settings-panel', 'info-panel'];
+
+      function closeMenus(exceptId) {
+        for (const id of MENU_PANEL_IDS) {
+          if (id === exceptId) continue;
+          const el = document.getElementById(id);
+          if (el) el.style.display = 'none';
+        }
+        const caret = document.getElementById('btn-format-menu');
+        if (caret && exceptId !== 'format-panel') caret.setAttribute('aria-expanded', 'false');
+      }
+
+      function initializeMenuKeys() {
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') closeMenus(null);
+        });
+      }
+
       // Wire up the ignore dropdown: open/close, add/remove, and the style toggle.
       function initializeIgnorePanel() {
         const btn = document.getElementById('btn-ignore');
@@ -869,6 +1088,7 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const open = panel.style.display !== 'none';
+          closeMenus('ignore-panel');
           panel.style.display = open ? 'none' : 'block';
           if (!open && input) setTimeout(() => input.focus(), 0);
         });
@@ -1011,9 +1231,341 @@
       let scrollLocked = SettingsManager.get('scrollLock');
       let currentTheme = SettingsManager.get('theme');
 
+      // ---------------------------------------------------------------------
+      // JSON diagnostics.
+      //
+      // @codemirror/lint was already being downloaded and parsed, but only
+      // `lintKeymap` was imported — so F8 cycled through diagnostics that were
+      // never produced. Broken JSON produced no error anywhere in the app.
+      //
+      // This uses the Lezer tree that `json()` already installs rather than
+      // `jsonParseLinter()`, for three reasons: it reports EVERY syntax error
+      // instead of only the first; positions come from the tree instead of
+      // being scraped out of an engine-specific SyntaxError string; and Lezer
+      // reparses incrementally, so it stays cheap on a large document where a
+      // full JSON.parse per keystroke would not be.
+      // ---------------------------------------------------------------------
+      const LINT_MAX_BYTES = 2 * 1024 * 1024;   // above this, diagnostics cost more than they are worth
+      const DUPKEY_MAX_BYTES = 512 * 1024;
+
+      function jsonDiagnostics(view) {
+        const doc = view.state.doc;
+        if (doc.length === 0 || doc.length > LINT_MAX_BYTES) return [];
+
+        // Only lint content that is meant to be JSON. A CSV or a prose panel is
+        // not broken, and marking every line red would be noise.
+        const head = doc.sliceString(0, Math.min(doc.length, 512));
+        if (!/^\s*[{[]/.test(head)) return [];
+
+        const out = [];
+        const tree = syntaxTree(view.state);
+        tree.iterate({
+          enter(node) {
+            if (!node.type.isError || out.length >= 100) return;
+            // A zero-length error node marks something MISSING at that point;
+            // widen it by one character so there is something to underline.
+            const from = node.from;
+            const to = node.to > node.from ? node.to : Math.min(doc.length, node.from + 1);
+            out.push({
+              from, to,
+              severity: 'error',
+              message: describeSyntaxError(view.state, from, to),
+              actions: [{
+                name: 'Fix JSON',
+                apply() { openRepairPreview(sideOfView(view)); }
+              }]
+            });
+          }
+        });
+
+        // Duplicate keys are legal JSON and silently lossy through JSON.parse —
+        // a real source of "the diff says these match but they don't".
+        if (!out.length && window.JSONRepairKit && doc.length <= DUPKEY_MAX_BYTES) {
+          const text = doc.toString();
+          for (const d of window.JSONRepairKit.findDuplicateKeys(text, 25)) {
+            out.push({
+              from: d.pos,
+              to: Math.min(doc.length, d.pos + d.key.length + 2),
+              severity: 'warning',
+              message: `Duplicate key "${d.key}" — JSON.parse keeps only the last one, so this value is silently discarded.`
+            });
+          }
+        }
+        return out;
+      }
+
+      /** Turn a Lezer error node into something a human can act on. */
+      function describeSyntaxError(state, from, to) {
+        const near = state.doc.sliceString(from, Math.min(to + 12, state.doc.length)).replace(/\s+/g, ' ').trim();
+        if (from >= state.doc.length) return 'Unexpected end of JSON — something is not closed.';
+        return near ? `Unexpected input near "${near.slice(0, 24)}"` : 'Invalid JSON here';
+      }
+
+      function sideOfView(view) {
+        return (mergeView && view === mergeView.b) ? 'right' : 'left';
+      }
+
+      const jsonLinter = linter(jsonDiagnostics, { delay: 400 });
+
+      // ---------------------------------------------------------------------
+      // The red dot in the gutter - click to act, not hover-and-hope.
+      //
+      // Two defects in @codemirror/lint's own gutter tooltip made "click the
+      // red dot and fix it" unreliable, and both are in the library:
+      //
+      //  1. It is hover-only, and `trackHoverOn()` closes it from a WINDOW
+      //     mousemove as soon as the pointer is more than 10px outside the
+      //     ~12px marker and not yet inside `.cm-tooltip-lint`. Moving toward
+      //     the Fix button crosses exactly that dead band, so the tooltip
+      //     disappears from under the cursor before it can be clicked.
+      //  2. Its action buttons call `findDiagnostic(..., diagnostic)`, which
+      //     matches on OBJECT IDENTITY. Our linter builds fresh diagnostic
+      //     objects on every run, and this app dispatches programmatically all
+      //     the time (block alignment, ignore normalization, autosave), so any
+      //     re-lint between opening the tooltip and pressing the button turned
+      //     that button into a silent no-op. That is the "Fix JSON sometimes
+      //     works, sometimes doesn't" report.
+      //
+      // So the gutter tooltip is suppressed (tooltipFilter -> []) and this
+      // popover replaces it: hover to read, CLICK TO PIN, buttons wired
+      // straight to our own functions with no identity lookup in between.
+      // ---------------------------------------------------------------------
+      const LINT_HOVER_MS = 220;   // long enough not to flicker on a pass-by
+      const LINT_GRACE_MS = 260;   // pointer may need to cross the gap
+
+      const LintPop = (() => {
+        let pop = null;
+        let showTimer = null, hideTimer = null;
+        let pinned = false;
+        const diagCache = new WeakMap();   // immutable Text -> diagnostics
+
+        function ensure() {
+          if (pop) return pop;
+          pop = document.createElement('div');
+          pop.className = 'lint-pop';
+          pop.setAttribute('role', 'dialog');
+          pop.setAttribute('aria-label', 'JSON problem');
+          pop.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+          pop.addEventListener('mouseleave', () => { if (!pinned) scheduleHide(); });
+          document.body.appendChild(pop);
+          return pop;
+        }
+
+        /** Diagnostics for a view, memoized on the immutable doc object. */
+        function diagsFor(view) {
+          const doc = view.state.doc;
+          let d = diagCache.get(doc);
+          if (!d) {
+            try { d = jsonDiagnostics(view); } catch (e) { d = []; }
+            diagCache.set(doc, d);
+          }
+          return d;
+        }
+
+        function viewOf(node) {
+          if (!mergeView) return null;
+          if (mergeView.a.dom.contains(node)) return { view: mergeView.a, side: 'left' };
+          if (mergeView.b.dom.contains(node)) return { view: mergeView.b, side: 'right' };
+          return null;
+        }
+
+        /** The document line a gutter marker sits on. */
+        function lineOfMarker(view, marker) {
+          const r = marker.getBoundingClientRect();
+          const block = view.elementAtHeight(r.top + r.height / 2 - view.documentTop);
+          return view.state.doc.lineAt(block.from);
+        }
+
+        function scheduleHide() {
+          clearTimeout(hideTimer);
+          hideTimer = setTimeout(hide, LINT_GRACE_MS);
+        }
+
+        function hide() {
+          clearTimeout(showTimer);
+          clearTimeout(hideTimer);
+          pinned = false;
+          if (pop) pop.classList.remove('is-open');
+        }
+
+        function isOpen() { return !!(pop && pop.classList.contains('is-open')); }
+
+        function render(side, view, here, all, current) {
+          const el = ensure();
+          el.innerHTML = '';
+
+          const head = document.createElement('div');
+          head.className = 'lint-pop-head';
+          const worst = here.some((d) => d.severity === 'error') ? 'error' : 'warning';
+          const badge = document.createElement('span');
+          badge.className = 'lint-pop-badge ' + worst;
+          badge.textContent = worst === 'error' ? 'JSON error' : 'Warning';
+          head.appendChild(badge);
+
+          const loc = view.state.doc.lineAt(current.from);
+          const where = document.createElement('span');
+          where.className = 'lint-pop-where';
+          where.textContent = (side === 'left' ? 'Left' : 'Right') +
+            ' \u00b7 line ' + loc.number + ', column ' + (current.from - loc.from + 1);
+          head.appendChild(where);
+
+          const close = document.createElement('button');
+          close.type = 'button';
+          close.className = 'lint-pop-close';
+          close.textContent = '\u2715';
+          close.title = 'Close';
+          close.setAttribute('aria-label', 'Close');
+          close.onclick = hide;
+          head.appendChild(close);
+          el.appendChild(head);
+
+          for (const d of here.slice(0, 4)) {
+            const m = document.createElement('div');
+            m.className = 'lint-pop-msg';
+            m.textContent = d.message;
+            el.appendChild(m);
+          }
+
+          const errors = all.filter((d) => d.severity === 'error');
+          if (errors.length > 1) {
+            const n = document.createElement('div');
+            n.className = 'lint-pop-note';
+            n.textContent = errors.length + ' problems in this panel.';
+            el.appendChild(n);
+          }
+
+          const bar = document.createElement('div');
+          bar.className = 'lint-pop-actions';
+          const add = (label, title, run, primary) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn' + (primary ? ' btn-primary' : '');
+            b.textContent = label;
+            b.title = title;
+            b.onclick = run;
+            bar.appendChild(b);
+          };
+
+          if (worst === 'error') {
+            add('Fix JSON', 'Preview and apply an automatic repair of this panel',
+                () => { hide(); openRepairPreview(side); }, true);
+          }
+          add('Go to error', 'Put the cursor on the problem',
+              () => { hide(); jumpTo(side, current.from); });
+          if (errors.length > 1) {
+            add('Next', 'Jump to the next problem in this panel', () => {
+              const next = errors.find((d) => d.from > current.from) || errors[0];
+              jumpTo(side, next.from);
+              // Re-anchor on the caret: the marker for that line may not be
+              // rendered yet, and a popover that vanishes on Next is no help.
+              requestAnimationFrame(() => openAtPos(side, view, next.from, true));
+            });
+          }
+          el.appendChild(bar);
+          return el;
+        }
+
+        /** Place beside a viewport rect, flipping / clamping to stay on screen. */
+        function place(el, rect) {
+          el.style.left = '0px';
+          el.style.top = '0px';
+          el.classList.add('is-open');
+          const w = el.offsetWidth, h = el.offsetHeight, gap = 8;
+          let left = rect.right + gap;
+          if (left + w > window.innerWidth - 8) left = Math.max(8, rect.left - gap - w);
+          let top = rect.top + rect.height / 2 - h / 2;
+          top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+          el.style.left = Math.round(left) + 'px';
+          el.style.top = Math.round(top) + 'px';
+        }
+
+        function openAt(side, view, marker, pin) {
+          const line = lineOfMarker(view, marker);
+          const all = diagsFor(view);
+          const here = all.filter((d) => d.from >= line.from && d.from <= line.to);
+          if (!here.length) return;
+          place(render(side, view, here, all, here[0]), marker.getBoundingClientRect());
+          pinned = !!pin;
+          clearTimeout(hideTimer);
+        }
+
+        function openAtPos(side, view, pos, pin) {
+          const all = diagsFor(view);
+          const line = view.state.doc.lineAt(pos);
+          const here = all.filter((d) => d.from >= line.from && d.from <= line.to);
+          if (!here.length) return;
+          const c = view.coordsAtPos(pos);
+          if (!c) return;
+          place(render(side, view, here, all, here[0]),
+                { left: c.left, right: c.right, top: c.top, height: c.bottom - c.top });
+          pinned = !!pin;
+          clearTimeout(hideTimer);
+        }
+
+        function onMarkerOver(marker) {
+          const v = viewOf(marker);
+          if (!v) return;
+          clearTimeout(hideTimer);
+          if (pinned) return;                 // a pinned popover owns the screen
+          clearTimeout(showTimer);
+          showTimer = setTimeout(() => openAt(v.side, v.view, marker, false), LINT_HOVER_MS);
+          marker.addEventListener('mouseleave', () => {
+            clearTimeout(showTimer);
+            if (!pinned) scheduleHide();
+          }, { once: true });
+        }
+
+        function onMarkerDown(marker) {
+          const v = viewOf(marker);
+          if (!v) return;
+          clearTimeout(showTimer);
+          clearTimeout(hideTimer);
+          openAt(v.side, v.view, marker, true);
+        }
+
+        return { hide, isOpen, onMarkerOver, onMarkerDown, openAtPos };
+      })();
+
+      /**
+       * One set of delegated listeners for both panes, attached once. Markers
+       * are created and destroyed on every lint pass, so per-element wiring
+       * would have to be redone constantly.
+       */
+      function initLintGutterUX() {
+        document.addEventListener('mouseover', (e) => {
+          const m = e.target && e.target.closest && e.target.closest('.cm-lint-marker');
+          if (m) LintPop.onMarkerOver(m);
+        });
+        // mousedown, not click: it beats CodeMirror's own gutter handling and
+        // stops the pane stealing focus, so the popover opens where you clicked.
+        document.addEventListener('mousedown', (e) => {
+          const t = e.target;
+          if (!t || !t.closest) return;
+          const m = t.closest('.cm-lint-marker');
+          if (m) {
+            e.preventDefault();
+            e.stopPropagation();
+            LintPop.onMarkerDown(m);
+            return;
+          }
+          if (LintPop.isOpen() && !t.closest('.lint-pop')) LintPop.hide();
+        }, true);
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && LintPop.isOpen()) LintPop.hide();
+        });
+        // Anchored to a marker, so it has to go when that marker moves.
+        window.addEventListener('resize', () => LintPop.hide());
+        document.addEventListener('scroll', () => LintPop.hide(), true);
+      }
+
       // Basic editor extensions for both sides
       const basicSetup = [
+        flashLineField,
         lineNumbers(),
+        jsonLinter,
+        // tooltipFilter -> [] suppresses the library's hover-only gutter
+        // tooltip (see LintPop above for why); the markers themselves stay.
+        lintGutter({ tooltipFilter: () => [] }),
         highlightActiveLineGutter(),
         highlightSpecialChars(),
         history(),
@@ -1262,11 +1814,8 @@
           parent: container,
           // Apply saved merge settings
           orientation: mergeSettings.orientation,
-          connect: "align",
-          collapseIdentical: false,
           highlightChanges: mergeSettings.highlightChanges,
           gutter: mergeSettings.gutter,
-          allowEditingOriginals: true,
           revertControls: mergeSettings.revertControls === "none" ? undefined : mergeSettings.revertControls,
           collapseUnchanged: mergeSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
           diffConfig: buildDiffConfig(
@@ -1310,6 +1859,8 @@
         initializeInfoDropdown();
         initializeIgnorePanel();
         initDiffDetails();
+        initLintGutterUX();
+        initializeMenuKeys();
         updateIgnoreStyleClass();
 
         // Progressive disclosure: move verbose descriptions into ⓘ tooltips so
@@ -1416,7 +1967,9 @@
         // Toggle panel visibility
         btnSettings.addEventListener('click', (e) => {
           e.stopPropagation();
-          settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+          const open = settingsPanel.style.display !== 'none';
+          closeMenus('settings-panel');
+          settingsPanel.style.display = open ? 'none' : 'block';
         });
         
         // Close panel when clicking outside
@@ -1751,7 +2304,9 @@
 
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          panel.style.display = panel.style.display === 'none' || panel.style.display === '' ? 'block' : 'none';
+          const closed = panel.style.display === 'none' || panel.style.display === '';
+          closeMenus('extra-settings-panel');
+          panel.style.display = closed ? 'block' : 'none';
         });
         document.addEventListener('click', (e) => {
           if (!panel.contains(e.target) && e.target !== btn) {
@@ -1768,7 +2323,9 @@
         if (!btn || !panel) return;
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          panel.style.display = panel.style.display === 'none' || panel.style.display === '' ? 'block' : 'none';
+          const closed = panel.style.display === 'none' || panel.style.display === '';
+          closeMenus('info-panel');
+          panel.style.display = closed ? 'block' : 'none';
         });
         document.addEventListener('click', (e) => {
           if (!panel.contains(e.target) && e.target !== btn) {
@@ -2197,6 +2754,12 @@
          Cancel does not care which of them is on screen. */
       const PROGRESS_PHASES = [
         { key: 'csv',      label: 'Parsing CSV data',                  weight: 20 },
+        // Repair used to run before any phase existed and before the first
+        // await, so a multi-MB Python paste locked the tab with the panel
+        // blank and Cancel unreachable. It is ~10x faster than the parser it
+        // replaced and no longer quadratic, but it still gets a phase: work
+        // that can take a second must be able to say so.
+        { key: 'repair',   label: 'Repairing JSON syntax',             weight: 10 },
         { key: 'parse',    label: 'Loading datasets',                  weight: 12 },
         { key: 'identity', label: 'Detecting record identity',         weight: 8  },
         { key: 'match',    label: 'Matching records',                  weight: 10 },
@@ -2785,11 +3348,8 @@
           },
           parent: container,
           orientation: newSettings.orientation,
-          connect: "align",
-          collapseIdentical: false,
           highlightChanges: newSettings.highlightChanges,
           gutter: newSettings.gutter,
-          allowEditingOriginals: true,
           revertControls: newSettings.revertControls === "none" ? undefined : newSettings.revertControls,
           collapseUnchanged: newSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
           diffConfig: buildDiffConfig(newSettings.scanLimit, leftContent.length + rightContent.length),
@@ -2845,8 +3405,11 @@
         copyBtn.title = 'Copy content';
         copyBtn.className = 'copy-clear-btn'; // Add class for easy selection
         copyBtn.onclick = async () => {
-          const editor = side === 'left' ? mergeView.a : mergeView.b;
-          const text = editor.state.doc.toString();
+          // Copy the DOCUMENT, not the pane — see getDocumentPair(). Copying a
+          // windowed collection used to hand over one page of it, and copying a
+          // normalized pane handed over values the user never wrote.
+          const text = getPaneDocument(side);
+          if (text == null) return;
           try {
             await navigator.clipboard.writeText(text);
             copyBtn.textContent = '✓ Copied';
@@ -3815,6 +4378,12 @@
 
         btnFormat.onclick = formatJSON;
         initializeSortPanel();  // wires btn-sort (toggle), sort-apply, btn-sort-keys
+        // Once each. These used to be listed twice, which registered every
+        // handler twice — and a toggle wired twice opens then immediately
+        // closes, so the Format ▾ caret appeared to do nothing at all.
+        initializeFormatPanel();  // Format ▾ — Fix JSON / Minify / Clean up text / indent
+        initializeRepairModal();
+        initializeFileOpen();
 
         btnShare.onclick = shareURL;
         
@@ -3859,6 +4428,18 @@
             SettingsManager.set('autoSort', e.target.checked);
           });
         }
+
+        // Auto Fix JSON. Every key the panel reads back must be listed in the
+        // restore path or it silently reverts to the default on every reload
+        // (see CLAUDE.md §2b rule 1 — `blockDiff` was exactly this bug).
+        const autoFixJSON = document.getElementById('auto-fix-json');
+        if (autoFixJSON) {
+          const savedAutoFix = SettingsManager.get('autoFixJson');
+          autoFixJSON.checked = savedAutoFix !== undefined ? !!savedAutoFix : true;
+          autoFixJSON.addEventListener('change', (e) => {
+            SettingsManager.set('autoFixJson', e.target.checked);
+          });
+        }
         
         if (btnClearAll) {
           btnClearAll.onclick = clearAll;
@@ -3879,98 +4460,173 @@
         setupPasteHandlers();
       }
 
-      // Format JSON in both editors
+      /** Indent used by Format, Sort and any other re-serialization. */
+      function currentIndent() {
+        const v = SettingsManager.get('indentWidth');
+        if (v === 'tab') return '\t';
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) && n >= 0 && n <= 8 ? n : 3;
+      }
+
+      /**
+       * Write a new (left, right) pair into the comparison.
+       *
+       * Every whole-document rewrite — format, minify, clean, fix, sort — needs
+       * the same six steps, and getting any of them wrong has bitten before:
+       * the page number is meaningless after a rewrite, the pristine snapshot is
+       * now stale, the align memo is keyed on the old docs, and writing the
+       * panes outside `_blockAligning` makes the autosave listener drop the
+       * pristine pair (which is how Format on a windowed collection lost 1,940
+       * records from the session).
+       */
+      function commitPair(L, R) {
+        recordPageFrom = 0;
+        _ignorePristine = null;      // the rewritten pair IS the original now
+        _lastAlignMemo = null;
+
+        if (transformActive() && L.trim() && R.trim()) {
+          transformAndDispatch(L, R);
+        } else {
+          _blockAligning = true;
+          try {
+            setPaneIfChanged(mergeView.a, L);
+            setPaneIfChanged(mergeView.b, R);
+          } finally { _blockAligning = false; }
+          syncDiffConfig();
+          ensureDiffFresh();
+        }
+        updateDiffStatus();
+        refreshMergeViewIfNeeded();
+        afterContentChanged({ checkSize: false });
+      }
+
+      /**
+       * Run a per-pane text transform over the whole document and report what
+       * happened to each side separately.
+       *
+       * `fn(text, side) -> {ok, text, note} | {ok:false, error}`
+       *
+       * Per-pane is the point: Format used to bail out with "Please provide
+       * content in both panels", so you could not format a single pasted
+       * document, and one broken pane blocked formatting of the good one.
+       */
+      function transformPanes(fn, label) {
+        const pair = getDocumentPair();
+        if (!pair) return;
+        if (!pair.left.trim() && !pair.right.trim()) {
+          showNotice('info', 'Add content to a panel first.');
+          return;
+        }
+
+        const sides = [['left', pair.left], ['right', pair.right]];
+        const out = { left: pair.left, right: pair.right };
+        const good = [], bad = [];
+
+        for (const [side, text] of sides) {
+          if (!text.trim()) continue;
+          let res;
+          try { res = fn(text, side); }
+          catch (err) { res = { ok: false, error: err && err.message ? err.message : String(err) }; }
+          const name = side === 'left' ? 'Left' : 'Right';
+          if (res && res.ok) {
+            out[side] = res.text;
+            good.push(res.note ? `${name}: ${res.note}` : name);
+          } else if (res) {
+            bad.push(`${name}: ${res.error || 'failed'}`);
+          }
+        }
+
+        if (!good.length) {
+          showNotice('error', `${label} failed — ${bad.join(' · ')}`,
+            { actions: repairActionsFor(bad) });
+          return;
+        }
+
+        commitPair(out.left, out.right);
+        if (bad.length) {
+          showNotice('warn', `${label}: ${good.join(', ')}. ${bad.join(' · ')}`,
+            { actions: repairActionsFor(bad) });
+        } else {
+          showNotice('ok', `${label} — ${good.join(' · ')}`, { timeout: 4000 });
+        }
+      }
+
+      /** Offer "Fix JSON" alongside an error that repair could plausibly clear. */
+      function repairActionsFor(badMessages) {
+        const sides = [];
+        for (const m of badMessages) {
+          if (/^Left:/.test(m) && paneRepairable('left')) sides.push('left');
+          if (/^Right:/.test(m) && paneRepairable('right')) sides.push('right');
+        }
+        if (!sides.length) return [];
+        return sides.map((s) => ({
+          label: `Fix ${s} panel`,
+          run: () => openRepairPreview(s)
+        }));
+      }
+
+      // Format each pane independently.
       function formatJSON() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-
-        if (!leftContent || !rightContent) {
-          updateStatus("Please provide content in both panels");
-          return;
-        }
-
-        try {
-          const leftParsed = window.parseFlexibleJSON(leftContent);
-          const rightParsed = window.parseFlexibleJSON(rightContent);
-
-          const leftFormatted = JSON.stringify(leftParsed, null, 3);
-          const rightFormatted = JSON.stringify(rightParsed, null, 3);
-
-          mergeView.a.dispatch({
-            changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftFormatted }
-          });
-
-          mergeView.b.dispatch({
-            changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightFormatted }
-          });
-
-          updateStatus("Formatted successfully");
-          updateDiffStatus();
-          refreshMergeViewIfNeeded();
-        } catch (e) {
-          updateStatus("Error formatting: " + e.message);
-        }
+        const indent = currentIndent();
+        transformPanes((text) => {
+          const parsed = window.parseFlexibleJSON(text);
+          return { ok: true, text: JSON.stringify(parsed, null, indent) };
+        }, 'Formatted');
       }
 
-      // Sort JSON keys
+      // Compact output — the natural companion to Format, and the thing you
+      // need before pasting JSON into a config or a URL.
+      function minifyJSON() {
+        transformPanes((text) => {
+          const parsed = window.parseFlexibleJSON(text);
+          return { ok: true, text: JSON.stringify(parsed) };
+        }, 'Minified');
+      }
+
+      // Sort keys A→Z at every level.
       function sortJSON() {
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-
-        if (!leftContent || !rightContent) {
-          updateStatus("Please provide content in both panels");
-          return;
-        }
-
-        try {
-          const leftParsed = window.parseFlexibleJSON(leftContent);
-          const rightParsed = window.parseFlexibleJSON(rightContent);
-
-          const leftSorted = window.sortJSONKeys(leftParsed);
-          const rightSorted = window.sortJSONKeys(rightParsed);
-
-          const leftFormatted = JSON.stringify(leftSorted, null, 3);
-          const rightFormatted = JSON.stringify(rightSorted, null, 3);
-
-          mergeView.a.dispatch({
-            changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftFormatted }
-          });
-
-          mergeView.b.dispatch({
-            changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightFormatted }
-          });
-
-          updateStatus("Sorted successfully");
-          updateDiffStatus();
-          refreshMergeViewIfNeeded();
-        } catch (e) {
-          updateStatus("Error sorting: " + e.message);
-        }
+        const indent = currentIndent();
+        transformPanes((text) => {
+          const parsed = window.parseFlexibleJSON(text);
+          return { ok: true, text: JSON.stringify(window.sortJSONKeys(parsed), null, indent) };
+        }, 'Sorted keys');
       }
 
-      // Sort the top-level array of objects in BOTH panes by a field spec such as
-      // "category ASC, amount DESC" (see utils.parseSortSpec). Empty spec falls
-      // back to the default key sort. Each pane is handled independently: a pane
-      // that isn't a top-level array (or won't parse) is left untouched. Returns
-      // an error string to surface in the panel, or null on success.
-      async function sortByFields(spec) {
-        const specs = window.parseSortSpec(spec || '');
-        if (specs.length === 0) { sortJSON(); return null; }  // no criteria → app default
+      // Content-aware sort across BOTH panes.
+      //
+      // Sort used to be JSON-only: it parsed each pane as JSON, sorted a
+      // top-level array of objects by field, and left everything else alone. A
+      // panel holding CSV, NDJSON, a log, or a comma-separated list had no sort
+      // at all.
+      //
+      // TextTools.smartSort resolves the same spec grammar against whatever the
+      // panel actually holds — object key, CSV column name or number, NDJSON
+      // record field, or whitespace column in text — and falls back to sorting
+      // by whole value / whole line when no spec is given. Each pane is
+      // classified and sorted independently, because the two sides are often
+      // not the same kind of content.
+      //
+      // Returns an error string to surface in the panel, or null on success.
+      async function sortByFields(spec, extraOpts) {
+        if (!window.TextTools) return 'Sort tools failed to load — reload the page.';
 
-        // While a window is showing, the panes hold ONE PAGE of a much larger
-        // collection. Sorting what is on screen and writing it back would
-        // silently discard every record outside that page — on the 70,752-record
-        // export that is 69,857 records gone. Always sort the complete pair;
-        // _ignorePristine is the untransformed original (same invariant as
-        // applyBlockAlignment / saveContent).
-        const src = _ignorePristine;
-        const texts = src
-          ? [src.left, src.right]
-          : [mergeView.a.state.doc.toString().trim(), mergeView.b.state.doc.toString().trim()];
+        // The panes are not the document: with a window showing they hold ONE
+        // PAGE of a much larger collection, and sorting that page back over the
+        // panel would silently discard every record outside it.
+        const pair = getDocumentPair();
+        if (!pair) return null;                       // getDocumentPair explained why
+        const texts = [pair.left, pair.right];
         if (!texts.some((t) => t && t.trim())) return 'Add content to a panel to sort.';
 
+        const opts = Object.assign(window.TextTools.defaultSortOptions(), {
+          descending: !!document.getElementById('sort-desc')?.checked,
+          unique: !!document.getElementById('sort-unique')?.checked,
+          ignoreCase: !!document.getElementById('sort-ignorecase')?.checked,
+          indent: currentIndent()
+        }, extraOpts || {});
+
         const big = (texts[0] || '').length + (texts[1] || '').length > PROGRESS_MIN_BYTES;
-        const job = big ? startProcessingJob('Sorting records') : null;
+        const job = big ? startProcessingJob('Sorting') : null;
         try {
           if (job) {
             job.phase('parse');
@@ -3978,55 +4634,40 @@
             await window.ProcessingUI.yieldToPaint();
           }
 
-          let parsedAny = false, sortedAny = false;
           const out = [];
+          const notes = [];
+          const problems = [];
           for (let i = 0; i < texts.length; i++) {
+            const side = i === 0 ? 'Left' : 'Right';
             const text = texts[i];
             if (!text || !text.trim()) { out.push(null); continue; }
-            let parsed;
-            try { parsed = window.parseFlexibleJSON(text); }
-            catch (e) { out.push(null); continue; }   // leave an unparseable side untouched
-            parsedAny = true;
-            if (!Array.isArray(parsed)) { out.push(null); continue; }
-            sortedAny = true;
-            out.push(JSON.stringify(window.sortJSONByFields(parsed, specs), null, 3));
+
+            const res = window.TextTools.smartSort(text, spec || '', opts);
+            if (res.ok) {
+              out.push(res.text);
+              notes.push(`${side}: ${res.note}`);
+            } else {
+              out.push(null);
+              problems.push(`${side}: ${res.error}`);
+            }
+
             if (job) {
-              job.update(i + 1, 2, `Sorted ${fmtNum(parsed.length)} records`);
+              job.update(i + 1, 2, `${side} panel done`);
               await window.ProcessingUI.yieldToPaint();
               if (job.cancelled) throw new CancelledError();
             }
           }
 
-          if (!parsedAny) return 'Could not parse JSON — fix it and try again.';
-          if (!sortedAny) return 'Sort by field needs a top-level array of objects.';
+          if (!notes.length) return problems.join(' · ') || 'Nothing to sort.';
 
-          const L = out[0] != null ? out[0] : texts[0];
-          const R = out[1] != null ? out[1] : texts[1];
+          commitPair(out[0] != null ? out[0] : texts[0],
+                     out[1] != null ? out[1] : texts[1]);
 
-          // The order changed, so any page number we were on is meaningless.
-          recordPageFrom = 0;
-          _ignorePristine = null;     // the sorted pair is the new original
-          _lastAlignMemo = null;
-
-          if (transformActive() && L.trim() && R.trim()) {
-            if (job && L.length + R.length > PROGRESS_MIN_BYTES) {
-              await transformAndDispatchAsync(L, R, job);
-            } else {
-              transformAndDispatch(L, R);
-            }
+          if (problems.length) {
+            showNotice('warn', `${notes.join(' · ')}. ${problems.join(' · ')}`);
           } else {
-            _blockAligning = true;
-            try {
-              setPaneIfChanged(mergeView.a, L);
-              setPaneIfChanged(mergeView.b, R);
-            } finally { _blockAligning = false; }
-            syncDiffConfig();
-            ensureDiffFresh();
+            showNotice('ok', notes.join(' · '), { timeout: 5000 });
           }
-
-          updateStatus('Sorted by ' + specs.map((s) => s.field + (s.dir < 0 ? ' ↓' : ' ↑')).join(', '));
-          updateDiffStatus();
-          refreshMergeViewIfNeeded();
           return null;
         } catch (err) {
           if (isCancellation(err)) return null;
@@ -4034,6 +4675,49 @@
           return 'Sorting failed: ' + (err && err.message ? err.message : err);
         } finally {
           endProcessingJob(job);
+        }
+      }
+
+      /** "Reverse current order" — flips items/rows/lines without re-sorting. */
+      function reverseOrder() {
+        if (!window.TextTools) return;
+        transformPanes((text) => {
+          const r = window.TextTools.reverse(text);
+          return r.ok ? { ok: true, text: r.text, note: r.note } : { ok: false, error: r.error };
+        }, 'Reversed');
+      }
+
+      /**
+       * Describe what Sort will do to each panel, and offer that panel's field
+       * names for autocomplete. Without this the spec grammar in the panel is
+       * just documentation the user has to match against content they cannot
+       * see the type of.
+       */
+      function refreshSortTarget() {
+        const el = document.getElementById('sort-target');
+        const list = document.getElementById('sort-fields');
+        if (!el || !window.TextTools || !mergeView) return;
+
+        const pair = getDocumentPair({ require: false });
+        if (!pair) return;
+
+        const parts = [];
+        const fields = [];
+        for (const [side, text] of [['Left', pair.left], ['Right', pair.right]]) {
+          if (!text || !text.trim()) continue;
+          const d = window.TextTools.describeSortTarget(text);
+          parts.push(`<b>${side}</b> ${d.label}`);
+          if (d.fields) for (const f of d.fields) if (fields.indexOf(f) === -1) fields.push(f);
+        }
+        el.innerHTML = parts.length ? parts.join(' · ') : 'Both panels are empty.';
+
+        if (list) {
+          list.innerHTML = '';
+          for (const f of fields.slice(0, 200)) {
+            const o = document.createElement('option');
+            o.value = f;
+            list.appendChild(o);
+          }
         }
       }
 
@@ -4057,8 +4741,15 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const open = panel.style.display !== 'none';
+          closeMenus('sort-panel');
           panel.style.display = open ? 'none' : 'block';
-          if (!open) { showErr(''); if (input) setTimeout(() => input.focus(), 0); }
+          if (!open) {
+            showErr('');
+            // Classify both panels every time it opens: the content may have
+            // changed, and the spec grammar depends on what they hold.
+            refreshSortTarget();
+            if (input) setTimeout(() => input.focus(), 0);
+          }
         });
         document.addEventListener('click', (e) => {
           if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
@@ -4077,25 +4768,618 @@
           input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runSort(); } });
           input.addEventListener('input', () => showErr(''));
         }
+        // Re-running with a changed option is the common case, so apply
+        // immediately rather than making the user press Sort again.
+        for (const id of ['sort-desc', 'sort-unique', 'sort-ignorecase']) {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('change', () => showErr(''));
+        }
         if (keysBtn) keysBtn.addEventListener('click', () => { sortJSON(); panel.style.display = 'none'; });
+        const revBtn = document.getElementById('btn-sort-reverse');
+        if (revBtn) revBtn.addEventListener('click', () => { reverseOrder(); panel.style.display = 'none'; });
       }
 
-      function buildJSONString(data, options = {}) {
-        let content = data;
-        if (options.autoSort && typeof window.sortJSONKeys === 'function') {
+      // =====================================================================
+      // Notice strip
+      //
+      // #diff-summary was doing four jobs at once — diff result, busy
+      // indicator, error channel and general status — and every updateStatus()
+      // call was setDiffSummary('idle', msg), which the next
+      // afterContentChanged() (50 ms debounce) overwrote. Errors were therefore
+      // frequently invisible. Errors and warnings live here now; the pill keeps
+      // the comparison result and nothing else.
+      // =====================================================================
+      const NOTICE_MAX = 3;
+      const DEFAULT_NOTICE_MS = 6000;
+      let _noticeSeq = 0;
+
+      /**
+       * @param {'info'|'ok'|'warn'|'error'} kind
+       * @param {string} message  plain text (never interpolated as HTML)
+       * @param {{actions?: Array<{label,run}>, timeout?: number, key?: string, side?: string}} opts
+       *        `key` replaces an existing notice with the same key instead of
+       *        stacking a duplicate.
+       */
+      function showNotice(kind, message, opts) {
+        opts = opts || {};
+        const strip = document.getElementById('notice-strip');
+        if (!strip) { console.warn('[notice]', kind, message); return; }
+
+        const key = opts.key || (opts.side ? kind + ':' + opts.side : null);
+        if (key) {
+          const existing = strip.querySelector(`[data-notice-key="${CSS.escape(key)}"]`);
+          if (existing) existing.remove();
+        }
+
+        const el = document.createElement('div');
+        el.className = 'notice';
+        el.dataset.kind = kind;
+        if (key) el.dataset.noticeKey = key;
+        el.dataset.noticeId = String(++_noticeSeq);
+
+        const text = document.createElement('span');
+        text.className = 'notice-text';
+        text.textContent = message;
+        el.appendChild(text);
+
+        const hasActions = !!(opts.actions && opts.actions.length);
+        if (hasActions) {
+          const wrap = document.createElement('span');
+          wrap.className = 'notice-actions';
+          for (const a of opts.actions) {
+            const b = document.createElement('button');
+            b.className = 'btn';
+            b.textContent = a.label;
+            b.onclick = () => { el.remove(); a.run(); };
+            wrap.appendChild(b);
+          }
+          el.appendChild(wrap);
+        }
+
+        const close = document.createElement('button');
+        close.className = 'notice-close';
+        close.textContent = '✕';
+        close.title = 'Dismiss';
+        close.setAttribute('aria-label', 'Dismiss notice');
+        close.onclick = () => el.remove();
+        el.appendChild(close);
+
+        strip.appendChild(el);
+        while (strip.children.length > NOTICE_MAX) strip.removeChild(strip.firstChild);
+
+        // Confirmations expire on their own; problems do not. Passing an
+        // explicit timeout (including 0, for "stay until dismissed") always
+        // wins. Anything carrying an action stays too — an Undo that vanishes
+        // before it is read is worse than no Undo at all.
+        let ms = opts.timeout;
+        if (ms == null) ms = (kind === 'error' || kind === 'warn' || hasActions) ? 0 : DEFAULT_NOTICE_MS;
+        if (ms > 0) {
+          const t = setTimeout(() => el.remove(), ms);
+          // Hovering a toast is the user reading it — do not yank it away.
+          el.addEventListener('mouseenter', () => clearTimeout(t));
+        }
+        return el;
+      }
+
+      function clearNotices(key) {
+        const strip = document.getElementById('notice-strip');
+        if (!strip) return;
+        if (!key) { strip.innerHTML = ''; return; }
+        const el = strip.querySelector(`[data-notice-key="${CSS.escape(key)}"]`);
+        if (el) el.remove();
+      }
+
+      // =====================================================================
+      // Per-pane content chips
+      //
+      // The single largest UX gap this fixes: a user with slightly-broken JSON
+      // used to get a worse comparison with no explanation. json_align parses
+      // with strict JSON.parse, so a trailing comma silently disabled block
+      // diff, the record model, the pager and the Details panel — and nothing
+      // said why, or offered a way out.
+      // =====================================================================
+      // Describing a panel means classifying it, and for repairable JSON that
+      // means running the repair chain. Two separate caps: above CHIP_MAX_BYTES
+      // report the shape only, and never attempt a trial repair above
+      // CHIP_REPAIR_MAX_BYTES — that would run on every debounced change.
+      const CHIP_MAX_BYTES = 4 * 1024 * 1024;
+      const CHIP_REPAIR_MAX_BYTES = 512 * 1024;
+      const lastIngestParseError = { left: null, right: null };
+      const paneAnalysis = { left: null, right: null };
+      let _chipTimer = null;
+
+      function paneRepairable(side) {
+        const a = paneAnalysis[side];
+        return !!(a && a.repairable);
+      }
+
+      function scheduleChipUpdate(delay) {
+        clearTimeout(_chipTimer);
+        _chipTimer = setTimeout(updatePaneChips, delay == null ? 250 : delay);
+      }
+
+      function updatePaneChips() {
+        for (const side of ['left', 'right']) updatePaneChip(side);
+      }
+
+      function updatePaneChip(side) {
+        const chip = document.getElementById('pane-chip-' + side);
+        const textEl = document.getElementById('pane-chip-' + side + '-text');
+        const actionsEl = document.getElementById('pane-chip-' + side + '-actions');
+        if (!chip || !mergeView) return;
+
+        const view = side === 'left' ? mergeView.a : mergeView.b;
+        const doc = view.state.doc;
+        const label = side === 'left' ? 'Left' : 'Right';
+        actionsEl.innerHTML = '';
+
+        if (docIsBlank(doc)) {
+          paneAnalysis[side] = null;
+          chip.dataset.state = 'empty';
+          textEl.textContent = label + ' panel — empty';
+          return;
+        }
+
+        // Analysing means parsing, so above the cap describe the shape only.
+        if (doc.length > CHIP_MAX_BYTES || !window.JSONRepairKit) {
+          paneAnalysis[side] = null;
+          chip.dataset.state = 'text';
+          textEl.textContent = `${label} · ${fmtBytes(doc.length)} — too large to validate continuously`;
+          return;
+        }
+
+        const text = doc.toString();
+        const a = window.JSONRepairKit.analyze(text, { repairLimit: CHIP_REPAIR_MAX_BYTES });
+        paneAnalysis[side] = a;
+
+        // The pager is showing one window of a bigger collection; say so rather
+        // than reporting the page's record count as the dataset's.
+        const windowed = !!(diffStats && diffStats.truncated) && _ignorePristine;
+
+        if (a.kind === 'json' && a.valid) {
+          chip.dataset.state = 'valid';
+          textEl.textContent = `${label} · ${windowed ? 'Valid JSON · showing one page' : a.message}`;
+          return;
+        }
+
+        if (a.repairable) {
+          chip.dataset.state = 'fixable';
+          textEl.textContent = `${label} · ${a.message}`;
+          addChipButton(actionsEl, 'Fix', 'Repair the syntax in this panel', () => openRepairPreview(side));
+          return;
+        }
+
+        if (a.kind === 'jsonish' || a.kind === 'ndjson') {
+          chip.dataset.state = 'invalid';
+          const err = a.error || lastIngestParseError[side];
+          textEl.textContent = `${label} · Invalid JSON` +
+            (err && err.line ? ` — line ${err.line}, column ${err.col}` : '') +
+            (err && err.message ? `: ${err.message}` : '');
+          if (err && err.pos != null) {
+            addChipButton(actionsEl, 'Go to error', 'Put the cursor on the problem', () => jumpTo(side, err.pos));
+          }
+          return;
+        }
+
+        chip.dataset.state = 'text';
+        const kindLabel = { csv: 'CSV', tsv: 'TSV', xml: 'XML', yaml: 'YAML', text: 'Plain text' }[a.kind] || 'Plain text';
+        const lines = countLines(doc);
+        textEl.textContent = `${label} · ${kindLabel} · ${lines.toLocaleString()} line${lines === 1 ? '' : 's'}`;
+        if (a.kind === 'csv' || a.kind === 'tsv') {
+          addChipButton(actionsEl, 'To JSON', 'Convert this panel to JSON', () => convertPaneCsv(side));
+        }
+      }
+
+      function addChipButton(parent, label, title, run) {
+        const b = document.createElement('button');
+        b.className = 'btn';
+        b.textContent = label;
+        b.title = title;
+        b.onclick = run;
+        parent.appendChild(b);
+      }
+
+      function countLines(doc) { return doc.lines; }
+
+      /** Move the cursor to a byte offset and scroll it into view. */
+      function jumpTo(side, pos) {
+        const view = side === 'left' ? mergeView.a : mergeView.b;
+        const at = Math.max(0, Math.min(pos, view.state.doc.length));
+        view.dispatch({
+          selection: { anchor: at },
+          effects: EditorView.scrollIntoView(at, { y: 'center' })
+        });
+        view.focus();
+      }
+
+      async function convertPaneCsv(side) {
+        const text = getPaneDocument(side);
+        if (text == null) return;
+        await ingestContent(text, side, { forceCsv: true });
+      }
+
+      // =====================================================================
+      // Repair — Fix JSON
+      //
+      // Repair is never silent. A diff tool that rewrites its input without
+      // saying so cannot be trusted for the job it exists to do, so every
+      // repair goes through a preview that lists what changed, applies as one
+      // undoable transaction, and leaves a notice with Undo.
+      // =====================================================================
+      let _pendingRepair = null;   // {side, before, after, result}
+
+      function openRepairPreview(side) {
+        const text = getPaneDocument(side);
+        if (text == null) return;
+        if (!text.trim()) { showNotice('info', 'That panel is empty.'); return; }
+        if (!window.JSONRepairKit) {
+          showNotice('error', 'The repair library did not load — reload the page and try again.');
+          return;
+        }
+
+        const res = window.JSONRepairKit.repair(text);
+        if (!res.ok) {
+          const err = res.error || {};
+          showNotice('error',
+            `Cannot repair the ${side} panel automatically` +
+            (err.line ? ` — line ${err.line}, column ${err.col}` : '') +
+            (err.message ? `: ${err.message}` : '') + '.',
+            {
+              key: 'repair:' + side,
+              actions: err.pos != null ? [{ label: 'Go to error', run: () => jumpTo(side, err.pos) }] : []
+            });
+          return;
+        }
+        if (!res.changed) {
+          showNotice('ok', `The ${side} panel is already valid JSON.`, { timeout: 3500, key: 'repair:' + side });
+          return;
+        }
+
+        _pendingRepair = { side, before: text, after: res.text, result: res };
+        renderRepairModal();
+      }
+
+      function renderRepairModal() {
+        const p = _pendingRepair;
+        if (!p) return;
+        const modal = document.getElementById('repair-modal');
+        const summary = document.getElementById('repair-modal-summary');
+        const changes = document.getElementById('repair-modal-changes');
+        const hint = document.getElementById('repair-modal-hint');
+
+        const sideName = p.side === 'left' ? 'left' : 'right';
+        const items = p.result.repairs || [];
+
+        summary.innerHTML = '';
+        const head = document.createElement('div');
+        head.textContent = items.length
+          ? `Repairs to apply to the ${sideName} panel:`
+          : `The ${sideName} panel can be made valid JSON.`;
+        summary.appendChild(head);
+        if (items.length) {
+          const ul = document.createElement('ul');
+          for (const it of items) {
+            const li = document.createElement('li');
+            li.textContent = it.text;
+            ul.appendChild(li);
+          }
+          summary.appendChild(ul);
+        }
+
+        renderRepairDiff(changes, p.before, p.after);
+        hint.textContent = 'Applies as one step — Ctrl+Z restores the original exactly.';
+        modal.style.display = 'flex';
+        document.getElementById('repair-modal-apply').focus();
+      }
+
+      /**
+       * A line-level before/after of the changed regions, capped.
+       *
+       * Deliberately not a real diff: this is a "did it do what I expected"
+       * check, and the panes themselves show the result afterwards. Comparing
+       * line-by-line is O(n) and needs no library.
+       */
+      function renderRepairDiff(host, before, after, maxRows) {
+        maxRows = maxRows || 40;
+        host.innerHTML = '';
+        const A = before.split('\n');
+        const B = after.split('\n');
+        const n = Math.max(A.length, B.length);
+        let shown = 0, skipped = 0, lastShown = -2;
+
+        for (let i = 0; i < n; i++) {
+          const a = A[i], b = B[i];
+          if (a === b) continue;
+          if (shown >= maxRows) { skipped++; continue; }
+          if (i > lastShown + 1 && shown > 0) {
+            const gap = document.createElement('div');
+            gap.className = 'repair-diff-gap';
+            gap.textContent = '⋯';
+            host.appendChild(gap);
+          }
+          if (a !== undefined) host.appendChild(repairRow(i + 1, a, 'del'));
+          if (b !== undefined) host.appendChild(repairRow(i + 1, b, 'add'));
+          lastShown = i;
+          shown++;
+        }
+
+        if (!shown) {
+          const same = document.createElement('div');
+          same.className = 'repair-diff-gap';
+          same.textContent = 'Only whitespace changed.';
+          host.appendChild(same);
+        }
+        if (skipped) {
+          const more = document.createElement('div');
+          more.className = 'repair-diff-gap';
+          more.textContent = `⋯ and ${skipped} more changed line${skipped === 1 ? '' : 's'}`;
+          host.appendChild(more);
+        }
+      }
+
+      function repairRow(lineNo, text, kind) {
+        const row = document.createElement('div');
+        row.className = 'repair-diff-row';
+        row.dataset.kind = kind;
+        const ln = document.createElement('span');
+        ln.className = 'ln';
+        ln.textContent = String(lineNo);
+        const body = document.createElement('span');
+        body.textContent = (kind === 'del' ? '- ' : '+ ') + text;
+        row.appendChild(ln);
+        row.appendChild(body);
+        return row;
+      }
+
+      function closeRepairModal() {
+        document.getElementById('repair-modal').style.display = 'none';
+        _pendingRepair = null;
+      }
+
+      function applyPendingRepair() {
+        const p = _pendingRepair;
+        if (!p) return;
+        closeRepairModal();
+
+        const pair = getDocumentPair();
+        if (!pair) return;
+        const L = p.side === 'left' ? p.after : pair.left;
+        const R = p.side === 'left' ? pair.right : p.after;
+        const before = { left: pair.left, right: pair.right };
+
+        commitPair(L, R);
+
+        const count = (p.result.repairs || []).reduce((n, r) => n + r.count, 0);
+        showNotice('ok',
+          `Fixed the ${p.side} panel — ${count || 'some'} issue${count === 1 ? '' : 's'} repaired. ` +
+          `Block diff and the record model are available again.`,
+          {
+            key: 'repair:' + p.side,
+            actions: [{ label: 'Undo', run: () => commitPair(before.left, before.right) }],
+            timeout: 12000
+          });
+        scheduleChipUpdate(0);
+      }
+
+      /** Toolbar action: repair whichever panels need it. */
+      function fixBothPanes() {
+        const pair = getDocumentPair();
+        if (!pair) return;
+        const needs = ['left', 'right'].filter((s) => {
+          const t = s === 'left' ? pair.left : pair.right;
+          return t.trim() && paneRepairable(s);
+        });
+        if (!needs.length) {
+          const broken = ['left', 'right'].filter((s) => {
+            const a = paneAnalysis[s];
+            return a && (a.kind === 'jsonish' || a.kind === 'ndjson') && !a.repairable;
+          });
+          showNotice(broken.length ? 'error' : 'ok',
+            broken.length
+              ? `Nothing can be repaired automatically — the ${broken.join(' and ')} panel${broken.length > 1 ? 's are' : ' is'} too broken. Check the error marker in the gutter.`
+              : 'Both panels are already valid JSON.',
+            { timeout: broken.length ? 0 : 3500, key: 'repair:both' });
+          return;
+        }
+        // One at a time, so each shows its own preview and its own undo.
+        openRepairPreview(needs[0]);
+      }
+
+      // =====================================================================
+      // Plain-text cleanup
+      // =====================================================================
+      function cleanOptionsFromUI() {
+        const opts = window.TextTools.defaultCleanOptions();
+        const stored = SettingsManager.get('cleanOptions');
+        if (stored && typeof stored === 'object') Object.assign(opts, stored);
+        const host = document.getElementById('clean-options');
+        if (host) {
+          host.querySelectorAll('input[data-clean-key]').forEach((el) => {
+            opts[el.dataset.cleanKey] = el.checked;
+          });
+        }
+        opts.tabWidth = currentIndent() === '\t' ? 2 : (currentIndent() || 2);
+        return opts;
+      }
+
+      function renderCleanOptions() {
+        const host = document.getElementById('clean-options');
+        if (!host || !window.TextTools) return;
+        const stored = SettingsManager.get('cleanOptions') || {};
+        host.innerHTML = '';
+        for (const action of window.TextTools.CLEAN_ACTIONS) {
+          const label = document.createElement('label');
+          label.title = action.desc;
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.dataset.cleanKey = action.key;
+          cb.checked = Object.prototype.hasOwnProperty.call(stored, action.key)
+            ? !!stored[action.key] : action.default;
+          cb.addEventListener('change', persistCleanOptions);
+          label.appendChild(cb);
+          label.appendChild(document.createTextNode(' ' + action.label));
+          host.appendChild(label);
+        }
+      }
+
+      function persistCleanOptions() {
+        const host = document.getElementById('clean-options');
+        if (!host) return;
+        const out = {};
+        host.querySelectorAll('input[data-clean-key]').forEach((el) => { out[el.dataset.cleanKey] = el.checked; });
+        SettingsManager.set('cleanOptions', out);
+      }
+
+      function cleanText() {
+        if (!window.TextTools) { showNotice('error', 'Text tools did not load.'); return; }
+        const opts = cleanOptionsFromUI();
+        transformPanes((text) => {
+          const r = window.TextTools.clean(text, opts);
+          if (!r.changed) return { ok: true, text: text, note: 'nothing to clean' };
+          return {
+            ok: true,
+            text: r.text,
+            note: r.applied.map((a) => `${a.count} × ${a.label.toLowerCase()}`).join(', ')
+          };
+        }, 'Cleaned');
+      }
+
+      // =====================================================================
+      // File opening (F-10c / F-10d)
+      //
+      // Files could previously only arrive by drag & drop of ONE file. Two
+      // files now fill left and right, and there is a keyboard-reachable
+      // button for both.
+      // =====================================================================
+      async function openFiles(fileList) {
+        const files = Array.from(fileList || []).slice(0, 2);
+        if (!files.length) return;
+        const sides = files.length === 1 ? [pickEmptySide()] : ['left', 'right'];
+        for (let i = 0; i < files.length; i++) {
           try {
-            content = window.sortJSONKeys(content);
+            const text = await files[i].text();
+            await ingestContent(text, sides[i], {});
           } catch (err) {
-            console.warn('Auto sort failed:', err);
+            showNotice('error', `Could not read ${files[i].name}: ${err && err.message ? err.message : err}`);
           }
         }
-        return JSON.stringify(content, null, 3);
+        if (files.length === 2) {
+          showNotice('ok', `Loaded ${files[0].name} (left) and ${files[1].name} (right).`, { timeout: 5000 });
+        }
+      }
+
+      /** Prefer the empty pane, so a single file does not clobber existing work. */
+      function pickEmptySide() {
+        if (docIsBlank(mergeView.a.state.doc)) return 'left';
+        if (docIsBlank(mergeView.b.state.doc)) return 'right';
+        return 'left';
+      }
+
+      // =====================================================================
+      // Wiring for the new toolbar surfaces
+      // =====================================================================
+      function initializeFormatPanel() {
+        const btn = document.getElementById('btn-format-menu');
+        const panel = document.getElementById('format-panel');
+        if (!btn || !panel) return;
+
+        renderCleanOptions();
+
+        const indentSel = document.getElementById('indent-width');
+        if (indentSel) {
+          indentSel.value = String(SettingsManager.get('indentWidth') ?? 3);
+          indentSel.addEventListener('change', () => {
+            SettingsManager.set('indentWidth', indentSel.value);
+          });
+        }
+
+        const close = () => { panel.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); };
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = panel.style.display !== 'none';
+          closeMenus('format-panel');
+          panel.style.display = open ? 'none' : 'block';
+          btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+        });
+        document.addEventListener('click', (e) => {
+          if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) close();
+        });
+
+        const wire = (id, fn) => {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('click', () => { close(); fn(); });
+        };
+        wire('btn-fix-json', fixBothPanes);
+        wire('btn-minify', minifyJSON);
+        wire('btn-clean-text', cleanText);
+      }
+
+      function initializeRepairModal() {
+        const modal = document.getElementById('repair-modal');
+        if (!modal) return;
+        document.getElementById('repair-modal-apply').addEventListener('click', applyPendingRepair);
+        document.getElementById('repair-modal-cancel').addEventListener('click', closeRepairModal);
+        document.getElementById('repair-modal-close').addEventListener('click', closeRepairModal);
+        modal.querySelectorAll('[data-repair-dismiss]').forEach((el) => {
+          el.addEventListener('click', closeRepairModal);
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && modal.style.display !== 'none') closeRepairModal();
+        });
+      }
+
+      function initializeFileOpen() {
+        const btn = document.getElementById('btn-open-file');
+        const input = document.getElementById('file-open');
+        if (!btn || !input) return;
+        btn.addEventListener('click', () => input.click());
+        input.addEventListener('change', async () => {
+          const files = input.files;
+          input.value = '';                      // so the same file can be re-picked
+          await openFiles(files);
+        });
+      }
+
+
+      /**
+       * Serialize an ingested value back to text.
+       *
+       * `options.autoFormat` is honoured. It used to be ignored: the function
+       * ended in an unconditional `JSON.stringify(content, null, 3)`, and the
+       * caller's guard was satisfied by Auto CSV→JSON alone (which defaults on),
+       * so turning "Auto Format JSON" off changed nothing. That also made it
+       * impossible to compare two files whose *formatting* differed — v6 silently
+       * re-serialized both sides.
+       *
+       * `options.raw` is the original text, returned unchanged when formatting
+       * is off and there is nothing else to do.
+       */
+      function buildJSONString(data, options = {}) {
+        let content = data;
+        let touched = false;
+
+        if (options.autoSort && typeof window.sortJSONKeys === 'function') {
+          try { content = window.sortJSONKeys(content); touched = true; }
+          catch (err) { console.warn('Auto sort failed:', err); }
+        }
+
+        // Nothing asked for a rewrite and we have the user's bytes — keep them.
+        if (!touched && options.autoFormat === false && typeof options.raw === 'string') {
+          return options.raw;
+        }
+        return JSON.stringify(content, null, currentIndent());
       }
 
       // Share URL functionality
       async function shareURL() {
-        const leftContent = mergeView.a.state.doc.toString();
-        const rightContent = mergeView.b.state.doc.toString();
+        // The panes are not the document — see getDocumentPair(). Reading them
+        // here shipped 60 of 2,000 records for a windowed collection, and
+        // shipped normalized (fabricated) values whenever ignore-patterns or
+        // numeric tolerance were active.
+        const pair = getDocumentPair();
+        if (!pair) return;
+        const leftContent = pair.left;
+        const rightContent = pair.right;
 
         if (!leftContent.trim() && !rightContent.trim()) {
           updateStatus("No content to share");
@@ -4444,9 +5728,19 @@
           e.stopPropagation();
 
           const files = e.dataTransfer.files;
-          if (files && files.length > 0) {
-            await handleFileDrop(files[0], side);
+          if (!files || !files.length) return;
+
+          // Dropping TWO files fills both panels — that is the whole point of a
+          // comparison tool, and it used to silently ignore everything past
+          // files[0]. The drop target still decides which side the first file
+          // goes to, so dropping onto the right pane puts it on the right.
+          if (files.length >= 2 && !isSnapshotFile(files[0])) {
+            const order = side === 'right' ? ['right', 'left'] : ['left', 'right'];
+            for (let i = 0; i < 2; i++) await handleFileDrop(files[i], order[i]);
+            showNotice('ok', `Loaded ${files[0].name} and ${files[1].name}.`, { timeout: 5000 });
+            return;
           }
+          await handleFileDrop(files[0], side);
         }, true);
       }
 
@@ -4535,12 +5829,21 @@
         const m = text.slice(0, 1024).match(/\S/);
         return !!m && (m[0] === '{' || m[0] === '[');
       }
+      // CSV needs EVIDENCE, not one delimiter. This used to be
+      // `/[,;\t]/.test(firstLine)`, so "Hello, world. This is a note." was
+      // classified as CSV, converted by a parser that found no data rows, and
+      // the pane was replaced with `[]`. Same for SQL and log lines.
+      //
+      // JSONRepairKit.csvEvidence requires >= 2 non-empty lines, >= 2 columns,
+      // and a delimiter count that is consistent across the sampled lines.
       function cheapLooksLikeCSV(text) {
         const head = text.slice(0, 65536);
-        const nl = head.indexOf('\n');
-        const firstLine = nl === -1 ? head : head.slice(0, nl);
-        if (!firstLine || /^\s*[{\[]/.test(firstLine)) return false;
-        return /[,;\t]/.test(firstLine);
+        if (/^\s*[{\[]/.test(head)) return false;
+        if (window.JSONRepairKit) return window.JSONRepairKit.csvEvidence(head).ok;
+        // Fallback if the kit failed to load: still require two lines.
+        const lines = head.split(/\r?\n/).filter((l) => l.trim() !== '');
+        if (lines.length < 2) return false;
+        return /[,;\t|]/.test(lines[0]);
       }
       function countColumns(text) {
         const head = text.slice(0, 65536);
@@ -4568,6 +5871,9 @@
           // Re-fold unchanged regions for paste/drag/CSV ingest while Collapse is on.
           refreshMergeViewIfNeeded();
           if (opts.checkSize) checkContentSizeAndSuggest();
+          // Re-classify both panels: this is what drives the validity chips,
+          // and it is the only place that knows content settled.
+          scheduleChipUpdate();
         }, 50);
       }
 
@@ -4710,40 +6016,84 @@
         const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
         const autoFormat = document.getElementById('auto-format-json')?.checked;
         const autoSort = document.getElementById('auto-sort-keys')?.checked;
+        const autoFix = document.getElementById('auto-fix-json')?.checked !== false;
 
         const from = opts.range ? opts.range.from : 0;
         const to = opts.range ? opts.range.to : editor.state.doc.length;
 
         let content = rawText;
         let handled = false;
+        // Raised after the write, not before: the notice offers Undo, and there
+        // is nothing to undo until the pane actually holds the repaired text.
+        let pendingRepairNotice = null;
 
         // 1) JSON-first — only when it actually looks like JSON, so the
         //    Python→JSON regex passes never run over a huge CSV blob. Above
         //    FORMAT_MAX_BYTES the raw text is inserted as-is: parse+pretty-print
         //    of a multi-MB payload is a guaranteed main-thread stall.
-        if (!opts.forceCsv && (autoCSV || autoFormat || autoSort)
+        // opts.noRepair is the Undo path: put back exactly what was pasted,
+        // with no conversion of any kind.
+        if (!opts.noRepair && !opts.forceCsv && (autoCSV || autoFormat || autoSort)
             && rawText.length <= FORMAT_MAX_BYTES && looksLikeJSONStart(rawText)) {
-          try {
-            const parsed = window.parseFlexibleJSON(rawText);
-            content = buildJSONString(parsed, { autoSort });
+          // Repair is disclosed, never silent. The old code called
+          // parseFlexibleJSON and threw the outcome away, so a paste could be
+          // rewritten with nothing in the UI saying so — and when it failed,
+          // `catch (err) { /* not JSON */ }` was the end of the story: no
+          // error, no marker, and block diff quietly disabled downstream.
+          const kit = window.JSONRepairKit;
+          if (job && rawText.length > PROGRESS_MIN_BYTES) {
+            job.phase('repair');
+            job.update(0, 1, `Checking ${fmtBytes(rawText.length)} of JSON`);
+            await window.ProcessingUI.yieldToPaint();
+            if (job.cancelled) throw new CancelledError();
+          }
+          const rep = kit
+            ? kit.repair(rawText, { aggressive: autoFix })
+            : safeLegacyParse(rawText);
+          if (job && rawText.length > PROGRESS_MIN_BYTES) job.update(1, 1, 'Checked');
+
+          if (rep.ok) {
+            lastIngestParseError[side] = null;
+            content = buildJSONString(rep.value, { autoSort, autoFormat, raw: rep.text });
             handled = true;
-          } catch (err) { /* not JSON — fall through to CSV */ }
+            if (rep.changed && rep.repairs && rep.repairs.length) {
+              pendingRepairNotice = {
+                side,
+                raw: rawText,
+                summary: rep.repairs.map((r) => r.text).join(', ')
+              };
+            }
+          } else {
+            // Keep the reason so the pane chip can name the line and column.
+            lastIngestParseError[side] = rep.error || null;
+          }
         }
 
         // 2) CSV — convert off-thread, sampling very large inputs.
-        if (!handled && (opts.forceCsv || (autoCSV && cheapLooksLikeCSV(rawText)))) {
+        if (!handled && !opts.noRepair && (opts.forceCsv || (autoCSV && cheapLooksLikeCSV(rawText)))) {
           lastRawCsv[side] = rawText;
           setIngestBusy('Converting CSV…');
           if (job) { job.phase('csv'); job.update(0, rawText.length, 'Reading file'); }
           await nextPaint();
           try {
             const res = await csvToJsonStringOffThread(rawText, { autoSort, side, job });
+            // A conversion that produced no rows is never what the user wanted.
+            // Insert the raw text instead of the empty array the parser
+            // returned — replacing a paste with `[]` destroys it silently.
+            if (!res.builtRows) {
+              content = rawText;
+              handled = true;
+              showNotice('warn',
+                'That did not look like CSV once parsed — the text was kept as-is.',
+                { side });
+            } else {
             content = res.json;
             handled = true;
             if (res.truncated) showSampleNotice(side, res.builtRows, res.approxTotalRows);
             showConversionMessage(res.truncated
               ? `CSV converted (first ${res.builtRows.toLocaleString()} of ~${res.approxTotalRows.toLocaleString()} rows)`
               : 'CSV converted to JSON');
+            }
           } catch (err) {
             if (isCancellation(err)) throw err;   // handled by the caller
             updateStatus('CSV conversion failed: ' + (err && err.message ? err.message : err));
@@ -4796,8 +6146,39 @@
           if (job) job.update(1, 1, 'Done');
         }
 
-        // 5) Coalesced follow-up.
+        // 5) Tell the user what was repaired, and let them take it back.
+        if (pendingRepairNotice) {
+          const p = pendingRepairNotice;
+          const paneName = p.side === 'left' ? 'left' : 'right';
+          showNotice('info',
+            `Repaired the ${paneName} panel on paste — ${p.summary}.`,
+            {
+              key: 'ingest-repair:' + p.side,
+              timeout: 15000,
+              actions: [{
+                label: 'Undo',
+                run: () => ingestContent(p.raw, p.side, { noRepair: true })
+              }]
+            });
+        }
+
+        // 6) Coalesced follow-up.
         afterContentChanged({ checkSize: true });
+      }
+
+      /**
+       * Fallback shape when json_repair.js failed to load. Mirrors repair()'s
+       * return so the caller does not need a second code path.
+       */
+      function safeLegacyParse(text) {
+        try {
+          return { ok: true, changed: false, text, value: JSON.parse(text), repairs: [], error: null };
+        } catch (e) {
+          return {
+            ok: false, changed: false, text, value: undefined, repairs: [],
+            error: { message: e.message, line: 1, col: 1, pos: 0 }
+          };
+        }
       }
 
       async function handlePaste(e, side) {
@@ -5238,7 +6619,7 @@
           .sort((a, b) => b[1] - a[1]);
         const top = fields.length ? fields[0][1] : 1;
         fieldsEl.innerHTML = fields.length
-          ? fields.map(([k, n]) => `<div class="dd-field-row">
+          ? fields.map(([k, n]) => `<div class="dd-field-row" data-field="${escapeHtml(k)}" title="Show only items where ${escapeHtml(k)} changed">
                 <span class="dd-field-name" title="${escapeHtml(k)}">${escapeHtml(k)}</span>
                 <span class="dd-bar"><span style="width:${Math.round(n / top * 100)}%"></span></span>
                 <span class="dd-count">${fmtNum(n)}</span>
@@ -5269,8 +6650,101 @@
           : '<div class="dd-empty">No items match that filter.</div>';
 
         itemsEl.querySelectorAll('.dd-item-row').forEach(row => {
-          row.onclick = () => gotoRecordPage(parseInt(row.dataset.index, 10));
+          row.onclick = () => {
+            itemsEl.querySelectorAll('.dd-item-row.is-active')
+                   .forEach(r => r.classList.remove('is-active'));
+            row.classList.add('is-active');
+            revealRecord(parseInt(row.dataset.index, 10));
+          };
         });
+
+        // A field name in the histogram is the fastest way to ask "which
+        // records changed THIS?" — clicking one filters the list to it.
+        fieldsEl.querySelectorAll('.dd-field-row').forEach(row => {
+          row.onclick = () => {
+            const input = document.getElementById('diff-details-filter');
+            const name = row.dataset.field || '';
+            input.value = (input.value.trim().toLowerCase() === name.toLowerCase()) ? '' : name;
+            renderDiffDetails();
+            input.focus();
+          };
+        });
+      }
+
+      // =====================================================================
+      // Jump from the Details list to the record itself.
+      //
+      // The list used to call gotoRecordPage() and stop there. That paged the
+      // window when the render was truncated and did nothing at all otherwise
+      // (the common case: everything already rendered), so clicking a row in a
+      // panel full of changes appeared to do nothing. Even when it did page,
+      // the record was never scrolled to or marked, so you still had to hunt
+      // for it.
+      //
+      // json_align now reports the line each rendered item starts on
+      // (stats.itemLines: {from, offset, lines}), which is exact in every mode:
+      // pretty, full, windowed, root array and {data:[...]} envelope alike.
+      // =====================================================================
+      let _flashTimer = null;
+
+      /** Clear the flash highlight in the given views after a moment. */
+      function flashLine(views) {
+        clearTimeout(_flashTimer);
+        _flashTimer = setTimeout(() => {
+          for (const v of views) {
+            try { v.dispatch({ effects: flashLineEffect.of(null) }); } catch (e) { /* view gone */ }
+          }
+        }, 1800);
+      }
+
+      /**
+       * Scroll both panes to item `p` and mark it.
+       * @returns {boolean} false when the line map cannot place it.
+       */
+      function scrollToRecord(p) {
+        const il = diffStats && diffStats.itemLines;
+        if (!il || !il.lines || !il.lines.length || !mergeView) return false;
+        const k = p - il.from;
+        if (k < 0 || k >= il.lines.length) return false;
+        const lineNo = il.offset + il.lines[k] + 1;      // itemLines is 0-based
+
+        const touched = [];
+        for (const view of [mergeView.a, mergeView.b]) {
+          if (lineNo < 1 || lineNo > view.state.doc.lines) continue;
+          const line = view.state.doc.line(lineNo);
+          view.dispatch({
+            selection: { anchor: line.from },
+            effects: [
+              EditorView.scrollIntoView(line.from, { y: 'center' }),
+              flashLineEffect.of(line.from)
+            ]
+          });
+          touched.push(view);
+        }
+        if (!touched.length) return false;
+        flashLine(touched);
+        return true;
+      }
+
+      /**
+       * Page to the record if it is off the rendered window, then scroll to it.
+       * Placed a fifth of a page down from the top so there is context above it.
+       */
+      function revealRecord(p) {
+        if (!diffStats || !Number.isFinite(p)) return;
+        const total = diffStats.itemsTotal || 0;
+        if (p < 0 || p >= total) return;
+
+        if (p < diffStats.from || p >= diffStats.to) {
+          const size = Math.max(1, (diffStats.to - diffStats.from) || diffStats.pageSize || 1);
+          gotoRecordPage(Math.max(0, p - Math.floor(size / 5)));
+        }
+        if (!scrollToRecord(p)) {
+          showNotice('info',
+            'Jumped to that page. The exact line could not be located for this content, ' +
+            'so scroll from here.',
+            { timeout: 5000, key: 'reveal' });
+        }
       }
 
       // Parsed copies of both sides, used only to label rows with their identity

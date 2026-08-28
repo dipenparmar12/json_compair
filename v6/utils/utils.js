@@ -254,6 +254,15 @@
       // name each, matching the readers.
       autoFormat: true,         // Auto-format JSON on paste/drop
       autoSort: false,          // Auto-sort keys on paste/drop
+      // Repair on paste, ON by default — but never silent. v6 already repaired
+      // pasted JSON (that is what parseFlexibleJSON was), it just did it badly
+      // and without telling anyone; switching it off wholesale would drop a
+      // capability people rely on. What changed is disclosure: a repair now
+      // always leaves a notice saying what it did, with Undo. Off means "paste
+      // exactly what I copied" and repair on demand from the panel chip.
+      autoFixJson: true,
+      indentWidth: 3,           // 2 | 3 | 4 | 'tab' — used by Format/Sort/Fix
+      cleanOptions: null,       // per-action overrides for the text Clean menu
       showOnlyDiffs: false,
       wordWrap: true,       // Default word wrap enabled
       scrollLock: true,     // Default scroll lock enabled

@@ -1011,6 +1011,10 @@
     }
 
     var used = 0, expanded = 0, compacted = 0, shown = 0;
+    // Where each rendered item starts, so the UI can scroll to a record the
+    // Details panel names. Line indices are 0-based within THIS block; the
+    // caller adds the shell offset when the array sits inside an envelope.
+    var itemLines = [];
     // Trailing commas depend on what is actually emitted, not on the source
     // index, because a window omits items on either end.
     var lastA = -1, lastB = -1, p;
@@ -1032,6 +1036,7 @@
       var commaB = j !== null && p !== lastB;
       var sub;
       shown++;
+      itemLines.push(A.length);
 
       if (it.status === 'removed') {
         sub = windowed ? ser(a[i], child) : [child + compactSingle(a[i])];
@@ -1080,7 +1085,8 @@
       expanded: expanded, compacted: compacted,
       changedTotal: model.totals.changed,
       truncated: windowed && (from > 0 || to < items.length),
-      budgetHit: used >= budget
+      budgetHit: used >= budget,
+      itemLines: { from: from, offset: 0, lines: itemLines }
     };
     return res;
   }
@@ -1127,7 +1133,12 @@
     var A = lines.A.slice(), B = lines.B.slice();
     A[0] = keyPrefix(A[0], INDENT, path);
     B[0] = keyPrefix(B[0], INDENT, path);
-    return alignObject(pa, pb, '', ctx, { key: path, A: A, B: B });
+    // alignObject reports where it spliced the block in, so item line numbers
+    // recorded relative to the array survive being wrapped in an object.
+    var ov = { key: path, A: A, B: B, atA: 0 };
+    var out = alignObject(pa, pb, '', ctx, ov);
+    out.shellOffset = ov.atA;
+    return out;
   }
 
   /* ==================================================================
@@ -1152,7 +1163,11 @@
 
   // Fully pretty array alignment (nested arrays, and top-level arrays small
   // enough that everything fits the budget).
-  function alignArrayPretty(a, b, pad, ctx) {
+  // `out` (optional) collects the 0-based line index each top-level pair starts
+  // at, so a fully pretty-printed collection can be scrolled to by item index
+  // exactly like a windowed one. Only ever passed by the top-level caller;
+  // recursive calls leave it undefined, so nested arrays never contaminate it.
+  function alignArrayPretty(a, b, pad, ctx, out) {
     var child = pad + INDENT;
     var n = a.length, m = b.length;
     var A = [pad + '['], B = [pad + '['];
@@ -1169,6 +1184,7 @@
       var commaA = i !== null && i < n - 1;
       var commaB = j !== null && j < m - 1;
       var sub;
+      if (out) out.push(A.length);
       if (i !== null && j !== null) {
         var al = alignValue(a[i], b[j], child, ctx);
         if (commaA) addComma(al.A);
@@ -1221,6 +1237,7 @@
           var oA = override.A.slice(), oB = override.B.slice();
           if (commaA) addComma(oA);
           if (commaB) addComma(oB);
+          override.atA = A.length;
           pushBoth(oA, oB);
         // Ignored property present on both sides → normalize to the "a" value
         // on BOTH sides so MergeView sees no change.
@@ -1232,6 +1249,21 @@
           if (commaA) addComma(cA);
           if (commaB) addComma(cB);
           pushBoth(cA, cB);
+        } else if (ctx.collect && ctx.collect.lines === null && ctx.collect.path === e.k &&
+                   Array.isArray(a[e.k]) && Array.isArray(b[e.k]) &&
+                   eqKind(a[e.k], b[e.k], ctx.numTol) === 0) {
+          // The collection, rendered exactly as the generic branch below would
+          // (alignValue on two unequal arrays IS alignArrayPretty), but with the
+          // per-item line offsets collected so Details can scroll to a record.
+          var acc = [];
+          var ac = alignArrayPretty(a[e.k], b[e.k], child, ctx, acc);
+          ac.A[0] = keyPrefix(ac.A[0], child, e.k);
+          ac.B[0] = keyPrefix(ac.B[0], child, e.k);
+          if (commaA) addComma(ac.A);
+          if (commaB) addComma(ac.B);
+          ctx.collect.offset = A.length;
+          ctx.collect.lines = acc;
+          pushBoth(ac.A, ac.B);
         } else {
           var al = alignValue(a[e.k], b[e.k], child, ctx);
           al.A[0] = keyPrefix(al.A[0], child, e.k);
@@ -1264,7 +1296,9 @@
     return {
       ignore: (opts && typeof opts.ignore === 'function') ? opts.ignore : null,
       changed: false,
-      numTol: coerceTol(opts && opts.numTol)
+      numTol: coerceTol(opts && opts.numTol),
+      // Set by makeHandle for the pretty-envelope render; null everywhere else.
+      collect: null
     };
   }
 
@@ -1357,19 +1391,29 @@
         if (view === 'pretty') {
           // Small enough to show whole: the ordinary pretty alignment, which
           // already handles an envelope object around the array.
-          res = rootIsArray ? alignArrayPretty(rootA, rootB, '', ctx)
+          var pOut = [];
+          if (!rootIsArray) ctx.collect = { path: coll.path, lines: null, offset: 0 };
+          res = rootIsArray ? alignArrayPretty(rootA, rootB, '', ctx, pOut)
                             : alignValue(rootA, rootB, '', ctx);
           stats = {
             view: 'pretty', from: 0, to: model.items.length, shown: model.items.length,
             itemsTotal: model.items.length, expanded: model.totals.changed, compacted: 0,
             changedTotal: model.totals.changed, truncated: false, budgetHit: false
           };
+          stats.itemLines = rootIsArray
+            ? { from: 0, offset: 0, lines: pOut }
+            : (ctx.collect && ctx.collect.lines
+                ? { from: 0, offset: ctx.collect.offset, lines: ctx.collect.lines }
+                : null);
         } else {
           var arr = renderArray(coll.a, coll.b, model, ctx, {
             view: view, from: o.from, size: o.size, budget: o.budget
           }, rootIsArray ? '' : INDENT);
           stats = arr.stats;
           res = rootIsArray ? arr : renderWithShell(rootA, rootB, coll.path, arr, ctx);
+          if (stats.itemLines && !rootIsArray) {
+            stats.itemLines.offset = res.shellOffset || 0;
+          }
         }
         stats.pageSize = pageSize;
         // How much of what we just emitted actually differs, line for line.
