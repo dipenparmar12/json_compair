@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>v6 utils self-test</title>
+  <style>
+    :root {
+      --bg: #ffffff; --fg: #1f2328; --muted: #6c757d; --line: #e2e4e8;
+      --ok: #1a7f37; --bad: #cf222e; --okbg: #eaffea; --badbg: #ffebe9;
+      --mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1e1e1e; --fg: #e6e6e6; --muted: #a0a4ab; --line: #3a3a3e;
+        --ok: #57ab5a; --bad: #ff7b72; --okbg: #12261a; --badbg: #2b1416;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+    #totals { font-size: 15px; font-weight: 600; padding: 10px 14px; border-radius: 6px; margin-bottom: 18px; }
+    #totals.pass { background: var(--okbg); color: var(--ok); }
+    #totals.fail { background: var(--badbg); color: var(--bad); }
+    .group { margin-bottom: 16px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+    .group > h2 {
+      margin: 0; padding: 8px 12px; font-size: 13px; font-weight: 600;
+      background: color-mix(in srgb, var(--fg) 5%, transparent); border-bottom: 1px solid var(--line);
+    }
+    .row { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 4px 12px; font-size: 13px; }
+    .row.bad { background: var(--badbg); }
+    .row .mark { font-weight: 700; }
+    .row.good .mark { color: var(--ok); }
+    .row.bad .mark { color: var(--bad); }
+    .detail { grid-column: 2; font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+    .group[data-all-good="true"] .row.good { display: none; }
+    .collapsed-note { padding: 4px 12px 8px; font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>JSON Compare v6 — utility self-test</h1>
+  <p class="sub">
+    Runs the repair and text-tool suites against the real browser runtime, using the
+    same script tags <code>v6/index.html</code> uses. Serve the repo over HTTP and open this file
+    (<code>/tests/selftest.html</code>); opening it from <code>file://</code> works too.
+  </p>
+
+  <div id="totals">Running…</div>
+  <div id="out"></div>
+
+  <script src="../v6/utils/vendor/jsonrepair.umd.js"></script>
+  <script src="../v6/utils/json_repair.js"></script>
+  <script src="../v6/utils/utils.js"></script>
+  <script src="../v6/utils/text_tools.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var out = document.getElementById('out');
+    var totals = document.getElementById('totals');
+    var groups = {};
+    var pass = 0, fail = 0;
+
+    function group(name) {
+      if (groups[name]) return groups[name];
+      var el = document.createElement('div');
+      el.className = 'group';
+      el.dataset.allGood = 'true';
+      var h = document.createElement('h2');
+      h.textContent = name;
+      el.appendChild(h);
+      out.appendChild(el);
+      groups[name] = { el: el, good: 0 };
+      return groups[name];
+    }
+
+    function check(g, name, ok, detail) {
+      var grp = group(g);
+      var row = document.createElement('div');
+      row.className = 'row ' + (ok ? 'good' : 'bad');
+      var mark = document.createElement('span');
+      mark.className = 'mark';
+      mark.textContent = ok ? '✓' : '✕';
+      var label = document.createElement('span');
+      label.textContent = name;
+      row.appendChild(mark);
+      row.appendChild(label);
+      grp.el.appendChild(row);
+      if (ok) { pass++; grp.good++; }
+      else {
+        fail++;
+        grp.el.dataset.allGood = 'false';
+        if (detail != null) {
+          var d = document.createElement('div');
+          d.className = 'detail';
+          d.textContent = String(detail);
+          row.appendChild(d);
+        }
+      }
+    }
+
+    var eq = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
+    var K = window.JSONRepairKit;
+    var T = window.TextTools;
+
+    check('Loading', 'jsonrepair vendored build loaded', !!(window.JSONRepair && window.JSONRepair.jsonrepair));
+    check('Loading', 'JSONRepairKit loaded', !!K);
+    check('Loading', 'TextTools loaded', !!T);
+    check('Loading', 'utils.js sort helpers loaded', typeof window.parseSortSpec === 'function');
+    check('Loading', 'parseFlexibleJSON not required here', true);
+
+    if (!K || !T) { render(); return; }
+
+    // --- data integrity: the blocking suite -------------------------------
+    [
+      ['string contains True',   '{"name": "True Value Inc", x:1}',  { name: 'True Value Inc', x: 1 }],
+      ['string contains None',   '{"note": "None provided", x:1}',   { note: 'None provided', x: 1 }],
+      ['string contains False',  '{"m": "False alarm", x:1}',        { m: 'False alarm', x: 1 }],
+      ['double spaces kept',     '{"t": "a  b   c", x:1}',           { t: 'a  b   c', x: 1 }],
+      ['HTML in string',         '{"h": "<b>hi</b>", x:1}',          { h: '<b>hi</b>', x: 1 }],
+      ['parens in string',       '{"p": "(555) 123-4567", x:1}',     { p: '(555) 123-4567', x: 1 }],
+      ['repr-like in string',    '{"d": "<User #12>", x:1}',         { d: '<User #12>', x: 1 }],
+      ['url in string',          '{"u": "https://a.example/b", x:1}',{ u: 'https://a.example/b', x: 1 }],
+      ['hash in string',         '{"c": "#ff0000", x:1}',            { c: '#ff0000', x: 1 }],
+      ['unicode preserved',      '{"s": "café ☕ 日本", x:1}',        { s: 'café ☕ 日本', x: 1 }]
+    ].forEach(function (c) {
+      var r = K.repair(c[1]);
+      check('Data integrity (values must survive unchanged)', c[0],
+        r.ok && eq(r.value, c[2]),
+        r.ok ? 'got ' + JSON.stringify(r.value) : 'repair failed: ' + (r.error && r.error.message));
+    });
+
+    // --- repair --------------------------------------------------------------
+    [
+      ['trailing comma',        '{"a":1,}',                                { a: 1 }],
+      ['single quotes',         "{'a': 'b'}",                              { a: 'b' }],
+      ['unquoted keys',         '{a: 1, b: 2}',                            { a: 1, b: 2 }],
+      ['comments',              '{"a":1} // note',                         { a: 1 }],
+      ['missing brace',         '{"a":1',                                  { a: 1 }],
+      ['missing comma',         '{"a":1 "b":2}',                           { a: 1, b: 2 }],
+      ['NaN becomes null',      '{"a": NaN}',                              { a: null }],
+      ['code fence',            '```json\n{"a":1}\n```',                   { a: 1 }],
+      ['JSONP wrapper',         'cb({"a":1})',                             { a: 1 }],
+      ['NDJSON',                '{"a":1}\n{"a":2}',                        [{ a: 1 }, { a: 2 }]],
+      ['python literals',       "{'a': True, 'b': None}",                  { a: true, b: null }],
+      ['python tuple',          "{'a': (1, 2)}",                           { a: [1, 2] }],
+      ['python set',            "{'a': {1, 2}}",                           { a: [1, 2] }],
+      ['datetime.datetime',     "{'t': datetime.datetime(2025, 8, 21, 10, 37, 4, 895369)}",
+                                { t: '2025-08-21T10:37:04.895369' }],
+      ['Decimal',               "{'p': Decimal('19.99')}",                 { p: 19.99 }],
+      ['apostrophe in string',  "{'a': 'it's fine', 'b': 1}",              { a: "it's fine", b: 1 }]
+    ].forEach(function (c) {
+      var r = K.repair(c[1]);
+      check('Repair', c[0], r.ok && eq(r.value, c[2]),
+        r.ok ? 'got ' + JSON.stringify(r.value) : (r.error && r.error.message));
+    });
+
+    check('Repair', 'valid JSON untouched (changed=false)', (function () {
+      var src = '{\n  "a": 1\n}';
+      var r = K.repair(src);
+      return r.ok && !r.changed && r.text === src;
+    })());
+
+    ['not json at all', 'Hello, world. This is a note.'].forEach(function (t) {
+      var r = K.repair(t);
+      check('Repair', 'prose is not turned into data: ' + JSON.stringify(t.slice(0, 22)),
+        !r.ok && r.text === t, 'got ' + JSON.stringify(r.value));
+    });
+
+    // --- classification ------------------------------------------------------
+    [
+      ['Hello, world. This is a note.',       'text'],
+      ['SELECT id, name FROM users;',         'text'],
+      ['a,b,c\n1,2,3',                        'csv'],
+      ['a\tb\n1\t2',                          'tsv'],
+      ['{"a":1}',                             'json'],
+      ["{'a': True}",                         'jsonish'],
+      ['{"a":1}\n{"a":2}',                    'ndjson'],
+      ['<root><a>1</a></root>',               'xml']
+    ].forEach(function (c) {
+      var got = K.detectKind(c[0]);
+      check('Content classification', JSON.stringify(c[0].slice(0, 30)) + ' → ' + c[1], got === c[1], 'got ' + got);
+    });
+
+    // --- performance: the 139-second freeze ----------------------------------
+    (function () {
+      function pyRecords(n) {
+        var rows = [];
+        for (var i = 0; i < n; i++) {
+          rows.push("{'id': " + i + ", 'name': 'Item (" + i + ") alpha', 'ok': True, 'note': None, " +
+            "'created_on': datetime.datetime(2025, 8, 21, 10, 37, 4, " + (100000 + i) + "), " +
+            "'price': Decimal('19.99'), 'tags': ('a', 'b')}");
+        }
+        return '[' + rows.join(', ') + ']';
+      }
+      [[1000, 500], [4000, 1500], [10000, 3000]].forEach(function (c) {
+        var src = pyRecords(c[0]);
+        var t0 = performance.now();
+        var r = K.repair(src);
+        var ms = Math.round(performance.now() - t0);
+        check('Performance', c[0] + ' python records (' + (src.length / 1048576).toFixed(1) + ' MB) repairs', r.ok);
+        check('Performance', c[0] + ' records under ' + c[1] + ' ms', ms < c[1], 'took ' + ms + ' ms');
+        if (r.ok) {
+          check('Performance', c[0] + ' records: parens inside strings intact',
+            r.value[0].name === 'Item (0) alpha', JSON.stringify(r.value[0].name));
+        }
+      });
+    })();
+
+    // --- duplicate keys -------------------------------------------------------
+    check('Duplicate keys', 'found in flat object', K.findDuplicateKeys('{"a":1,"b":2,"a":3}').length === 1);
+    check('Duplicate keys', 'found when nested', K.findDuplicateKeys('{"o":{"x":1,"x":2}}').length === 1);
+    check('Duplicate keys', 'no false positive across sibling objects',
+      K.findDuplicateKeys('{"o":{"a":1},"p":{"a":2}}').length === 0);
+
+    // --- cleanup --------------------------------------------------------------
+    (function () {
+      var ZW = '​', BOM = '﻿', NBSP = ' ';
+      var r = T.clean('a' + ZW + 'b' + BOM + 'c');
+      check('Text cleanup', 'strips zero-width and BOM', r.text === 'abc', JSON.stringify(r.text));
+      check('Text cleanup', 'counts them', r.applied.some(function (a) { return a.key === 'zeroWidth' && a.count === 2; }));
+      check('Text cleanup', 'normalizes NBSP', T.clean('a' + NBSP + 'b').text === 'a b');
+      check('Text cleanup', 'trims trailing whitespace', T.clean('a  \nb\t').text === 'a\nb');
+      check('Text cleanup', 'collapses 3+ blank lines', T.clean('a\n\n\n\n\nb').text === 'a\n\nb');
+      check('Text cleanup', 'keeps a single blank line', T.clean('a\n\nb').text === 'a\n\nb');
+      check('Text cleanup', 'default clean preserves string contents',
+        JSON.parse(T.clean('{\n  "b": "x  y"\n}').text).b === 'x  y');
+      check('Text cleanup', 'no-op reports unchanged', !T.clean('clean').changed);
+    })();
+
+    // --- sorting --------------------------------------------------------------
+    (function () {
+      var recs = '[{"name":"charlie","age":30},{"name":"alice","age":25},{"name":"bob","age":35}]';
+      var r = T.smartSort(recs, 'name ASC', {});
+      check('Sort', 'JSON array of objects by field',
+        r.ok && JSON.parse(r.text).map(function (x) { return x.name; }).join() === 'alice,bob,charlie', r.error);
+
+      r = T.smartSort(recs, 'age DESC', {});
+      check('Sort', 'descending numeric field',
+        r.ok && JSON.parse(r.text).map(function (x) { return x.age; }).join() === '35,30,25', r.error);
+
+      r = T.smartSort('["a10","a2","a1"]', '', {});
+      check('Sort', 'natural ordering (a2 before a10)',
+        r.ok && JSON.parse(r.text).join() === 'a1,a2,a10', r.text);
+
+      r = T.smartSort('{"z":1,"a":2}', '', {});
+      check('Sort', 'JSON object sorts keys',
+        r.ok && Object.keys(JSON.parse(r.text)).join() === 'a,z', r.error);
+
+      r = T.smartSort("[{'n':'b'},{'n':'a'}]", 'n ASC', {});
+      check('Sort', 'repairs before sorting',
+        r.ok && JSON.parse(r.text).map(function (x) { return x.n; }).join() === 'a,b', r.error);
+
+      r = T.smartSort('name,price\ncherry,30\napple,10\nbanana,20', 'price DESC', {});
+      check('Sort', 'CSV by column, header kept',
+        r.ok && r.text === 'name,price\ncherry,30\nbanana,20\napple,10', JSON.stringify(r.text));
+
+      r = T.smartSort('name,price\ncherry,30\napple,10', 'nope ASC', {});
+      check('Sort', 'unknown CSV column names the real ones', !r.ok && /No column/.test(r.error), r.error);
+
+      r = T.smartSort('{"id":3}\n{"id":1}\n{"id":2}', 'id ASC', {});
+      check('Sort', 'NDJSON by field, one record per line',
+        r.ok && r.text === '{"id":1}\n{"id":2}\n{"id":3}', JSON.stringify(r.text));
+
+      r = T.smartSort('charlie\nalice\nbob', '', {});
+      check('Sort', 'plain text sorts lines', r.ok && r.text === 'alice\nbob\ncharlie', JSON.stringify(r.text));
+
+      r = T.smartSort('x 30 p\ny 10 q\nz 20 r', '2 ASC', {});
+      check('Sort', 'text sorts by whitespace column',
+        r.ok && r.text === 'y 10 q\nz 20 r\nx 30 p', JSON.stringify(r.text));
+
+      r = T.smartSort('banana, apple, cherry', '', {});
+      check('Sort', 'inline list keeps its separator style',
+        r.ok && r.text === 'apple, banana, cherry', JSON.stringify(r.text));
+
+      r = T.smartSort('b\na\nb\nc', '', { unique: true });
+      check('Sort', 'unique drops duplicates', r.ok && r.text === 'a\nb\nc', JSON.stringify(r.text));
+
+      check('Sort', 'describeSortTarget labels a record array',
+        T.describeSortTarget('[{"a":1},{"a":2}]').kind === 'json-array-objects');
+      check('Sort', 'describeSortTarget offers field names',
+        T.describeSortTarget('[{"name":1,"age":2}]').fields.join() === 'name,age');
+
+      r = T.reverse('a\nb\nc');
+      check('Sort', 'reverse text lines', r.ok && r.text === 'c\nb\na');
+      r = T.reverse('h,x\n1,a\n2,b');
+      check('Sort', 'reverse CSV keeps header', r.ok && r.text === 'h,x\n2,b\n1,a', JSON.stringify(r.text));
+    })();
+
+    render();
+
+    function render() {
+      var ok = fail === 0;
+      totals.className = ok ? 'pass' : 'fail';
+      totals.textContent = ok
+        ? pass + ' checks passed'
+        : fail + ' of ' + (pass + fail) + ' checks FAILED (' + pass + ' passed)';
+      Object.keys(groups).forEach(function (name) {
+        var g = groups[name];
+        if (g.el.dataset.allGood !== 'true') return;
+        var n = document.createElement('div');
+        n.className = 'collapsed-note';
+        n.textContent = 'all ' + g.good + ' passed';
+        g.el.appendChild(n);
+      });
+    }
+  })();
+  </script>
+</body>
+</html>
