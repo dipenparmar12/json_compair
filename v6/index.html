@@ -668,6 +668,16 @@
               updateCSVConversionButtons();
             }
           }, 300);
+
+          // Re-classify the panels. This used to hang off afterContentChanged()
+          // alone, which only runs for the ingest pipeline — so typing broken
+          // JSON by hand, a native paste (handlePaste bows out when no
+          // auto-processing is on), an undo or a revert-chunk left the chip
+          // showing whatever the last ingest said. Measured: two panes of
+          // invalid JSON with the chips both still reading "Left panel" and no
+          // Fix button anywhere. The chip is the primary repair affordance;
+          // it has to track the document.
+          scheduleChipUpdate(400);
         }
       });
 
@@ -6252,9 +6262,13 @@
         const autoCSV = document.getElementById('auto-csv-conversion')?.checked;
         const autoFormat = document.getElementById('auto-format-json')?.checked;
         const autoSort = document.getElementById('auto-sort-keys')?.checked;
+        // autoFix counts as auto-processing. Left out, "Auto Fix JSON" did
+        // nothing at all once the other three were off — the paste never even
+        // reached the ingest pipeline. Matches the gate in ingestContentInner().
+        const autoFix = document.getElementById('auto-fix-json')?.checked !== false;
 
         // No auto-processing enabled → let the editor paste natively.
-        if (!(autoCSV || autoFormat || autoSort)) return;
+        if (!(autoCSV || autoFormat || autoSort || autoFix)) return;
 
         // Only take over when we will actually transform the content;
         // otherwise plain text pastes natively (preserves caret behaviour).
