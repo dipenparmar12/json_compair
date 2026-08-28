@@ -5007,11 +5007,19 @@
       // undoable transaction, and leaves a notice with Undo.
       // =====================================================================
       let _pendingRepair = null;   // {side, before, after, result}
+      let _repairQueue = [];       // sides still to offer after this one applies
 
       function openRepairPreview(side) {
         const text = getPaneDocument(side);
-        if (text == null) return;
-        if (!text.trim()) { showNotice('info', 'That panel is empty.'); return; }
+        // getDocumentPair() has already explained why (partial view, no full
+        // copy). Returning quietly here would look like a dead button.
+        if (text == null) { _repairQueue = []; return; }
+        if (!text.trim()) {
+          _repairQueue = [];
+          showNotice('info', `The ${side} panel is empty — nothing to repair.`,
+                     { key: 'repair:' + side, timeout: 3500 });
+          return;
+        }
         if (!window.JSONRepairKit) {
           showNotice('error', 'The repair library did not load — reload the page and try again.');
           return;
@@ -5019,6 +5027,7 @@
 
         const res = window.JSONRepairKit.repair(text);
         if (!res.ok) {
+          _repairQueue = [];
           const err = res.error || {};
           showNotice('error',
             `Cannot repair the ${side} panel automatically` +
@@ -5136,6 +5145,12 @@
         _pendingRepair = null;
       }
 
+      /** Cancel means cancel: do not march on to the other panel. */
+      function cancelRepair() {
+        _repairQueue = [];
+        closeRepairModal();
+      }
+
       function applyPendingRepair() {
         const p = _pendingRepair;
         if (!p) return;
@@ -5159,30 +5174,49 @@
             timeout: 12000
           });
         scheduleChipUpdate(0);
+
+        // "Fix JSON" on a pair means both panels. Offer the next one rather
+        // than making the user find the menu again.
+        const next = _repairQueue.shift();
+        if (next) setTimeout(() => openRepairPreview(next), 120);
       }
 
-      /** Toolbar action: repair whichever panels need it. */
+      /**
+       * Toolbar action: repair whichever panels need it.
+       *
+       * Decides from the CURRENT text, not from the chip cache. paneAnalysis is
+       * filled on a 250 ms debounce, so pressing Fix JSON straight after a paste
+       * (or after any programmatic rewrite) used to read a stale — or entirely
+       * absent — analysis and answer "Both panels are already valid JSON" about
+       * two broken panels. That is most of the "sometimes it works, sometimes it
+       * doesn't". JSON.parse is the exact test and costs a few ms.
+       */
       function fixBothPanes() {
         const pair = getDocumentPair();
         if (!pair) return;
-        const needs = ['left', 'right'].filter((s) => {
-          const t = s === 'left' ? pair.left : pair.right;
-          return t.trim() && paneRepairable(s);
-        });
-        if (!needs.length) {
-          const broken = ['left', 'right'].filter((s) => {
-            const a = paneAnalysis[s];
-            return a && (a.kind === 'jsonish' || a.kind === 'ndjson') && !a.repairable;
-          });
-          showNotice(broken.length ? 'error' : 'ok',
-            broken.length
-              ? `Nothing can be repaired automatically — the ${broken.join(' and ')} panel${broken.length > 1 ? 's are' : ' is'} too broken. Check the error marker in the gutter.`
-              : 'Both panels are already valid JSON.',
-            { timeout: broken.length ? 0 : 3500, key: 'repair:both' });
+
+        const invalid = [];
+        let filled = 0;
+        for (const side of ['left', 'right']) {
+          const t = side === 'left' ? pair.left : pair.right;
+          if (!t.trim()) continue;
+          filled++;
+          try { JSON.parse(t); } catch (e) { invalid.push(side); }
+        }
+
+        if (!invalid.length) {
+          showNotice('ok',
+            filled === 0 ? 'Both panels are empty — nothing to fix.'
+                         : (filled === 1 ? 'That panel is already valid JSON.'
+                                         : 'Both panels are already valid JSON.'),
+            { timeout: 3500, key: 'repair:both' });
           return;
         }
-        // One at a time, so each shows its own preview and its own undo.
-        openRepairPreview(needs[0]);
+
+        // One at a time, so each shows its own preview and its own undo. The
+        // rest queue up and are offered after a successful apply.
+        _repairQueue = invalid.slice(1);
+        openRepairPreview(invalid[0]);
       }
 
       // =====================================================================
@@ -5318,13 +5352,13 @@
         const modal = document.getElementById('repair-modal');
         if (!modal) return;
         document.getElementById('repair-modal-apply').addEventListener('click', applyPendingRepair);
-        document.getElementById('repair-modal-cancel').addEventListener('click', closeRepairModal);
-        document.getElementById('repair-modal-close').addEventListener('click', closeRepairModal);
+        document.getElementById('repair-modal-cancel').addEventListener('click', cancelRepair);
+        document.getElementById('repair-modal-close').addEventListener('click', cancelRepair);
         modal.querySelectorAll('[data-repair-dismiss]').forEach((el) => {
-          el.addEventListener('click', closeRepairModal);
+          el.addEventListener('click', cancelRepair);
         });
         document.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape' && modal.style.display !== 'none') closeRepairModal();
+          if (e.key === 'Escape' && modal.style.display !== 'none') cancelRepair();
         });
       }
 
@@ -6033,7 +6067,12 @@
         //    of a multi-MB payload is a guaranteed main-thread stall.
         // opts.noRepair is the Undo path: put back exactly what was pasted,
         // with no conversion of any kind.
-        if (!opts.noRepair && !opts.forceCsv && (autoCSV || autoFormat || autoSort)
+        // autoFix belongs in this gate. Without it, turning off CSV, Format and
+        // Sort also turned off repair-on-paste, even with "Auto Fix JSON" ticked
+        // — the setting silently did nothing. Note that when nothing else is on
+        // and the text is already valid, buildJSONString() returns the original
+        // bytes, so this branch stays byte-preserving.
+        if (!opts.noRepair && !opts.forceCsv && (autoCSV || autoFormat || autoSort || autoFix)
             && rawText.length <= FORMAT_MAX_BYTES && looksLikeJSONStart(rawText)) {
           // Repair is disclosed, never silent. The old code called
           // parseFlexibleJSON and threw the outcome away, so a paste could be

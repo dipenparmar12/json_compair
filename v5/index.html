@@ -42,6 +42,12 @@
     <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-giedl6V2CsRUwviHqAInbg+h/aNVr2gn3//FaTWUDPv6d3Pv2wvPWiMKV71RvdMGHE3OcQP9qFLOKD+ZntBdlw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="./utils/utils.js"></script>
+  <!-- Same string-aware repair chain as v6. v5 carried a byte-identical copy of the
+       regex parser that rewrote the CONTENTS of strings ("None provided" ->
+       "null provided") and went quadratic on parentheses. Vendored, so v5 stays
+       fully offline. -->
+  <script src="./utils/vendor/jsonrepair.umd.js"></script>
+  <script src="./utils/json_repair.js"></script>
   <script src="./utils/json_utils.js"></script>
   <script src="./utils/utils_csv.js"></script>
   <script src="./js/large_json_helpers.js"></script>

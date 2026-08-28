@@ -2,18 +2,20 @@
 
 ## Project Overview
 
-A **client-side-only** web application for comparing, formatting, and merging JSON data with advanced features. The project has two parallel implementations using different CodeMirror versions, plus a comprehensive JSON utilities toolbox.
+A **client-side-only** web application for comparing, formatting, repairing and merging JSON data. Two parallel implementations using different CodeMirror versions.
 
 **Live Demo**: https://dipenparmar12.github.io/json_compair/
 **Repository**: https://github.com/dipenparmar12/json_compair
 
 ## Core Architecture
 
-### Three Main Applications
+### Two Main Applications
 
 1. **v6/** - Modern CodeMirror 6 implementation (ES modules, CDN-based)
 2. **v5/** - Legacy CodeMirror 5 (fully offline, proven stability)
-3. **utils-json/** - JSON Toolbox with advanced processing utilities
+
+> `utils-json/` (the JSON Toolbox) is **gone** — removed from the repo after `47d90f9`.
+> This file documented it as a live app long after it stopped existing.
 
 **Entry Point**: `index.html` (root) → Version selector that redirects to v6/ or v5/
 
@@ -36,7 +38,11 @@ json_compair/
 │   │   └── ccsiteV6.css    # Branding/layout
 │   └── utils/              # Shared utility modules
 │       ├── utils.js        # URLManager, StorageManager, SettingsManager
-│       ├── json_utils.js   # Python syntax → JSON parser
+│       ├── json_utils.js   # thin wrapper: parseFlexibleJSON -> JSONRepairKit
+│       ├── json_repair.js  # string-aware repair chain + content classifier
+│       ├── text_tools.js   # plain-text cleanup + content-aware (universal) sort
+│       ├── vendor/
+│       │   └── jsonrepair.umd.js  # jsonrepair 3.15.0, ISC, 0 deps, vendored
 │       ├── utils_csv.js    # CSV auto-detection & conversion
 │       ├── utils_zip.js    # ZIP snapshot import/export
 │       ├── utils_branch.js # Git-like branching for panels
@@ -51,20 +57,11 @@ json_compair/
 │   ├── js/
 │   └── utils/              # Same utilities as v6
 │
-├── utils-json/             # JSON Toolbox (separate app)
-│   ├── index.html
-│   └── utils/
-│       ├── schema_generator.js
-│       ├── json_shaper.js
-│       ├── json_linter.js
-│       ├── json_flattener.js
-│       ├── json_to_table.js
-│       └── json_fuzzer.js
-│
-│       ├── progress.js     # ProcessingUI: progress panel, ETA, cancellation token
-│
 ├── docs/                   # Documentation & PRDs
-├── tests/                  # Test files
+├── tests/                  # Test files + regression suites
+│   ├── json_repair.test.js # node tests/json_repair.test.js  (integrity + repair + perf)
+│   ├── text_tools.test.js  # node tests/text_tools.test.js   (cleanup + universal sort)
+│   └── selftest.html       # the same assertions, in a real browser
 └── _archive/               # Old iterations
 ```
 
@@ -115,12 +112,15 @@ All with SRI hashes for security.
 - **Collapse unchanged sections** - Focus on differences
 - **Diff count** - Shows number of differences found
 
-### 2. Flexible JSON Parsing
-Handles non-standard formats via `parseFlexibleJSON()`:
-- Python dict syntax conversion
-- Datetime object parsing
-- Complex number handling
-- Graceful fallback to standard JSON.parse()
+### 2. Flexible JSON Parsing & Repair
+`parseFlexibleJSON()` delegates to the string-aware repair chain in `json_repair.js`
+(see **Ingest, Repair & Linting** below — read §1 before changing it):
+- Python dict syntax, datetime/Decimal/UUID, tuples, sets, b/r/u/f prefixes, `<Obj #id>`
+- Trailing commas, single quotes, unquoted keys, comments, missing brackets, truncation,
+  smart quotes, NDJSON, code fences, JSONP
+- **String contents are never modified** — the regex parser this replaced corrupted 7 of 10
+  realistic data probes
+- Valid JSON is returned byte-for-byte untouched
 
 ### 3. CSV Auto-Conversion
 - **Auto-detection** of CSV/TSV data
@@ -192,7 +192,10 @@ const newBranch = await BranchManager.createBranch("API v3", content);
 
   // Auto-Processing
   "autoCsv": true,               // Auto-convert CSV
-  "autoFormat": false,           // Auto-format on paste
+  "autoFormat": true,            // Auto-format on paste (honoured now — see Ingest §2)
+  "autoFixJson": true,           // Repair broken JSON on paste (never silent)
+  "indentWidth": 3,              // 2 | 3 | 4 | 'tab' — Format / Sort / Fix
+  "cleanOptions": null,          // per-action overrides for the text Clean menu
   "autoSort": false              // Auto-sort keys on paste
 }
 ```
@@ -211,7 +214,29 @@ window.DefaultTemplates
 window.SettingsManager
 
 // json_utils.js
-window.parseFlexibleJSON()
+window.parseFlexibleJSON(text) // value, or throws (err.jsonError has line/col)
+window.repairJSON(text)        // same chain, returns a report instead of throwing
+
+// json_repair.js
+window.JSONRepairKit
+  .repair(text, {aggressive})  // → {ok, changed, text, value, repairs[], error, engine, ms}
+  .parse(text)                 // → value | throws
+  .normalize(text)             // stage 1 only: {text, counts, changed, unclosed}
+  .analyze(text, {repairLimit})// → {kind, valid, repairable, error, records, message}
+  .detectKind(text)            // empty|json|jsonish|ndjson|csv|tsv|xml|yaml|text
+  .csvEvidence(head)           // → {ok, sep, columns} — REAL evidence, not one comma
+  .strictError(text)           // → {message, line, col, pos} | null
+  .findDuplicateKeys(text, n)  // legal JSON, silently lossy — surfaced as lint warnings
+  .locate(text, pos)           // → {line, col}
+
+// text_tools.js
+window.TextTools
+  .clean(text, opts)           // → {text, changed, applied:[{key,label,count}]}
+  .CLEAN_ACTIONS               // [{key,label,desc,default}] — drives the Clean ▾ menu
+  .smartSort(text, spec, opts) // content-aware: JSON / NDJSON / CSV / TSV / text / list
+  .describeSortTarget(text)    // → {kind, label, hint, canField, fields[]}
+  .reverse(text)               // flip items/rows/lines, CSV header preserved
+  .classify(text)
 window.sortJSONKeys()          // alphabetize keys recursively (crude value-sort of object arrays)
 window.parseSortSpec(str)      // "category ASC, amount DESC" → [{field,dir,path}] (dot-notation nesting)
 window.sortJSONByFields(data, specs) // stable value-sort of a top-level array of objects by field(s)
@@ -273,6 +298,9 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/viewport_diff.js"></script>  <!-- v6 only: performance managers -->
 <script src="./utils/progress.js"></script>       <!-- v6 only: progress panel + cancellation -->
 <script src="./utils/diff_ignore.js"></script>    <!-- v6 only: exclude keys/patterns from diff -->
+<script src="./utils/vendor/jsonrepair.umd.js"></script>  <!-- v6 only: vendored, loaded BEFORE json_repair -->
+<script src="./utils/json_repair.js"></script>    <!-- v6 only: repair chain + classifier -->
+<script src="./utils/text_tools.js"></script>     <!-- v6 only: text cleanup + universal sort -->
 ```
 
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
@@ -370,62 +398,201 @@ const autoSaveExtension = EditorView.updateListener.of((update) => {
 4. **All empty** → Show default template
 5. **Large data** → Falls back to IndexedDB if localStorage quota exceeded
 
-## JSON Toolbox (utils-json/)
+## Ingest, Repair & Linting (v6) — IMPORTANT
 
-Advanced JSON processing utilities as a separate app:
+Everything *before* the diff. The diff engine was in good shape; this layer was not,
+and four of its defects caused silent data corruption or data loss. Read this before
+touching `json_repair.js`, `json_utils.js`, `cheapLooksLikeCSV`, or anything that
+reads a pane. Full audit: `docs/PRD/15-v6-audit-and-json-autofix-brd.md`.
 
-### 1. JSON Schema Generator
-Auto-generate JSON Schema (Draft 2020-12) from sample JSON objects.
+### 1. The one rule: never regex a document that contains strings
 
-**Features**:
-- Infer types, required properties, formats (email, uri, date-time)
-- Merge multiple samples to detect optional fields
-- Options for titles/descriptions, uniqueItems, etc.
+`json_utils.js` used to be ~250 lines of unanchored regexes applied one after another
+to the whole document. Two consequences, both measured, neither fixable by patching
+individual patterns:
 
-### 2. JSON Shaping
-Display compact, human-readable outline of JSON structure.
+- **It rewrote the contents of strings.** `"None provided"` → `"null provided"`,
+  `"True Value Inc"` → `"true Value Inc"`, `"(555) 123"` → `"[555] 123"`,
+  `"a  b"` → `"a b"`, and `"<b>hi</b>"` threw. **7 of 10** realistic data probes
+  produced a wrong value or an error. For a diff tool that is the worst possible
+  failure: it can *hide* a real difference (both sides normalized to the same wrong
+  value) and *invent* a false one (one side takes the flexible path, the other does not).
+- **It was O(n·m).** `s.substring(0, s.indexOf(match))` inside a `String.replace`
+  callback, once per `(…)` group. 3.2 MB froze the tab for **139 seconds**,
+  uncancellably — it ran before the first `await`, so no phase covered it and the
+  progress panel could not even paint.
 
-**Modes**:
-- Nested format with types
-- Compact mode: `{ id, name, address { city, zip } }`
-- With types: `{ id:number, name:string }`
+`json_repair.js` walks the document **once**, tracking whether it is inside a string
+literal, and only rewrites what it finds outside one. Same 10,000-record input:
+**139,166 ms → ~160 ms**, and linear.
 
-### 3. JSON Linter/Formatter
-Validate, repair, and prettify JSON with error recovery.
+### 2. The repair chain — `window.JSONRepairKit`
 
-### 4. JSON to CSV (Advanced)
-Flatten JSON (especially arrays of objects) into CSV.
-
-**Features**:
-- Nested object flattening with dot notation
-- Array expansion (one row per array item)
-- Configurable delimiters
-
-### 5. CSV to JSON (Advanced)
-Convert CSV with dot-notation headers back to nested JSON.
-
-### 6. JSON to Markdown/HTML Table
-Render array of objects as readable table.
-
-**Modes**:
-- Markdown (flattened dot notation)
-- HTML with expandable sections (`<details>`)
-- HTML with rowspan/colspan for strict layout
-
-### 7. JSON Flattener/Unflattener
-Convert between nested and flat dot-notation formats.
-
-**Example**:
-```javascript
-// Nested
-{ user: { name: "Eve", address: { city: "Paris" } } }
-
-// Flattened
-{ "user.name": "Eve", "user.address.city": "Paris" }
+```
+             ┌──────────────────────────────────────────────┐
+  raw text → │ 0. JSON.parse                                │ → valid, returned byte-for-byte
+             └──────────────┬───────────────────────────────┘
+                            │ throws
+             ┌──────────────▼───────────────────────────────┐
+             │ 1. normalize()  — string-aware tokenizer     │  Python literals, datetime/
+             │    single pass, O(n), no indexOf/substring   │  Decimal/UUID, tuples, sets,
+             └──────────────┬───────────────────────────────┘  b/r/u/f prefixes, <Obj #id>,
+                            │ still not valid                  comments, set-vs-dict
+             ┌──────────────▼───────────────────────────────┐
+             │ 2. jsonrepair()  (vendored, ISC, 0 deps)     │  quotes, commas, brackets,
+             │    skipped when opts.aggressive === false    │  truncation, fences, NDJSON,
+             └──────────────┬───────────────────────────────┘  smart quotes, JSONP
+             ┌──────────────▼───────────────────────────────┐
+             │ 3. JSON.parse — verify + shape check         │ → repaired | error w/ line+col
+             └──────────────────────────────────────────────┘
 ```
 
-### 8. JSON Randomizer/Fuzzer
-Generate random valid JSON from schema or sample for testing.
+Stage 3 is what makes this safe to run automatically: **`repair()` returns the untouched
+input unless the result actually parses.**
+
+- `repair(text, {aggressive})` → `{ok, changed, text, value, repairs[], error, engine, ms}`.
+  `aggressive: false` stops after stage 1 — stage 1 only rewrites constructs it positively
+  identified outside a string; stage 2 *guesses*.
+- `parse(text)` → value or throws (`err.jsonError` carries `{message, line, col, pos}`).
+  Drop-in for the old `parseFlexibleJSON`, which now just delegates to it.
+- **`shapeAccepts()` is not optional.** jsonrepair will turn *anything* into valid JSON:
+  `not json at all` → the string `"not json at all"`, and
+  `Hello, world. This is a note.` → `["Hello", "world. This is a note."]`. Both parse;
+  neither is what was pasted. A result is only accepted when it is consistent with the
+  first non-whitespace character of the input.
+
+**Set vs dict is decided lazily, not by lookahead.** `normalize()` emits chunks into an
+array and remembers the index of each `{`. If the closer is reached with content but no
+top-level `:`, `out[idx]` is patched from `{` to `[`. That keeps it O(n); a lookahead
+scan per brace would not be.
+
+### 3. CSV needs evidence, not one delimiter
+
+`cheapLooksLikeCSV` was `/[,;\t]/.test(firstLine)`. Pasting
+`Hello, world. This is a note.` was therefore classified as CSV, handed to a parser that
+found no data rows, and **the pane was replaced with `[]`**. Same for SQL and log lines.
+
+`JSONRepairKit.csvEvidence()` requires ≥2 non-empty lines, ≥2 columns, and a delimiter
+count consistent across the sampled lines. Belt and braces: a conversion that yields
+**zero data rows** aborts and inserts the raw text instead.
+
+`detectKind()` replaces the binary JSON/CSV guess with
+`empty | json | jsonish | ndjson | csv | tsv | xml | yaml | text`, and drives the pane chip.
+
+### 4. `getDocumentPair()` — the panes are NOT the document
+
+Two things make them differ:
+
+1. A large collection renders as a **window** — the panes hold ~60 of 2,000 records
+   while the whole thing lives in `_ignorePristine`.
+2. With ignore-patterns or numeric tolerance active, the right pane holds the **left**
+   pane's values for matched fields.
+
+`saveContent()` and `sortByFields()` already handled this; **Share, ZIP export, Format,
+Sort-keys and Copy all read the panes**, so Export shipped 60 of 2,000 records and wrote
+fabricated values as real data. Every whole-document consumer now goes through
+`getDocumentPair()` / `getPaneDocument(side)`, which returns the pristine pair when one
+exists and refuses (with a notice) when the panes are partial and no complete copy is left.
+
+**Any new feature that reads a whole pane must use it.** Reading
+`mergeView.a.state.doc.toString()` directly is a bug unless you specifically want *what is
+on screen* (e.g. `recreateMergeView`).
+
+### 5. `commitPair(L, R)` — the only way to write a rewritten pair
+
+Format, Minify, Clean, Fix and Sort all need the same six steps, and each one has been
+got wrong before: reset the page number, drop the now-stale `_ignorePristine`, drop the
+align memo (keyed on the old docs), route through `transformAndDispatch` when a transform
+is active, and write inside `_blockAligning` so the autosave listener does not null the
+pristine pair. Use `transformPanes(fn, label)` for per-pane text transforms; it reports
+each side's outcome separately.
+
+### 6. Linting — the package was loaded but unused
+
+`@codemirror/lint` was downloaded and parsed for `lintKeymap` alone, so `F8` cycled
+diagnostics that were never produced. Broken JSON produced **no error anywhere in the app**,
+and `json_align`'s strict `JSON.parse` silently disabled block diff, the record model, the
+pager and the Details panel with no explanation.
+
+`jsonDiagnostics()` walks the **Lezer tree** `json()` already installs, rather than using
+`jsonParseLinter()`: every syntax error instead of only the first, exact positions instead
+of scraping an engine-specific `SyntaxError` string, and incremental reparsing so it stays
+cheap. Capped at `LINT_MAX_BYTES` (2 MB) and skipped for content that does not open with
+`{`/`[`. Duplicate keys are reported as warnings — legal JSON, silently lossy through
+`JSON.parse`, and a genuine source of "the diff says they match but they don't".
+
+### 7. Disclosure surfaces — three channels, not one
+
+`#diff-summary` was doing four jobs (diff result, busy, errors, general status) and every
+`updateStatus()` was `setDiffSummary('idle', …)`, which the next `afterContentChanged()`
+overwrote 50 ms later. Errors were frequently invisible.
+
+- **`#diff-summary`** — the comparison result, and nothing else. (`data-state="busy"` now
+  has a style; it was set in JS and never defined in CSS.)
+- **`showNotice(kind, message, {actions, timeout, key})`** — a persistent, dismissible
+  strip for errors, warnings and undo affordances.
+- **Pane chips** (`updatePaneChip`) — what each panel holds, whether it is valid, and the
+  one action that fixes it. Cost is capped twice: `CHIP_MAX_BYTES` (4 MB) to describe at
+  all, `CHIP_REPAIR_MAX_BYTES` (512 KB) before attempting a trial repair.
+
+**Repair is never silent.** Manual repair previews what it will change and applies as one
+undoable transaction; auto-repair on paste (`autoFixJson`, default on) always leaves a
+notice naming what it did, with **Undo**. Default-on rather than default-off because v6
+already repaired pasted JSON — that is what `parseFlexibleJSON` was — it just did it badly
+and told nobody. What changed is disclosure, not capability.
+
+### 8. Universal sort — `window.TextTools.smartSort`
+
+Sort was JSON-only: a panel holding CSV, NDJSON, a log or a comma-separated list had no
+sort at all. The same spec grammar (`parseSortSpec`, unchanged) is now resolved against
+whatever the panel holds:
+
+| Panel content | `field` means | Empty spec |
+|---|---|---|
+| JSON array of objects | object key (dot-notation) | sort by whole value |
+| JSON array of values | — | sort by value |
+| JSON object | — | sort keys A→Z |
+| NDJSON | record field | sort by value |
+| CSV / TSV | column **name or 1-based number**, header preserved | column 1 |
+| Plain text | 1-based whitespace column | sort whole lines |
+| One-line delimited list | — | sort items, separator style kept |
+
+Each pane is classified and sorted **independently** — the two sides are often not the
+same kind of content. Options: Descending, Unique, Ignore case. Numbers compare
+numerically (currency and thousands separators included), `a2` sorts before `a10` via
+`Intl.Collator({numeric:true})`, and empty/missing values sort last in either direction.
+`describeSortTarget()` drives the panel's label and field autocomplete.
+
+### 9. Plain-text cleanup — `window.TextTools.clean`
+
+Invisible characters copied from web pages and terminals produce diffs the user **cannot
+see the cause of**, and before this there was no way to find one in v6. Defaults are the
+actions that cannot change meaning (line endings, zero-width/BOM/soft-hyphen, odd spaces,
+trailing whitespace, blank-line runs, document trim); tabs→spaces, smart quotes,
+dedupe, drop-blank, unescape-stringified and unwrap-quotes are opt-in. Every action
+returns a **count**, so the report says "3 zero-width characters", not "cleaned".
+
+### 10. Regression suites — run these before touching any of the above
+
+```bash
+node tests/json_repair.test.js    # 104 checks: integrity, repair, perf, classification
+node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
+# and tests/selftest.html for the same assertions in a real browser (78 checks)
+```
+
+The **data-integrity corpus is the blocking one**: valid data with one unquoted key, which
+must survive the repair chain byte-identically. It is the direct regression test for the
+class of bug in §1, and any change to `normalize()` must keep it green.
+
+### 11. Known deferred
+
+- **Repair off the main thread.** `diff-worker.js` has no `repairJson` action. The
+  original justification was the 139 s freeze; at ~160 ms per 1.7 MB that is gone, and the
+  repair now has its own progress phase. Worth doing if very large documents become common.
+- **`ignoreWhitespace` as a comparison setting** (normalize whitespace for the diff only,
+  keeping real bytes for export). Needs `applyTransformResult` to take separate
+  pane-text and pristine-text arguments. The Clean ▾ menu covers the same ground today as
+  an explicit, undoable edit.
 
 ## Development Workflow
 
@@ -516,7 +683,9 @@ if (CSVUtils.isCSV(text) && settings.autoCsv) {
 ## UI Components
 
 ### Header Controls
-- Format JSON
+- **Format JSON** + `▾` menu — Format · **Fix JSON** · **Minify** · **Clean up text** ·
+  indent width (2/3/4/tab). Format works on ONE pane; it used to refuse unless both were
+  filled, which also meant one broken pane blocked formatting of the good one.
 - **Sort ▾ dropdown** (v6): "Sort by field value" — a text input taking a spec like
   `category ASC, amount DESC` (comma-separated keys, per-key ASC/DESC default ASC, dot-notation
   for nested keys) that value-sorts the **top-level array of objects in both panes** (ideal for
@@ -561,6 +730,14 @@ behind a subtle ⓘ icon (progressive disclosure). Implemented generically in
   (`position:fixed; width:max-content; max-width:300px`), `.is-tip-source`. Font size
   unchanged — this is presentation/hierarchy only. See memory [[v6-info-tooltips]].
 
+### Per-pane content chips
+Above the editors: what each panel holds, whether it is valid, and the one action that fixes
+it (`Fix` / `Go to error` / `To JSON`). See **Ingest, Repair & Linting §7**.
+
+### Notice strip
+Persistent, dismissible errors and warnings with actions (Undo, Fix, Go to error), separate
+from the diff pill — which the next `updateDiffStatus()` overwrites 50 ms later.
+
 ### Status Bar
 Shows diff count and current mode (count = `mergeView.chunks.length`):
 - "No differences"
@@ -576,6 +753,14 @@ Located in `tests/`:
 - `test_case_array_objects/`
 - `test_case_objects/`
 
+### Automated suites (run these first)
+```bash
+node tests/json_repair.test.js    # 104 checks — data integrity, repair, perf, classification
+node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
+```
+Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
+The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
+
 ### Manual Testing Checklist
 1. Format malformed JSON
 2. Compare different JSON objects
@@ -585,6 +770,14 @@ Located in `tests/`:
 6. Branch create/switch/delete
 7. Theme switching
 8. Settings persistence
+9. Paste `Hello, world.` — the pane must contain that text, not `[]`
+10. Paste broken JSON — the chip says why, Fix previews, Ctrl+Z restores
+11. Window a large collection, then Export — must contain every record, not the page
+12. Sort a CSV panel by column name, and a text panel by line
+9. Paste `Hello, world.` — the pane must contain that text, not `[]`
+10. Paste broken JSON — chip says why, Fix previews, Ctrl+Z restores
+11. Window a large collection, then Export — must contain every record, not the page
+12. Sort a CSV panel by column name, and a text panel by line
 
 ## Common Tasks
 
@@ -1079,6 +1272,8 @@ Understand the split before touching diff/perf code:
 2. **URL sharing** limited to ~2000 chars (falls back to ZIP)
 3. **CodeMirror 6 themes** loaded from CDN (requires internet)
 4. **Mobile experience** - Works but optimized for desktop
+5. **Repair runs on the main thread** — ~160 ms per 1.7 MB and no longer quadratic, but
+   `diff-worker.js` still has no `repairJson` action (Ingest §11)
 
 ## Future Enhancements
 
@@ -1109,6 +1304,6 @@ Potential improvements (check `todo.md` for current priorities):
 
 ---
 
-**Last Updated**: 2026-06-06
+**Last Updated**: 2026-08-27
 **Current Version**: v6 (CodeMirror 6) is primary, v5 (CodeMirror 5) is legacy
 **Status**: Active development on `main` branch
