@@ -6172,7 +6172,15 @@
         //    range/partial pastes dispatch normally and re-align on the debounce.
         const fullReplace = (from === 0 && to === editor.state.doc.length);
         const otherPane = side === 'left' ? mergeView.b : mergeView.a;
-        const otherText = otherPane.state.doc.toString();
+        // The panes are NOT the document. When the other side is showing one
+        // WINDOW of a large collection (or normalized values for ignored keys),
+        // comparing against what is on screen silently drops every record off
+        // the page — measured: pasting 5,000 records against a pane already
+        // windowed to 1,328 reported "33 changed, 3,672 added" instead of
+        // "125 changed". _ignorePristine holds the real pair; use it.
+        const otherText = _ignorePristine
+          ? (side === 'left' ? _ignorePristine.right : _ignorePristine.left)
+          : otherPane.state.doc.toString();
         let dispatched = false;
         if (fullReplace && transformActive() && content.trim() && otherText.trim()) {
           const L = side === 'left' ? content : otherText;
@@ -6793,8 +6801,17 @@
               flashLineEffect.of(line.from)
             ]
           });
+          // ...and scroll explicitly. CM6 applies a scrollIntoView effect in its
+          // next measure pass, and inside this MergeView it measurably does not
+          // land: with the target block 851 px down an 824 px viewport the
+          // scroller stayed at 0. The height map gives the position directly,
+          // and setting scrollTop ourselves is deterministic.
+          try {
+            const block = view.lineBlockAt(line.from);
+            const sd = view.scrollDOM;
+            sd.scrollTop = Math.max(0, block.top - Math.max(0, (sd.clientHeight - block.height) / 2));
+          } catch (e) { /* height map not ready — the effect above still stands */ }
           touched.push(view);
-          try { console.log('[dbg] scrollToRecord', lineNo, 'blockTop', view.lineBlockAt(line.from).top, 'scrollTop', view.scrollDOM.scrollTop, 'ch', view.scrollDOM.clientHeight); } catch(e) { console.log('[dbg] err', e.message); }
         }
         if (!touched.length) return false;
         flashLine(touched);
