@@ -73,7 +73,22 @@
 (function () {
   'use strict';
 
+  // One indent level for everything this module emits. Configurable because
+  // the app's "Indent" setting was silently ignored whenever Block Diff was on:
+  // Format re-serialized at the chosen width, then alignment immediately
+  // re-rendered both panes at a hard-coded two spaces, so the control appeared
+  // to do nothing. See setIndent().
   var INDENT = '  ';
+
+  /**
+   * Set the indent used by every subsequent render. Accepts a tab or a run of
+   * spaces (1-8); anything else is ignored, so a bad value can never produce
+   * JSON with junk in its whitespace.
+   */
+  function setIndent(str) {
+    if (str === '\t' || (typeof str === 'string' && /^ {1,8}$/.test(str))) INDENT = str;
+    return INDENT;
+  }
   // Hard ceiling on input we will parse at all. Everything below is linear or
   // n·log n, so this only guards against absurd pastes / memory pressure.
   var MAX_BYTES = 64000000;    // ~64MB combined
@@ -1561,6 +1576,7 @@
   }
 
   window.JSONAlign = {
+    setIndent: setIndent,
     align: align,
     prepare: prepare,
     prepareAsync: prepareAsync,

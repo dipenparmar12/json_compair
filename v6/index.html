@@ -3161,6 +3161,7 @@
       // *before* the first render, so CM6 never diffs the unaligned text). Sets
       // the pristine snapshot + memo exactly like the original single function.
       function transformAndDispatch(L, R) {
+        syncAlignIndent();
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
         const tol = numToleranceActive();
@@ -4484,6 +4485,24 @@
         setupPasteHandlers();
       }
 
+      /**
+       * The indent as a STRING, and pushed into json_align.
+       *
+       * Alignment re-serializes both panes on every transform, so without this
+       * the Indent setting was overwritten two spaces at a time and the control
+       * did nothing at all while Block Diff was on (which is the default).
+       */
+      function indentString() {
+        const v = currentIndent();
+        return v === '\t' ? '\t' : ' '.repeat(Math.max(0, Math.min(8, v)) || 2);
+      }
+
+      function syncAlignIndent() {
+        if (window.JSONAlign && window.JSONAlign.setIndent) {
+          window.JSONAlign.setIndent(indentString());
+        }
+      }
+
       /** Indent used by Format, Sort and any other re-serialization. */
       function currentIndent() {
         const v = SettingsManager.get('indentWidth');
@@ -4508,14 +4527,29 @@
         _ignorePristine = null;      // the rewritten pair IS the original now
         _lastAlignMemo = null;
 
+        let dispatched = false;
         if (transformActive() && L.trim() && R.trim()) {
-          transformAndDispatch(L, R);
-        } else {
+          dispatched = transformAndDispatch(L, R);
+        }
+        // transformAndDispatch writes the panes ONLY when the transform
+        // succeeded. When it cannot run — the other pane is not parseable JSON,
+        // the pair is too large, alignment threw — it leaves the editors
+        // untouched, which silently threw the rewritten pair away: Fix, Format,
+        // Minify, Clean and Sort all reported success while the panel kept its
+        // old text. (Measured: repairing the left panel while the right one was
+        // still broken left BOTH panes exactly as they were, under a green
+        // "Fixed the left panel — 1 issue repaired" notice.) That is the whole
+        // "repair sometimes works, sometimes doesn't". Write it ourselves.
+        if (!dispatched) {
           _blockAligning = true;
           try {
             setPaneIfChanged(mergeView.a, L);
             setPaneIfChanged(mergeView.b, R);
           } finally { _blockAligning = false; }
+          // The memo applyTransformResult just recorded is keyed on the docs as
+          // they were BEFORE this write, so it would make the next re-align a
+          // no-op on content it has never seen.
+          _lastAlignMemo = null;
           syncDiffConfig();
           ensureDiffFresh();
         }
@@ -4600,11 +4634,40 @@
 
       // Compact output — the natural companion to Format, and the thing you
       // need before pasting JSON into a config or a URL.
+      //
+      // Minify and Block Diff are mutually exclusive by construction: alignment
+      // re-serializes both panes pretty-printed, one field per line, which is
+      // the whole point of it — so with Block Diff on, Minify wrote its result
+      // and had it silently re-expanded a moment later. It looked like a dead
+      // menu item. Turn the transform off for it, say so, and offer it back.
       function minifyJSON() {
+        const wasBlock = blockDiffEnabled();
+        if (wasBlock) setBlockDiff(false);
         transformPanes((text) => {
           const parsed = window.parseFlexibleJSON(text);
           return { ok: true, text: JSON.stringify(parsed) };
         }, 'Minified');
+        if (wasBlock) {
+          showNotice('info',
+            'Block Diff was turned off — it puts every field on its own line, ' +
+            'which would undo the minify.',
+            {
+              key: 'minify-blockdiff',
+              timeout: 0,
+              actions: [{ label: 'Turn it back on', run: () => setBlockDiff(true) }]
+            });
+        }
+      }
+
+      /** Flip Block Diff, keeping the setting, the checkbox and the view in step. */
+      function setBlockDiff(on) {
+        SettingsManager.set('blockDiff', on);
+        const box = document.getElementById('setting-block-diff');
+        if (box) box.checked = on;
+        _lastAlignMemo = null;
+        if (transformActive()) applyBlockAlignment();
+        else removeBlockAlignment();
+        updateDiffStatus();
       }
 
       // Sort keys A→Z at every level.
@@ -5348,6 +5411,12 @@
           indentSel.value = String(SettingsManager.get('indentWidth') ?? 3);
           indentSel.addEventListener('change', () => {
             SettingsManager.set('indentWidth', indentSel.value);
+            // Re-render at the new width straight away. Storing a preference
+            // that only shows up the next time you happen to press Format is
+            // not a setting, it is a guess.
+            syncAlignIndent();
+            _lastAlignMemo = null;
+            if (transformActive()) applyBlockAlignment();
           });
         }
 
