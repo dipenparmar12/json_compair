@@ -1388,6 +1388,11 @@
           if (pop) pop.classList.remove('is-open');
         }
 
+        // "Next" scrolls the editor and then re-opens the popover on the new
+        // position. The scroll it just caused must not close what it opened.
+        let openedAt = 0;
+        function hideOnScroll() { if (Date.now() - openedAt > 300) hide(); }
+
         function isOpen() { return !!(pop && pop.classList.contains('is-open')); }
 
         function render(side, view, here, all, current) {
@@ -1458,7 +1463,7 @@
               jumpTo(side, next.from);
               // Re-anchor on the caret: the marker for that line may not be
               // rendered yet, and a popover that vanishes on Next is no help.
-              requestAnimationFrame(() => openAtPos(side, view, next.from, true));
+              setTimeout(() => openAtPos(side, view, next.from, true), 60);
             });
           }
           el.appendChild(bar);
@@ -1486,6 +1491,7 @@
           if (!here.length) return;
           place(render(side, view, here, all, here[0]), marker.getBoundingClientRect());
           pinned = !!pin;
+          openedAt = Date.now();
           clearTimeout(hideTimer);
         }
 
@@ -1499,6 +1505,7 @@
           place(render(side, view, here, all, here[0]),
                 { left: c.left, right: c.right, top: c.top, height: c.bottom - c.top });
           pinned = !!pin;
+          openedAt = Date.now();
           clearTimeout(hideTimer);
         }
 
@@ -1523,7 +1530,7 @@
           openAt(v.side, v.view, marker, true);
         }
 
-        return { hide, isOpen, onMarkerOver, onMarkerDown, openAtPos };
+        return { hide, hideOnScroll, isOpen, onMarkerOver, onMarkerDown, openAtPos };
       })();
 
       /**
@@ -1555,7 +1562,7 @@
         });
         // Anchored to a marker, so it has to go when that marker moves.
         window.addEventListener('resize', () => LintPop.hide());
-        document.addEventListener('scroll', () => LintPop.hide(), true);
+        document.addEventListener('scroll', () => LintPop.hideOnScroll(), true);
       }
 
       // Basic editor extensions for both sides
