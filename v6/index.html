@@ -2124,8 +2124,15 @@
           viewportDiffManager = new ViewportDiffManager(mergeView, {
             onDiffCalculated: (result) => {
               if (result && viewportDiffManager?.enabled) {
+                // Never overwrite an exact count with an approximate one. This
+                // callback fires on every scroll and wrote
+                // "~18 differences in view" straight over
+                // "60 changed of 1,500 items · 120 field changes", which is
+                // both less useful and, next to a Details panel listing all 60,
+                // simply contradictory. The viewport estimate is only better
+                // than nothing.
                 const statusText = viewportDiffManager.getDiffStatusMessage();
-                if (statusText) {
+                if (statusText && !diffModel) {
                   updateStatus(statusText);
                 }
                 updatePerformanceStatus();
@@ -6787,6 +6794,7 @@
             ]
           });
           touched.push(view);
+          try { console.log('[dbg] scrollToRecord', lineNo, 'blockTop', view.lineBlockAt(line.from).top, 'scrollTop', view.scrollDOM.scrollTop, 'ch', view.scrollDOM.clientHeight); } catch(e) { console.log('[dbg] err', e.message); }
         }
         if (!touched.length) return false;
         flashLine(touched);
@@ -6811,7 +6819,15 @@
             'Jumped to that page. The exact line could not be located for this content, ' +
             'so scroll from here.',
             { timeout: 5000, key: 'reveal' });
+          return;
         }
+        // CM6 applies a scrollIntoView effect on its next measure, and both a
+        // page rewrite and forceRecollapse() change line heights after that —
+        // which silently discards the scroll and leaves the record off screen
+        // (measured: flashed line 1,681 px below the viewport, scrollTop still
+        // 0). Re-issue it once the layout has settled. Idempotent: if the first
+        // one landed, this is a no-op.
+        setTimeout(() => scrollToRecord(p), 180);
       }
 
       // Parsed copies of both sides, used only to label rows with their identity
