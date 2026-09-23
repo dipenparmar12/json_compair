@@ -72,7 +72,7 @@
           "@codemirror/language": "https://unpkg.com/@codemirror/language@6.10.3/dist/index.js",
           "@codemirror/commands": "https://unpkg.com/@codemirror/commands@6.7.1/dist/index.js",
           "@codemirror/lang-json": "https://unpkg.com/@codemirror/lang-json@6.0.1/dist/index.js",
-          "@codemirror/merge": "https://unpkg.com/@codemirror/merge@6.7.2/dist/index.js",
+          "@codemirror/merge": "https://unpkg.com/@codemirror/merge@6.12.2/dist/index.js",
           "@codemirror/search": "https://unpkg.com/@codemirror/search@6.5.6/dist/index.js",
           "@codemirror/autocomplete": "https://unpkg.com/@codemirror/autocomplete@6.18.1/dist/index.js",
           "@codemirror/lint": "https://unpkg.com/@codemirror/lint@6.8.2/dist/index.js",
@@ -544,7 +544,7 @@
       // `diff` is the same routine MergeView runs internally. We call it on a
       // small probe page to MEASURE how expensive this particular pair is before
       // choosing how much to render — see calibrateRenderBudget().
-      import { MergeView, goToNextChunk, goToPreviousChunk, diff as cmDiff } from "@codemirror/merge";
+      import { MergeView, Change, goToNextChunk, goToPreviousChunk, diff as cmDiff } from "@codemirror/merge";
       
       // Import themes
       import { oneDark } from "@codemirror/theme-one-dark";
@@ -637,6 +637,14 @@
           // on the next reload. Re-alignment recaptures a fresh pair when
           // normalization applies again.
           if (!_blockAligning) _ignorePristine = null;
+
+          // An edit that leaves the two panes with different line counts means
+          // they are no longer row-aligned; CM6's own diff takes over until the
+          // debounced re-align below restores an aligned render.
+          if (!_blockAligning && _rowAligned &&
+              mergeView && mergeView.a.state.doc.lines !== mergeView.b.state.doc.lines) {
+            _rowAligned = false;
+          }
 
           // Skip block re-alignment while the user is actively typing/deleting so
           // we never reformat mid-edit; paste/drop/programmatic changes re-align.
@@ -849,6 +857,7 @@
         if (!_ignorePristine || !mergeView) { _ignorePristine = null; return; }
         const orig = _ignorePristine;
         _ignorePristine = null;
+        _rowAligned = false;        // the originals are raw text
         _blockAligning = true;
         try {
           if (only !== 'right') setPaneIfChanged(mergeView.a, orig.left);
@@ -2628,7 +2637,84 @@
       function buildDiffConfig(userScanLimit, combinedLen) {
         if (combinedLen == null) combinedLen = currentCombinedDocLen();
         _appliedScanLimit = clampScanLimit(userScanLimit, combinedLen);
-        return { scanLimit: _appliedScanLimit };
+        return { scanLimit: _appliedScanLimit, override: structuralDiff };
+      }
+
+      /* -------------------------------------------------------------------
+         The diff CM6 draws, when the panes hold Block Diff output.
+
+         json_align has already decided which lines correspond: it emits the
+         two sides row for row, with blank gap rows opposite anything only one
+         side has. CM6 then re-diffed that text CHARACTER by character and was
+         free to disagree — next to an inserted block it would happily pick an
+         equally short edit that "moved" a closing bracket, painting identical
+         `]` / `},` rows as changed. Proxyman gets clean block boundaries from
+         Monaco's heuristics; we can do better, because we know the answer.
+
+         So when both panes hold an aligned render (`_rowAligned`), CM6 is given
+         a row-for-row diff instead (@codemirror/merge >= 6.12, DiffConfig.
+         override): identical rows are unchanged, a gap row is a whole-line
+         insertion or deletion, and a row that differs on both sides gets a
+         character diff of that row alone. It is exact, and linear in the text —
+         no scanLimit cliff on aligned content. Anything else (raw text, Block
+         Diff off, an edit that changed the line count) falls back to CM6's own
+         diff with the usual effort cap.
+         ------------------------------------------------------------------- */
+      // True while both panes hold json_align's BLOCK output (normalize-only
+      // output is not row-aligned). Set where aligned text is written, cleared
+      // wherever raw text is.
+      let _rowAligned = false;
+      // Which path produced the last diff CM6 asked for: 'rows' | 'default'.
+      let _lastDiffMode = 'default';
+
+      function structuralDiff(a, b) {
+        if (_alignedRender && _rowAligned) {
+          const rows = rowAlignedDiff(a, b);
+          if (rows) { _lastDiffMode = 'rows'; return rows; }
+        }
+        _lastDiffMode = 'default';
+        return cmDiff(a, b, { scanLimit: _appliedScanLimit || SCAN_LIMIT_FLOOR });
+      }
+
+      // null when the two texts do not have the same number of rows — then they
+      // are not (or no longer) row-aligned and the caller must diff for real.
+      // CM6 also calls this for sub-ranges after an edit; those start at
+      // matching positions in identical text, so the rows still correspond.
+      function rowAlignedDiff(a, b) {
+        let na = 1, nb = 1, k;
+        for (k = a.indexOf('\n'); k !== -1; k = a.indexOf('\n', k + 1)) na++;
+        for (k = b.indexOf('\n'); k !== -1; k = b.indexOf('\n', k + 1)) nb++;
+        if (na !== nb) return null;
+
+        const out = [];
+        // A pending run of gap rows (blank on one side), emitted as one change.
+        let gap = null;
+        const flushGap = () => {
+          if (gap) { out.push(new Change(gap.fromA, gap.toA, gap.fromB, gap.toB)); gap = null; }
+        };
+        let pa = 0, pb = 0;
+        for (;;) {
+          const ea = a.indexOf('\n', pa), eb = b.indexOf('\n', pb);
+          const endA = ea === -1 ? a.length : ea, endB = eb === -1 ? b.length : eb;
+          const same = endA - pa === endB - pb && a.substring(pa, endA) === b.substring(pb, endB);
+          if (same) {
+            flushGap();
+          } else if (endA === pa || endB === pb) {
+            // One side is a gap row: the other side's row is added / removed.
+            if (gap) { gap.toA = endA; gap.toB = endB; }
+            else gap = { fromA: pa, toA: endA, fromB: pb, toB: endB };
+          } else {
+            // Both sides have this row and it differs: character diff of just
+            // this row, so "10" -> "12" highlights the digits, not the line.
+            flushGap();
+            const inner = cmDiff(a.substring(pa, endA), b.substring(pb, endB), { scanLimit: 2000 });
+            for (const c of inner) out.push(new Change(c.fromA + pa, c.toA + pa, c.fromB + pb, c.toB + pb));
+          }
+          if (ea === -1 || eb === -1) break;
+          pa = ea + 1; pb = eb + 1;
+        }
+        flushGap();
+        return out;
       }
 
       // Push a scanLimit appropriate to the CURRENT document size into the live
@@ -2649,7 +2735,7 @@
                                     combinedLen == null ? currentCombinedDocLen() : combinedLen);
         if (want === _appliedScanLimit) return;
         _appliedScanLimit = want;
-        try { mergeView.reconfigure({ diffConfig: { scanLimit: want } }); }
+        try { mergeView.reconfigure({ diffConfig: { scanLimit: want, override: structuralDiff } }); }
         catch (e) { console.warn('diffConfig reconfigure failed', e); }
       }
 
@@ -2994,8 +3080,11 @@
         }
         // Covers the "nothing to write" case (content already aligned, e.g. at
         // startup or on a re-align that changed nothing) where the live chunks may
-        // still be from an earlier, lower effort.
-        ensureDiffFresh();
+        // still be from an earlier, lower effort — or from CM6's own character
+        // diff rather than the row diff (the text arrived already aligned, so
+        // nothing was written and CM6 never asked structuralDiff()).
+        if (!aStale && !bStale && _rowAligned && _lastDiffMode !== 'rows') forceRediff();
+        else ensureDiffFresh();
       }
 
       // Transform both panes for diffing. Runs when Block Diff and/or ignore
@@ -3158,6 +3247,7 @@
           // Per-page: similarity varies between pages, and it decides the effort.
           _renderDiffRatio = (res.stats && typeof res.stats.diffLineRatio === 'number')
             ? res.stats.diffLineRatio : 0;
+          _rowAligned = true;       // a page of the block render
           writeAlignedPanes(res.left, res.right);
           _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
                              block: blockDiffEnabled(), pred: ignorePredicate,
@@ -3185,6 +3275,7 @@
         const pred = ignorePredicate;
         const tol = numToleranceActive();
         _alignedRender = false;
+        _rowAligned = false;
         _alignHandle = null;
         _renderBudget = null;   // new content ⇒ re-measure the diff cost
         let res = null;
@@ -3225,6 +3316,7 @@
           return transformAndDispatch(L, R);
         }
         _alignedRender = false;
+        _rowAligned = false;
         _alignHandle = null;
         _renderBudget = null;   // new content ⇒ re-measure the diff cost
 
@@ -3285,6 +3377,8 @@
             // full untransformed pair as L/R, so dropping it is always safe.
             _ignorePristine = null;
           }
+          // Block alignment emits row-for-row text; normalize() does not.
+          _rowAligned = !!block;
           writeAlignedPanes(res.left, res.right);
           dispatched = true;
         } else {
@@ -3349,6 +3443,7 @@
       // text with intentional blank lines is never mangled.
       function removeBlockAlignment() {
         if (!window.JSONAlign) return;
+        _rowAligned = false;      // the panes go back to raw text
         _blockAligning = true;
         try {
           [mergeView.a, mergeView.b].forEach(view => {
@@ -5131,6 +5226,7 @@
         // "Fixed the left panel — 1 issue repaired" notice.) That is the whole
         // "repair sometimes works, sometimes doesn't". Write it ourselves.
         if (!dispatched) {
+          _rowAligned = false;      // the pair goes in as raw text
           _blockAligning = true;
           try {
             setPaneIfChanged(mergeView.a, L);
@@ -6871,6 +6967,7 @@
             await window.ProcessingUI.yieldToPaint();
             if (job.cancelled) throw new CancelledError();
           }
+          _rowAligned = false;      // raw text, not an aligned render
           editor.dispatch({ changes: { from, to, insert: content } });
           if (job) job.update(1, 1, 'Done');
         }

@@ -460,6 +460,181 @@
     return !xObj && !yObj && !Array.isArray(x) && !Array.isArray(y);
   }
 
+  /* ==================================================================
+     SIMILARITY — pairing nested records the way a reader would
+     ------------------------------------------------------------------
+     shouldPair() above is built for big flat collections (CSV exports):
+     it only looks at top-level values, and a nested collection is simply
+     "not equal". On nested JSON that throws the structure away. Measured
+     against Proxyman's diff on its own example — a donut whose id and type
+     changed and whose `batters.batter` / `topping` collections lost and
+     gained a few entries — this module rendered the whole donut as one
+     removal plus one addition (74 lines against 46), while every surviving
+     record inside it was still there. An order that changed its total and
+     one line item went the same way.
+
+     similarity() scores two values 0..1 recursively, so a record whose
+     nested collections mostly survived still counts as the same record,
+     modified. It is only used for SMALL arrays (the exact-LCS regime);
+     large collections keep the strict shouldPair() path and its CSV
+     protections.
+     ================================================================== */
+
+  // Pair two unmatched elements when they are at least this alike. A third
+  // means e.g. "same id, two other fields changed" pairs, while two records
+  // that merely share a key layout do not.
+  var PAIR_SIM = 0.3;
+  // Nodes one similarity() call may visit before it falls back to exact
+  // equality, so a pairing decision can never become a full deep compare of
+  // two huge subtrees.
+  var SIM_BUDGET = 400;
+  var SIM_MAX_DEPTH = 4;
+  // Largest gap (unmatched removed × added) aligned by similarity. Beyond it
+  // the positional shouldPair() walk takes over.
+  var GAP_DP_CELLS = 2500;
+  // Partial credit between modified array elements is only worth computing
+  // for short arrays; longer ones are scored on exact survivors alone.
+  var SIM_PARTIAL_MAX = 6;
+
+  var _hashCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+  function hashOf(v) {
+    if (!_hashCache || v === null || typeof v !== 'object') return hashValue(v);
+    var h = _hashCache.get(v);
+    if (h === undefined) { h = hashValue(v); _hashCache.set(v, h); }
+    return h;
+  }
+
+  function isComposite(v) { return v !== null && typeof v === 'object'; }
+
+  /**
+   * How alike two values are, 0..1.
+   *   objects  — mean over the union of keys; shared keys score recursively
+   *   arrays   — survivors (exact matches, plus partial credit for modified
+   *              elements of short arrays) over the combined length
+   *   scalars  — 1 when equal (numeric tolerance honoured), else 0
+   * @param {object} [info] informativeKeys() of the collection being paired;
+   *        applies to the top level only — constant columns prove nothing.
+   */
+  function similarity(x, y, tol, info) {
+    return simInner(x, y, tol, 0, { left: SIM_BUDGET }, info || null);
+  }
+
+  function simInner(x, y, tol, depth, st, info) {
+    st.left--;
+    if (st.left < 0 || depth > SIM_MAX_DEPTH) return eqKind(x, y, tol) !== 0 ? 1 : 0;
+    var xo = isPlainObject(x), yo = isPlainObject(y);
+    if (xo && yo) {
+      var score = 0, total = 0, k;
+      var weigh = function (key) { return !info || info[key]; };
+      for (k in x) {
+        if (!hasOwn(x, k) || !weigh(k)) continue;
+        total++;
+        if (hasOwn(y, k)) score += simInner(x[k], y[k], tol, depth + 1, st, null);
+      }
+      for (k in y) {
+        if (!hasOwn(y, k) || hasOwn(x, k) || !weigh(k)) continue;
+        total++;
+      }
+      // Every key was constant across the collection: judge on all of them
+      // rather than on nothing.
+      if (!total) return info ? simInner(x, y, tol, depth, st, null) : 1;
+      return score / total;
+    }
+    var xa = Array.isArray(x), ya = Array.isArray(y);
+    if (xa && ya) return arraySimilarity(x, y, tol, depth, st);
+    if (xo || yo || xa || ya) return 0;          // type changed
+    return eqKind(x, y, tol) !== 0 ? 1 : 0;
+  }
+
+  function arraySimilarity(x, y, tol, depth, st) {
+    var n = x.length, m = y.length, i, j;
+    if (!n && !m) return 1;
+    if (!n || !m) return 0;
+    // Exact survivors, as a multiset: bucket y by hash, verify every hit.
+    var buckets = new Map(), used = new Uint8Array(m), matched = 0;
+    for (j = 0; j < m; j++) {
+      var hy = hashOf(y[j]);
+      var list = buckets.get(hy);
+      if (list) list.push(j); else buckets.set(hy, [j]);
+    }
+    var leftover = [];
+    for (i = 0; i < n; i++) {
+      var cand = buckets.get(hashOf(x[i])), hit = -1;
+      if (cand) {
+        for (var c = 0; c < cand.length; c++) {
+          if (!used[cand[c]] && eqKind(x[i], y[cand[c]], tol) !== 0) { hit = cand[c]; break; }
+        }
+      }
+      if (hit >= 0) { used[hit] = 1; matched++; } else leftover.push(i);
+    }
+    // Partial credit: a collection whose elements were each edited a little is
+    // still mostly the same collection.
+    var partial = 0;
+    var restY = [];
+    for (j = 0; j < m; j++) if (!used[j]) restY.push(j);
+    if (leftover.length && restY.length &&
+        leftover.length <= SIM_PARTIAL_MAX && restY.length <= SIM_PARTIAL_MAX) {
+      var taken = new Uint8Array(restY.length);
+      for (i = 0; i < leftover.length; i++) {
+        var best = 0, bestAt = -1;
+        for (j = 0; j < restY.length; j++) {
+          if (taken[j]) continue;
+          var s = simInner(x[leftover[i]], y[restY[j]], tol, depth + 1, st, null);
+          if (s > best) { best = s; bestAt = j; }
+        }
+        if (bestAt >= 0) { taken[bestAt] = 1; partial += best; }
+      }
+    }
+    return (2 * (matched + partial)) / (n + m);
+  }
+
+  /**
+   * Pair the unmatched elements of one gap by similarity, keeping order: the
+   * pairing with the highest total similarity where every pair is at least
+   * PAIR_SIM alike. Scalars pair with scalars regardless (a value that changed
+   * in place reads as "old → new" on one line, as before).
+   * @returns {Array<[number|null, number|null]>} pairs in document order
+   */
+  function pairGapBySimilarity(a, b, dels, inss, tol, info) {
+    var k = dels.length, l = inss.length, i, j;
+    var S = new Float32Array(k * l);
+    for (i = 0; i < k; i++) {
+      for (j = 0; j < l; j++) {
+        var x = a[dels[i]], y = b[inss[j]], s;
+        if (!isComposite(x) && !isComposite(y)) s = PAIR_SIM;
+        else if (isComposite(x) !== isComposite(y) || Array.isArray(x) !== Array.isArray(y)) s = 0;
+        else s = similarity(x, y, tol, info);
+        S[i * l + j] = s >= PAIR_SIM ? s : -1;
+      }
+    }
+    // best[i][j] = best total for dels[i..] × inss[j..]
+    var W = l + 1, best = new Float64Array((k + 1) * W);
+    for (i = k - 1; i >= 0; i--) {
+      for (j = l - 1; j >= 0; j--) {
+        var skipA = best[(i + 1) * W + j], skipB = best[i * W + j + 1];
+        var v = skipA >= skipB ? skipA : skipB;
+        var sij = S[i * l + j];
+        if (sij >= 0 && sij + best[(i + 1) * W + j + 1] > v) v = sij + best[(i + 1) * W + j + 1];
+        best[i * W + j] = v;
+      }
+    }
+    var out = [];
+    i = 0; j = 0;
+    while (i < k && j < l) {
+      var here = best[i * W + j], s2 = S[i * l + j];
+      if (s2 >= 0 && Math.abs(here - (s2 + best[(i + 1) * W + j + 1])) < 1e-9) {
+        out.push([dels[i], inss[j]]); i++; j++;
+      } else if (Math.abs(here - best[(i + 1) * W + j]) < 1e-9) {
+        out.push([dels[i], null]); i++;
+      } else {
+        out.push([null, inss[j]]); j++;
+      }
+    }
+    for (; i < k; i++) out.push([dels[i], null]);
+    for (; j < l; j++) out.push([null, inss[j]]);
+    return out;
+  }
+
   function padToEqual(A, B) {
     while (A.length < B.length) A.push('');
     while (B.length < A.length) B.push('');
@@ -675,12 +850,17 @@
       }
     }
 
-    // Walk anchors, filling the gaps between them positionally.
-    return { pairs: fillPairs(a, b, anchors, informativeKeys(a, b)), strategy: strategy, idKey: idKey };
+    // Walk anchors, filling the gaps between them. Small arrays (the exact-LCS
+    // regime — nested collections, short lists) pair by similarity; large
+    // collections keep the strict positional walk.
+    return {
+      pairs: fillPairs(a, b, anchors, informativeKeys(a, b), tol, strategy === 'lcs'),
+      strategy: strategy, idKey: idKey
+    };
   }
 
   // The anchor→pair walk, shared by matchArray and matchArrayAsync.
-  function fillPairs(a, b, anchors, info) {
+  function fillPairs(a, b, anchors, info, tol, bySimilarity) {
     var n = a.length, m = b.length;
     var pairs = [];
     var list = anchors.concat([[n, m]]);
@@ -690,6 +870,14 @@
       var dels = [], inss = [], i, j;
       for (i = ai; i < ti; i++) dels.push(i);
       for (j = bj; j < tj; j++) inss.push(j);
+      if (bySimilarity && dels.length && inss.length &&
+          dels.length * inss.length <= GAP_DP_CELLS) {
+        var gap = pairGapBySimilarity(a, b, dels, inss, tol, info);
+        for (var g = 0; g < gap.length; g++) pairs.push(gap[g]);
+        if (ti < n && tj < m) { pairs.push([ti, tj]); ai = ti + 1; bj = tj + 1; }
+        else { ai = ti; bj = tj; }
+        continue;
+      }
       var len = Math.max(dels.length, inss.length);
       for (var k = 0; k < len; k++) {
         var di = k < dels.length ? dels[k] : null;
@@ -739,7 +927,7 @@
   function matchArrayAsync(a, b, tol, ctl) {
     var n = a.length, m = b.length;
     if (!n || !m) {
-      return Promise.resolve({ pairs: fillPairs(a, b, [], null), strategy: 'empty', idKey: null });
+      return Promise.resolve({ pairs: fillPairs(a, b, [], null, tol, false), strategy: 'empty', idKey: null });
     }
     var idPromise = Math.min(n, m) >= ID_MIN_ITEMS
       ? detectIdKeyAsync(a, b, ctl)
@@ -761,7 +949,7 @@
       var inner = phaseCtl(ctl, 'match', n + m);
       // The walk itself is linear with a small constant; report it as one step
       // rather than paying a closure per element.
-      var pairs = fillPairs(a, b, anchors, informativeKeys(a, b));
+      var pairs = fillPairs(a, b, anchors, informativeKeys(a, b), tol, strategy === 'lcs');
       if (inner && inner.onProgress) inner.onProgress(n + m, n + m);
       return { pairs: pairs, strategy: strategy, idKey: idKey };
     });
@@ -1194,27 +1382,63 @@
     }
 
     var match = matchArray(a, b, ctx.numTol);
-    for (var p = 0; p < match.pairs.length; p++) {
-      var i = match.pairs[p][0], j = match.pairs[p][1];
-      var commaA = i !== null && i < n - 1;
-      var commaB = j !== null && j < m - 1;
-      var sub;
-      if (out) out.push(A.length);
+    var pairs = match.pairs;
+    var p = 0;
+    while (p < pairs.length) {
+      var i = pairs[p][0], j = pairs[p][1];
       if (i !== null && j !== null) {
+        if (out) out.push(A.length);
         var al = alignValue(a[i], b[j], child, ctx);
-        if (commaA) addComma(al.A);
-        if (commaB) addComma(al.B);
+        if (i < n - 1) addComma(al.A);
+        if (j < m - 1) addComma(al.B);
         pushBoth(al.A, al.B);
-      } else if (i !== null) {
-        sub = ser(a[i], child); if (commaA) addComma(sub);
-        pushBoth(sub, blanks(sub.length));
-      } else {
-        sub = ser(b[j], child); if (commaB) addComma(sub);
-        pushBoth(blanks(sub.length), sub);
+        p++;
+        continue;
       }
+      // A run of unmatched elements: removed ones on the left, added ones on
+      // the right, SIDE BY SIDE — one block that reads "these went, these
+      // came", rather than every removal stacked above every addition.
+      var runEnd = p;
+      while (runEnd < pairs.length && (pairs[runEnd][0] === null || pairs[runEnd][1] === null)) runEnd++;
+      var run = unmatchedRun(pairs, p, runEnd, function (idx) {
+        var sub = ser(a[idx], child);
+        if (idx < n - 1) addComma(sub);
+        return sub;
+      }, function (idx) {
+        var sub = ser(b[idx], child);
+        if (idx < m - 1) addComma(sub);
+        return sub;
+      });
+      if (out) for (var s = 0; s < run.starts.length; s++) out.push(A.length + run.starts[s]);
+      pushBoth(run.A, run.B);
+      p = runEnd;
     }
     A.push(pad + ']'); B.push(pad + ']');
     return { A: A, B: B };
+  }
+
+  /**
+   * Lay out pairs[from..to) — all unmatched — as two parallel columns.
+   * `renderA(i)` / `renderB(j)` return the lines of one element. `starts[k]`
+   * is the line (relative to the block) where the k-th entry of the run
+   * begins, in pair order, so callers can still scroll to any one of them.
+   */
+  function unmatchedRun(pairs, from, to, renderA, renderB) {
+    var A = [], B = [], starts = [], x;
+    for (var q = from; q < to; q++) {
+      var i = pairs[q][0], j = pairs[q][1], lines;
+      if (i !== null) {
+        starts.push(A.length);
+        lines = renderA(i);
+        for (x = 0; x < lines.length; x++) A.push(lines[x]);
+      } else {
+        starts.push(B.length);
+        lines = renderB(j);
+        for (x = 0; x < lines.length; x++) B.push(lines[x]);
+      }
+    }
+    padToEqual(A, B);
+    return { A: A, B: B, starts: starts };
   }
 
   // `override` (optional) = { key, A, B }: use those pre-rendered lines for that
@@ -1227,10 +1451,28 @@
     for (i = 0; i < aKeys.length; i++) aSet[aKeys[i]] = true;
     for (i = 0; i < bKeys.length; i++) bSet[bKeys[i]] = true;
 
-    // Emit shared + a-only keys in a's order, then b-only keys at the end.
+    // Key order: a's order for everything a has, and each b-only key right
+    // after the key that precedes it in b — where it actually is in b's
+    // document. These used to be appended at the end of the object, which
+    // moved them away from their neighbours on the right-hand side and turned
+    // the last shared line into a comma-only "change" ("y": 2 vs "y": 2,).
+    var START = {};
+    var bOnlyAfter = new Map(), prev = START;
+    for (i = 0; i < bKeys.length; i++) {
+      if (aSet[bKeys[i]]) { prev = bKeys[i]; continue; }
+      if (!bOnlyAfter.has(prev)) bOnlyAfter.set(prev, []);
+      bOnlyAfter.get(prev).push(bKeys[i]);
+    }
     var entries = [];
-    for (i = 0; i < aKeys.length; i++) entries.push({ k: aKeys[i], inA: true, inB: !!bSet[aKeys[i]] });
-    for (i = 0; i < bKeys.length; i++) if (!aSet[bKeys[i]]) entries.push({ k: bKeys[i], inA: false, inB: true });
+    var pushBOnly = function (after) {
+      var list = bOnlyAfter.get(after);
+      if (list) for (var q = 0; q < list.length; q++) entries.push({ k: list[q], inA: false, inB: true });
+    };
+    pushBOnly(START);
+    for (i = 0; i < aKeys.length; i++) {
+      entries.push({ k: aKeys[i], inA: true, inB: !!bSet[aKeys[i]] });
+      if (bSet[aKeys[i]]) pushBOnly(aKeys[i]);
+    }
 
     var lastA = -1, lastB = -1;
     for (i = 0; i < entries.length; i++) { if (entries[i].inA) lastA = i; if (entries[i].inB) lastB = i; }
@@ -1245,7 +1487,29 @@
       var e = entries[i];
       var commaA = e.inA && i !== lastA;
       var commaB = e.inB && i !== lastB;
-      var sub;
+      if (!(e.inA && e.inB)) {
+        // A run of keys only one side has: the left's on the left, the
+        // right's on the right, side by side (a renamed key reads as one
+        // line changed, not as a removal stacked above an addition).
+        var runEnd = i;
+        while (runEnd < entries.length && !(entries[runEnd].inA && entries[runEnd].inB)) runEnd++;
+        var runPairs = [];
+        for (var r = i; r < runEnd; r++) runPairs.push(entries[r].inA ? [r, null] : [null, r]);
+        var run = unmatchedRun(runPairs, 0, runPairs.length, function (idx) {
+          var la = ser(a[entries[idx].k], child);
+          la[0] = keyPrefix(la[0], child, entries[idx].k);
+          if (idx !== lastA) addComma(la);
+          return la;
+        }, function (idx) {
+          var lb = ser(b[entries[idx].k], child);
+          lb[0] = keyPrefix(lb[0], child, entries[idx].k);
+          if (idx !== lastB) addComma(lb);
+          return lb;
+        });
+        pushBoth(run.A, run.B);
+        i = runEnd - 1;
+        continue;
+      }
       if (e.inA && e.inB) {
         // Pre-rendered collection (already gap-aligned, equal line counts).
         if (override && override.key === e.k) {
@@ -1287,14 +1551,6 @@
           if (commaB) addComma(al.B);
           pushBoth(al.A, al.B);
         }
-      } else if (e.inA) {
-        sub = ser(a[e.k], child); sub[0] = keyPrefix(sub[0], child, e.k);
-        if (commaA) addComma(sub);
-        pushBoth(sub, blanks(sub.length));
-      } else {
-        sub = ser(b[e.k], child); sub[0] = keyPrefix(sub[0], child, e.k);
-        if (commaB) addComma(sub);
-        pushBoth(blanks(sub.length), sub);
       }
     }
     A.push(pad + '}'); B.push(pad + '}');
