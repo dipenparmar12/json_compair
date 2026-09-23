@@ -196,7 +196,12 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "autoFixJson": true,           // Repair broken JSON on paste (never silent)
   "indentWidth": 3,              // 2 | 3 | 4 | 'tab' — Format / Sort / Fix
   "cleanOptions": null,          // per-action overrides for the text Clean menu
-  "autoSort": false              // Auto-sort keys on paste
+  "autoSort": false,             // Auto-sort keys on paste
+
+  // Branches (see UI Components → Panel titles & branch tabs)
+  "leftBranch": "main-left",     // Active branch per panel (was "main" — an id that no longer exists)
+  "rightBranch": "main-right",
+  "branchTabs": true             // Tab bar under each panel; false = compact floating dropdown
 }
 ```
 
@@ -254,11 +259,14 @@ window.LegacySnapshotManager
 
 // utils_branch.js
 window.BranchManager
-  .listBranches()
+  .listBranches(panel)  // main first, then by metadata.created — this is the TAB order
   .getBranch()
-  .saveBranch()
+  .saveBranch()         // keeps metadata.created; new branches get a strictly later one
   .createBranch()
-  .deleteBranch()
+  .renameBranch()
+  .deleteBranch()       // refuses main-left / main-right
+  .isMainBranch(id)
+  .defaultName(id)      // 'Left' | 'Right' | 'Untitled' — what an emptied title falls back to
 
 // diff_ignore.js (v6)
 window.DiffIgnore
@@ -513,6 +521,15 @@ When that pane was already showing one window of a large collection, the new com
 computed against the visible page. Measured: pasting 5,000 records opposite a pane windowed
 to 1,328 reported **"33 changed, 3,672 added"** instead of "125 changed" — a wrong answer,
 produced silently, on data the user had just pasted. It reads `_ignorePristine` first now.
+
+**The snapshot has to be dropped as well as taken.** `applyTransformResult()` set
+`_ignorePristine` for a windowed or normalized render and never cleared it for a render
+that was neither, so it outlived the comparison it described. Measured: window a
+3,000-record pair, paste small JSON into each side — the panes showed "1 changed of 1
+items" while autosave, Export and Copy kept writing the old 903 KB right document, a
+reload brought it back, and a branch switch wrote it into the pane. It is now cleared
+whenever a successful render leaves the whole pair in the panes (every caller passes the
+full untransformed pair as `L`/`R`, so that is always safe).
 
 ### 5. `commitPair(L, R)` — the only way to write a rewritten pair
 
@@ -802,7 +819,43 @@ if (CSVUtils.isCSV(text) && settings.autoCsv) {
 - Copy content
 - Paste content
 - Clear panel
-- Branch selector (bottom-right)
+- Bar under the editor: branch list · branch tabs · **+** … Save · CSV→JSON / JSON→CSV ·
+  Export · show/hide tabs (see below)
+
+### Panel titles & branch tabs (v6)
+A panel shows one branch at a time, and **the branch's name is the panel title**: the
+editable text in the chip above the editor and the label of its tab. One name, three
+places to change it (chip title — click; tab — double-click / F2; branch list — ✏️), so
+title and tab can never disagree. The chip's validity dot is untouched.
+
+- **Code:** the branch block in `v6/index.html` (`switchBranch`, `createNewBranch`,
+  `renameBranchTo`, `requestDeleteBranch`, `renderBranchTabs`, `editInline`,
+  `confirmPopover`, `addPaneFooter`); styles in the "Panel titles & branch tabs" section
+  at the end of `app.css`.
+- **Switching writes through `commitPair()`**, and saves the panel it leaves via
+  `getPaneDocument()` — never `editor.dispatch` / `state.doc.toString()`. A windowed
+  collection used to be saved as the page on screen, and the neighbour pane lost its
+  full copy.
+- **Leave a branch before deleting it, with `{skipSave: true}`.** The old order (delete,
+  then switch) let the switch's save-on-leave re-create the deleted id with no panel —
+  invisible, but stored and counted. Delete asks in an anchored popover and offers Undo.
+- **Saving stays explicit.** Only a panel's active branch can be unsaved; every other tab
+  is saved by construction (switching away saves). "Unsaved" compares the JSON **value**
+  against `branchBaseline[side]` (the text last saved), because alignment re-indents the
+  panes and adds gap lines — a byte comparison showed every tab unsaved on load. Branch
+  content is stored without gap lines (`branchContentFrom`).
+- **Tab order is `metadata.created`**, not `timestamp` (which moves on every save and
+  would make a tab jump). `init()` backfills it, and renames the untouched "Main Left" /
+  "Main Right" defaults to "Left" / "Right" so the chip reads as it always did.
+- **Never rebuild the tabs under an open rename box** (`renderBranchTabs` returns early);
+  the commit / cancel re-renders. Status repaints go through
+  `updateBranchModifiedIndicator()`, which never rebuilds.
+- **`branchTabs` is one setting for both panels** — the two bars must be the same height or
+  the editors stop lining up. Off = `.pane-footer.is-compact`: the bar becomes the floating
+  controls it replaced, with the dropdown as the branch picker.
+- `activeBranches` is always resolved against real branches (`resolveActiveBranch`) at
+  startup and after a snapshot import (`syncActiveBranches`); `importBranches` keeps each
+  branch's panel, without which an imported branch was never listed anywhere.
 
 ### Settings Panel
 Two sections:
@@ -894,6 +947,15 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     panes must scroll to that record and flash it, windowed or not
 18. Set Indent to 4 with Block Diff on — the panes must re-render at 4 immediately
 19. Minify — the panes must actually be one line each
+20. Click **+** — a tab named "Untitled" opens in rename mode; Enter keeps the name, the chip
+    title shows it, and a reload keeps it. Clear a title and press Enter — it falls back to
+    the default name; Escape cancels
+21. Window a large pair, switch the left tab away and back — still "N of 3,000", and the
+    branch saved all 3,000 records (not the page)
+22. Delete the active tab — the neighbour opens, nothing reappears in storage, Undo restores it
+23. Eye → tabs hidden: floating dropdown + **+** in both panels; eye again restores the tabs
+24. Window a large pair, then paste small JSON into each side and reload — the small pair
+    must come back, not the old collection
 
 ## Common Tasks
 
