@@ -54,6 +54,7 @@ Or clone this repository and open `index.html` in your browser to run it locally
 git clone https://github.com/dipenparmar12/json_compair.git
 cd json_compair
 python3 -m http.server 8000
+python -m http.server 8765 --bind 127.0.0.1 > /dev/null 2>&1 || py -m http.server 8765 --bind 127.0.0.1
 # Open http://localhost:8000 in your browser
 ```
 
