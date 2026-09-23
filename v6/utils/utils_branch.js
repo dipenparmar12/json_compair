@@ -332,6 +332,16 @@
       const existing = index[id];
       const now = Date.now();
       const prevCreated = existing && existing.metadata ? existing.metadata.created : undefined;
+      // A new branch's creation time must be strictly the latest: two created
+      // in the same millisecond tied, and the tie fell back to id order, so a
+      // tab could appear before one made earlier.
+      let fresh = now;
+      if (typeof options.created !== 'number' && typeof prevCreated !== 'number') {
+        for (const entry of Object.values(index)) {
+          const c = entry && entry.metadata && entry.metadata.created;
+          if (typeof c === 'number' && c >= fresh) fresh = c + 1;
+        }
+      }
 
       const branch = {
         id: id,
@@ -344,7 +354,7 @@
           panel: options.panel || (existing ? existing.metadata?.panel : null),  // Preserve panel affiliation
           // Creation time orders the tabs; unlike `timestamp` it never moves.
           created: typeof options.created === 'number' ? options.created
-            : (typeof prevCreated === 'number' ? prevCreated : now)
+            : (typeof prevCreated === 'number' ? prevCreated : fresh)
         }
       };
 
