@@ -3598,7 +3598,9 @@
 
       const ICON_EYE = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M1.2 8S3.7 3.2 8 3.2 14.8 8 14.8 8 12.3 12.8 8 12.8 1.2 8 1.2 8z"/><circle cx="8" cy="8" r="2.1"/></svg>';
       const ICON_EYE_OFF = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M1.2 8S3.7 3.2 8 3.2 14.8 8 14.8 8 12.3 12.8 8 12.8 1.2 8 1.2 8z"/><circle cx="8" cy="8" r="2.1"/><path d="M2.5 2.5l11 11"/></svg>';
-      const ICON_BRANCH_LIST = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg>';
+      const ICON_BRANCH_LIST = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M6 4h7.5M6 8h7.5M6 12h7.5"/><circle cx="2.8" cy="4" r=".6" fill="currentColor"/><circle cx="2.8" cy="8" r=".6" fill="currentColor"/><circle cx="2.8" cy="12" r=".6" fill="currentColor"/></svg>';
+      const ICON_ADD = '<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg>';
+      const ICON_CLOSE = '<svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg>';
 
       const SAVE_STATE_LABEL = {
         saved: 'Saved',
@@ -4223,7 +4225,7 @@
 
       function createBranchTab(side, b, isActive) {
         const tab = document.createElement('div');
-        tab.className = 'branch-tab';
+        tab.className = isMainBranch(b.id) ? 'branch-tab is-main' : 'branch-tab';
         tab.setAttribute('role', 'tab');
         tab.setAttribute('aria-selected', String(isActive));
         tab.tabIndex = isActive ? 0 : -1;
@@ -4248,7 +4250,7 @@
           x.type = 'button';
           x.className = 'branch-tab-close';
           x.tabIndex = -1;          // Delete on a focused tab does the same
-          x.textContent = '×';
+          x.innerHTML = ICON_CLOSE;
           x.title = `Delete ${b.name}`;
           x.setAttribute('aria-label', `Delete branch ${b.name}`);
           tab.appendChild(x);
@@ -4543,7 +4545,7 @@
         const add = document.createElement('button');
         add.type = 'button';
         add.className = 'branch-tab-add';
-        add.textContent = '+';
+        add.innerHTML = ICON_ADD;
         add.title = 'New branch';
         add.setAttribute('aria-label', `New ${side} panel branch`);
         add.onclick = (e) => {
@@ -4560,7 +4562,7 @@
         save.type = 'button';
         save.className = 'branch-save-btn';
         save.hidden = true;
-        save.textContent = '💾';
+        save.textContent = 'Save';     // the amber dot before it is CSS
         save.title = 'Save this panel to its branch';
         save.setAttribute('aria-label', 'Save this panel to its branch');
         save.onclick = (e) => {
