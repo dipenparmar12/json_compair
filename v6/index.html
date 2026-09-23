@@ -3571,10 +3571,13 @@
       // =====================================================================
       // Branches: panel titles, tabs and per-branch save state
       //
-      // A panel shows one branch at a time. The branch's NAME is the panel's
-      // title (the editable text in the chip above the editor) and its tab's
-      // label — one name, editable from three places: the title, the tab
-      // (double-click / F2) and the branch list.
+      // A panel shows one branch at a time. Two names are involved and they
+      // are deliberately different things:
+      //   - the branch NAME is the short label on its tab (double-click / F2,
+      //     or ✏️ in the branch list);
+      //   - the panel TITLE is a longer description shown in the chip above the
+      //     editor (click it). It is stored per branch, so switching tabs
+      //     switches titles too, and until one is set the branch name stands in.
       //
       // Saving stays explicit: a branch holds what was last saved to it, the
       // panel holds what you are working on, and switching away saves the panel
@@ -3601,6 +3604,7 @@
       const branchBaseline = { left: null, right: null };
 
       const BRANCH_NAME_MAX = 60;
+      const PANEL_TITLE_MAX = 120;
       // Above this the unsaved check compares bytes only: parsing a multi-MB
       // document on every debounced edit is not worth the nicer answer.
       const BRANCH_COMPARE_MAX_BYTES = 2 * 1024 * 1024;
@@ -3628,6 +3632,14 @@
       function branchName(id) {
         const b = findBranch(id);
         return b ? b.name : window.BranchManager.defaultName(id);
+      }
+
+      // The panel title for a branch: its own title when one was set, else the
+      // branch name.
+      function branchTitle(id) {
+        const b = findBranch(id);
+        const t = b && b.metadata && b.metadata.title;
+        return t || branchName(id);
       }
 
       // The stored id can be stale: the defaults were "main", an id that stopped
@@ -3837,7 +3849,7 @@
 
       // New branch: created empty, shown at once, and opened for naming — the
       // spreadsheet/browser-tab gesture, replacing a prompt(). With tabs hidden
-      // the panel title is the same name, so that is what opens instead.
+      // the name is edited in the branch list instead.
       async function createNewBranch(side) {
         if (branchBusy[side]) return;
         // Refuse up front (with a notice) rather than leave an orphan tab
@@ -3855,7 +3867,7 @@
         }
         if (!(await switchBranch(side, branch.id))) { updateBranchSelectors(); return; }
         if (branchTabsVisible()) startTabRename(side, branch.id);
-        else startTitleRename(side);
+        else startListRename(side, branch.id);
       }
 
       async function renameBranchTo(branchId, raw) {
@@ -3869,6 +3881,25 @@
             await window.BranchManager.renameBranch(branchId, name);
           } catch (err) {
             showNotice('error', 'Could not rename the branch: ' + (err && err.message ? err.message : err));
+          }
+        }
+        updateBranchSelectors();
+      }
+
+      // Set the panel title of a branch. Clearing it — or typing the branch
+      // name itself — removes the custom title, so the title follows the
+      // branch name again (including through later renames).
+      async function setPanelTitle(branchId, raw) {
+        const b = findBranch(branchId);
+        if (!b) { updateBranchSelectors(); return; }
+        const text = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, PANEL_TITLE_MAX);
+        const title = text && text !== b.name ? text : '';
+        const current = (b.metadata && b.metadata.title) || '';
+        if (title !== current) {
+          try {
+            await window.BranchManager.setBranchTitle(branchId, title);
+          } catch (err) {
+            showNotice('error', 'Could not change the panel title: ' + (err && err.message ? err.message : err));
           }
         }
         updateBranchSelectors();
@@ -3936,6 +3967,7 @@
             run: async () => {
               await window.BranchManager.saveBranch(branchId, content, {
                 name,
+                title: meta.title,
                 panel,
                 created: meta.created,
                 source: meta.source || 'manual',
@@ -4021,13 +4053,14 @@
         input.className = 'inline-rename' + (opts.className ? ' ' + opts.className : '');
         input.value = opts.value || '';
         input.placeholder = opts.placeholder || '';
-        input.maxLength = BRANCH_NAME_MAX;
+        const max = opts.maxLength || BRANCH_NAME_MAX;
+        input.maxLength = max;
         input.spellcheck = false;
         input.autocomplete = 'off';
         input.setAttribute('aria-label', opts.label || 'Name');
         const fit = () => {
           const n = (input.value || input.placeholder).length + 2;
-          input.style.width = Math.min(BRANCH_NAME_MAX, Math.max(6, n)) + 'ch';
+          input.style.width = Math.min(max, Math.max(6, n)) + 'ch';
         };
         fit();
 
@@ -4076,19 +4109,33 @@
         });
       }
 
+      // Edits the panel TITLE, not the branch name. The placeholder shows the
+      // branch name, which is what an empty title falls back to.
       function startTitleRename(side) {
         const el = document.getElementById(`pane-chip-${side}-title`);
         if (!el || !el.isConnected) return;
         const id = activeBranches[side];
         editInline(el, {
-          value: branchName(id),
-          placeholder: window.BranchManager.defaultName(id),
+          value: branchTitle(id),
+          placeholder: branchName(id),
           label: `${sideName(side)} panel title`,
           className: 'pane-chip-title-input',
-          onCommit: (v) => renameBranchTo(id, v),
+          maxLength: PANEL_TITLE_MAX,
+          onCommit: (v) => setPanelTitle(id, v),
           onCancel: () => updateBranchSelectors(),
           refocus: () => el.focus({ preventScroll: true })
         });
+      }
+
+      // Tabs hidden: name a branch from the branch list, opening it if needed.
+      function startListRename(side, id) {
+        const dropdown = document.getElementById(`branch-dropdown-${side}`);
+        const btn = document.getElementById(`branch-btn-${side}`);
+        if (!dropdown || !btn) return;
+        if (dropdown.style.display === 'none') btn.click();
+        const row = dropdown.querySelector(`.branch-item-row[data-branch-id="${CSS.escape(id)}"]`);
+        const edit = row && row.querySelector('.branch-rename-action');
+        if (edit) edit.click();
       }
 
       // ---- Delete confirmation --------------------------------------------
@@ -4192,10 +4239,14 @@
         for (const side of ['left', 'right']) {
           const el = document.getElementById(`pane-chip-${side}-title`);
           if (!el) continue;
-          const name = branchName(activeBranches[side]);
-          el.textContent = name;
-          el.title = `${name} — click to rename`;
-          el.setAttribute('aria-label', `${sideName(side)} panel title: ${name}. Click to rename.`);
+          const id = activeBranches[side];
+          const title = branchTitle(id);
+          const name = branchName(id);
+          el.textContent = title;
+          el.title = title === name
+            ? `${title} — click to give this panel a title`
+            : `${title} (branch: ${name}) — click to edit the title`;
+          el.setAttribute('aria-label', `${sideName(side)} panel title: ${title}. Click to edit.`);
         }
       }
 
@@ -4451,6 +4502,7 @@
         for (const b of branches) {
           const row = document.createElement('div');
           row.className = 'branch-dropdown-item branch-item-row';
+          row.dataset.branchId = b.id;
           if (b.id === activeBranches[side]) row.classList.add('active');
 
           // Names are user text (and can arrive in a snapshot): textContent,
@@ -4496,7 +4548,7 @@
               onCommit: (v) => renameBranchTo(b.id, v).then(refresh),
               onCancel: refresh
             });
-          }, 'rename-icon');
+          }, 'rename-icon branch-rename-action');
           if (!isMainBranch(b.id)) {
             action('🗑️', 'Delete branch', () => {
               close();
@@ -4744,7 +4796,7 @@
         // Named after the panel title. The branch id used to stand in for it,
         // which stopped meaning anything once branches could be renamed (a tab
         // created as "untitled-2" keeps that id after it is named "Prod API").
-        const title = branchName(activeBranches[side])
+        const title = branchTitle(activeBranches[side])
           .replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '');
         const namePart = title && title.toLowerCase() !== side ? `${side}-${title}` : side;
         const timestamp = new Date().toISOString().slice(0, 10);

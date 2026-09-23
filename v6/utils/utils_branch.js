@@ -324,7 +324,7 @@
      * Save or update a branch
      * @param {string} id - Branch ID (will be auto-generated if creating new)
      * @param {string} content - JSON content
-     * @param {Object} options - { name?, source?, notes?, panel?, created? }
+     * @param {Object} options - { name?, title?, source?, notes?, panel?, created? }
      * @returns {Promise<Object>} - Saved branch object
      */
     async saveBranch(id, content, options = {}) {
@@ -357,6 +357,12 @@
             : (typeof prevCreated === 'number' ? prevCreated : fresh)
         }
       };
+      // The panel title: a longer, descriptive name shown above the editor.
+      // Optional — without one the branch name stands in. Carried across saves
+      // explicitly, because this object is rebuilt from scratch every time.
+      const title = options.title !== undefined ? options.title
+        : (existing && existing.metadata ? existing.metadata.title : undefined);
+      if (title) branch.metadata.title = title;
 
       // Save full content to IndexedDB
       await saveBranchToIDB(branch);
@@ -453,6 +459,35 @@
         saveBranchIndex(index);
       }
 
+      return branch;
+    },
+
+    /**
+     * Set (or, with an empty value, clear) a branch's panel title. The title
+     * is separate from the branch name: the name labels the tab, the title
+     * describes the panel while that branch is shown in it.
+     * @param {string} id - Branch ID
+     * @param {string} title - New title; '' / null falls back to the name
+     * @returns {Promise<Object|null>} - Updated branch or null
+     */
+    async setBranchTitle(id, title) {
+      const branch = await this.getBranch(id);
+      if (!branch) {
+        console.warn(`Branch '${id}' not found`);
+        return null;
+      }
+      branch.metadata = branch.metadata || {};
+      if (title) branch.metadata.title = title;
+      else delete branch.metadata.title;
+      await saveBranchToIDB(branch);
+
+      const index = loadBranchIndex();
+      if (index[id]) {
+        index[id].metadata = index[id].metadata || {};
+        if (title) index[id].metadata.title = title;
+        else delete index[id].metadata.title;
+        saveBranchIndex(index);
+      }
       return branch;
     },
 
@@ -578,7 +613,8 @@
           source: branchData.metadata?.source || 'import',
           notes: branchData.metadata?.notes || '',
           panel: branchData.metadata?.panel || null,
-          created: branchData.metadata?.created
+          created: branchData.metadata?.created,
+          title: branchData.metadata?.title
         });
         imported++;
       }
