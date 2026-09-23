@@ -22,6 +22,13 @@
   const META_KEY = 'json_compair_branch_index';
   const MAX_BRANCHES_WARNING = 20;
 
+  // Each panel's default branch. Its NAME is the panel title shown above the
+  // editor, so it defaults to the label the panel had before titles were
+  // editable. Installs from before that carry the old names; init() migrates
+  // them only while they are still exactly the untouched default.
+  const MAIN_NAMES = { 'main-left': 'Left', 'main-right': 'Right' };
+  const LEGACY_MAIN_NAMES = { 'main-left': 'Main Left', 'main-right': 'Main Right' };
+
   /**
    * Generate a slug ID from a display name
    * @param {string} name - Display name
@@ -216,21 +223,56 @@
       // Create default branches for each panel if they don't exist
       if (!index['main-left']) {
         await this.saveBranch('main-left', '', {
-          name: 'Main Left',
+          name: MAIN_NAMES['main-left'],
           source: 'system',
           notes: 'Default left panel branch',
-          panel: 'left'
+          panel: 'left',
+          created: 0
         });
       }
-      
+
       if (!index['main-right']) {
         await this.saveBranch('main-right', '', {
-          name: 'Main Right',
+          name: MAIN_NAMES['main-right'],
           source: 'system',
           notes: 'Default right panel branch',
-          panel: 'right'
+          panel: 'right',
+          created: 0
         });
       }
+
+      // The old default names made every panel title read "Main Left".
+      for (const id of Object.keys(LEGACY_MAIN_NAMES)) {
+        const entry = loadBranchIndex()[id];
+        if (entry && entry.name === LEGACY_MAIN_NAMES[id]) {
+          await this.renameBranch(id, MAIN_NAMES[id]);
+        }
+      }
+
+      // Tabs are ordered by creation, and `timestamp` moves on every save — a
+      // tab ordered by it would jump to the front each time it was saved.
+      // Branches from before `created` existed get their last-modified time,
+      // once, which is the best order still recoverable.
+      const fresh = loadBranchIndex();
+      let backfilled = false;
+      for (const entry of Object.values(fresh)) {
+        entry.metadata = entry.metadata || {};
+        if (typeof entry.metadata.created !== 'number') {
+          entry.metadata.created = MAIN_NAMES[entry.id] ? 0 : (entry.timestamp || Date.now());
+          backfilled = true;
+        }
+      }
+      if (backfilled) saveBranchIndex(fresh);
+    },
+
+    /** True for the two per-panel default branches, which cannot be deleted or moved. */
+    isMainBranch(id) {
+      return Object.prototype.hasOwnProperty.call(MAIN_NAMES, id);
+    },
+
+    /** The name a branch falls back to when its title is cleared. */
+    defaultName(id) {
+      return MAIN_NAMES[id] || 'Untitled';
     },
 
     /**
@@ -250,14 +292,21 @@
         });
       }
       
+      // Stable order, because it is the TAB order: main branch first, then in
+      // the order branches were created (new tabs appear at the end). This used
+      // to be most-recently-modified first, which is fine for a dropdown and
+      // wrong for tabs — saving a tab would have moved it.
+      const created = (b) => {
+        const c = b.metadata && b.metadata.created;
+        return typeof c === 'number' ? c : (b.timestamp || 0);
+      };
       return branches.sort((a, b) => {
-        // Sort main branches first (main-left before main-right)
         const aIsMain = a.id.startsWith('main-');
         const bIsMain = b.id.startsWith('main-');
         if (aIsMain && !bIsMain) return -1;
         if (!aIsMain && bIsMain) return 1;
         if (aIsMain && bIsMain) return a.id.localeCompare(b.id);
-        return (b.timestamp || 0) - (a.timestamp || 0);
+        return (created(a) - created(b)) || a.id.localeCompare(b.id);
       });
     },
 
@@ -275,22 +324,27 @@
      * Save or update a branch
      * @param {string} id - Branch ID (will be auto-generated if creating new)
      * @param {string} content - JSON content
-     * @param {Object} options - { name?, source?, notes? }
+     * @param {Object} options - { name?, source?, notes?, panel?, created? }
      * @returns {Promise<Object>} - Saved branch object
      */
     async saveBranch(id, content, options = {}) {
       const index = loadBranchIndex();
       const existing = index[id];
-      
+      const now = Date.now();
+      const prevCreated = existing && existing.metadata ? existing.metadata.created : undefined;
+
       const branch = {
         id: id,
         name: options.name || (existing ? existing.name : id),
         content: content,
-        timestamp: Date.now(),
+        timestamp: now,
         metadata: {
           source: options.source || (existing ? existing.metadata?.source : 'manual'),
           notes: options.notes !== undefined ? options.notes : (existing ? existing.metadata?.notes : ''),
-          panel: options.panel || (existing ? existing.metadata?.panel : null)  // Preserve panel affiliation
+          panel: options.panel || (existing ? existing.metadata?.panel : null),  // Preserve panel affiliation
+          // Creation time orders the tabs; unlike `timestamp` it never moves.
+          created: typeof options.created === 'number' ? options.created
+            : (typeof prevCreated === 'number' ? prevCreated : now)
         }
       };
 
@@ -506,10 +560,15 @@
           continue;
         }
 
+        // Panel and creation order have to come across too: branches are listed
+        // strictly per panel, so one imported without its panel was saved,
+        // counted, and never shown anywhere.
         await this.saveBranch(id, branchData.content || '', {
           name: branchData.name || id,
           source: branchData.metadata?.source || 'import',
-          notes: branchData.metadata?.notes || ''
+          notes: branchData.metadata?.notes || '',
+          panel: branchData.metadata?.panel || null,
+          created: branchData.metadata?.created
         });
         imported++;
       }

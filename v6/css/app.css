@@ -654,30 +654,6 @@ ins {
     border-color: #777;
 }
 
-/* Dark theme — Save branch button */
-.cm-theme-dark .branch-save-btn {
-    background: #2d2d2d;
-    color: #ccc;
-    border-color: #555;
-}
-
-.cm-theme-dark .branch-save-btn:hover {
-    background: #1e3a2f;
-    border-color: #08c988;
-}
-
-/* Dark theme — New Empty Branch quick button */
-.cm-theme-dark .branch-new-quick-btn {
-    background: #2d2d2d;
-    color: #ccc;
-    border-color: #555;
-}
-
-.cm-theme-dark .branch-new-quick-btn:hover {
-    background: #1e3a2f;
-    border-color: #08c988;
-}
-
 .pane-wrapper {
     position: relative;
     flex: 1;
@@ -1132,92 +1108,38 @@ select.toggle-button {
    Git-like branch switching for JSON Compare panels
    ============================================================ */
 
+/* Positioned by the pane footer now (see PANE FOOTER below); this is only the
+   anchor its dropdown opens from. */
 .branch-selector-container {
-    position: absolute;
-    bottom: 8px;
-    right: 10px;
-    z-index: 100;
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 4px;
-    opacity: 0.7;  /* Always visible by default */
-    transition: opacity 0.2s;
-    pointer-events: auto;  /* Always clickable */
+    flex: 0 0 auto;
 }
 
-/* Brighten on panel hover */
-.cm-mergeViewEditor:hover .branch-selector-container {
-    opacity: 1;
-}
-
-/* Both panels keep branch selector on the RIGHT side */
-.branch-selector-left,
-.branch-selector-right {
-    right: 20px;
-    left: auto;
-}
-
-/* Save button (positioned to the left of dropdown button, hidden by default) */
+/* Save button — shown only while the active branch has unsaved changes */
 .branch-save-btn {
-    display: none;  /* Hidden until changes detected */
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 26px;
-    font-size: 14px;
-    background: rgba(248, 249, 250, 0.95);
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.branch-save-btn:hover {
-    background: #e8f5e9;
-    border-color: #08c988;
-    transform: scale(1.05);
-}
-
-.branch-save-btn:active {
-    transform: scale(0.98);
-}
-
-/* Quick "New Empty Branch" button — always visible next to the dropdown */
-.branch-new-quick-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 26px;
-    height: 26px;
+    height: 22px;
+    padding: 0;
     font-size: 13px;
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid #ccc;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.branch-new-quick-btn:hover {
-    background: #e8f5e9;
-    border-color: #08c988;
-    transform: scale(1.05);
+.branch-save-btn[hidden] {
+    display: none;
 }
 
-.branch-new-quick-btn:active {
-    transform: scale(0.98);
-}
-
-.branch-modified-indicator {
-    color: #f0ad4e;
-    font-size: 10px;
-    margin-right: 2px;
-    animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
+.branch-save-btn:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
 }
 
 .branch-selector-btn {
@@ -1259,7 +1181,7 @@ select.toggle-button {
 .branch-dropdown {
     position: absolute;
     bottom: 100%;
-    right: 0;
+    left: 0;
     margin-bottom: 4px;
     min-width: 200px;
     max-width: 280px;
@@ -1275,11 +1197,11 @@ select.toggle-button {
     transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-/* Both dropdowns open upward from the right */
+/* Both dropdowns open upward from the branch button at the footer's left */
 .branch-dropdown-left,
 .branch-dropdown-right {
-    right: 0;
-    left: auto;
+    left: 0;
+    right: auto;
 }
 
 .branch-dropdown-item {
@@ -3039,4 +2961,415 @@ button:disabled,
 @media (max-width: 720px) {
     .pane-chips { grid-template-columns: 1fr; }
     .repair-modal-body { max-height: 90vh; }
+}
+
+/* ==========================================================================
+   Panel titles & branch tabs
+   The panel title (chip) and each branch tab show the same name — the active
+   branch's — and both edit it in place. Tabs live in a real bar under each
+   editor rather than floating over the last lines of code; hiding them
+   (the eye) collapses the bar back to the floating dropdown it replaced.
+   ========================================================================== */
+
+/* --- panel title in the chip -------------------------------------------- */
+.pane-chip-title {
+    flex: 0 1 auto;
+    min-width: 2ch;
+    max-width: 45%;
+    margin: 0 -3px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-weight: 600;
+    line-height: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+}
+.pane-chip-title:hover {
+    background: var(--bg);
+    border-color: var(--border-strong);
+}
+.pane-chip-title:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.pane-chip[data-state="fixable"] .pane-chip-title,
+.pane-chip[data-state="invalid"] .pane-chip-title { color: inherit; }
+.pane-chip-text::before {
+    content: '·';
+    margin-right: 6px;
+    opacity: 0.7;
+}
+
+/* --- the rename box (title, tab, branch list) --------------------------- */
+.inline-rename {
+    min-width: 6ch;
+    max-width: 100%;
+    height: 20px;
+    padding: 0 4px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.inline-rename.pane-chip-title-input { max-width: 45%; }
+
+/* --- the bar under each editor ------------------------------------------ */
+.cm-mergeViewEditor {
+    display: flex;
+    flex-direction: column;
+}
+.cm-mergeView .cm-mergeViewEditor > .cm-editor {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto !important;
+}
+
+.pane-footer {
+    position: relative;
+    z-index: 250;                 /* dropdowns open upward over the gutters (200) */
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    height: 30px;
+    padding-right: 6px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-muted);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.branch-strip {
+    display: flex;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.pane-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+/* The pane's file actions, re-homed from the editor's bottom-left corner.
+   Same buttons, same behaviour; shown only when they apply. */
+.pane-footer .csv-convert-btn,
+.pane-footer .json-convert-btn {
+    position: static;
+}
+.pane-footer .export-dropdown-container {
+    position: relative;
+    left: auto;          /* the old overlay offsets would still shift it */
+    bottom: auto;
+}
+.pane-footer .csv-convert-btn:not(.visible),
+.pane-footer .json-convert-btn:not(.visible),
+.pane-footer .export-dropdown-container:not(.visible) {
+    display: none;
+}
+.pane-footer .export-dropdown-menu {
+    left: auto;
+    right: 0;
+}
+.pane-footer.is-tabs .csv-convert-btn.visible,
+.pane-footer.is-tabs .json-convert-btn.visible,
+.pane-footer.is-tabs .export-dropdown-container.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+.pane-footer.is-tabs .csv-convert-btn,
+.pane-footer.is-tabs .json-convert-btn,
+.pane-footer.is-tabs .export-dropdown-btn {
+    padding: 2px 8px;
+}
+
+/* show / hide tabs */
+.branch-tabs-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 22px;
+    padding: 0;
+    color: var(--text-muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+.branch-tabs-toggle:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+    border-color: var(--border);
+}
+.branch-tabs-toggle[aria-pressed="false"] { color: var(--text-faint); }
+
+/* --- tabs ----------------------------------------------------------------- */
+.branch-tabs {
+    position: relative;          /* offsetLeft of each tab is measured from here */
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;       /* wheel, arrows and the branch list scroll it */
+}
+.branch-tabs::-webkit-scrollbar { display: none; }
+.branch-tabs.fade-start {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18px);
+            mask-image: linear-gradient(to right, transparent, #000 18px);
+}
+.branch-tabs.fade-end {
+    -webkit-mask-image: linear-gradient(to left, transparent, #000 18px);
+            mask-image: linear-gradient(to left, transparent, #000 18px);
+}
+.branch-tabs.fade-start.fade-end {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent);
+            mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent);
+}
+
+.branch-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    max-width: 220px;
+    padding: 0 6px 0 10px;
+    border-right: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    transition: background 0.12s, color 0.12s;
+}
+.branch-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+/* Active: the sheet you are on — editor background, accent underline. */
+.branch-tab[aria-selected="true"] {
+    background: var(--bg);
+    color: var(--text);
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--accent);
+}
+.branch-tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+.branch-tab-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.branch-tab .inline-rename { height: 20px; }
+
+.branch-tab-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: var(--text-faint);
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.55;
+}
+.branch-tab:hover .branch-tab-close,
+.branch-tab[aria-selected="true"] .branch-tab-close { opacity: 1; }
+.branch-tab-close:hover {
+    background: rgba(209, 36, 47, 0.12);
+    color: #d1242f;
+    border: 0;
+}
+
+/* per-branch save state: saved = check, unsaved = amber dot, saving = spinner */
+.branch-tab-status {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+}
+.branch-tab-status::before { content: ''; display: block; }
+.branch-tab-status[data-state="saved"]::before {
+    width: 3px;
+    height: 7px;
+    margin-top: -2px;
+    border: solid var(--text-faint);
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+    opacity: 0.8;
+}
+.branch-tab-status[data-state="unsaved"] { cursor: pointer; }
+.branch-tab-status[data-state="unsaved"]::before {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d98e04;
+}
+.branch-tab-status[data-state="unsaved"]:hover::before {
+    box-shadow: 0 0 0 3px rgba(217, 142, 4, 0.25);
+}
+.branch-tab-status[data-state="saving"]::before {
+    width: 8px;
+    height: 8px;
+    border: 1.5px solid var(--text-muted);
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: branch-saving-spin 0.7s linear infinite;
+}
+@keyframes branch-saving-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .branch-tab-status[data-state="saving"]::before { animation: none; }
+}
+[data-theme="dark"] .branch-tab-status[data-state="unsaved"]::before { background: #f0b43c; }
+
+.branch-tab-add {
+    flex: 0 0 auto;
+    width: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 17px;
+    line-height: 1;
+}
+.branch-tab-add:hover {
+    background: var(--bg-hover);
+    color: var(--accent);
+    border: 0;
+}
+
+/* The branch list button. With tabs showing it is a small icon at the left
+   end of the bar — every branch, plus move / reset — the tabs name the rest. */
+.pane-footer.is-tabs .branch-selector-btn {
+    height: 100%;
+    width: 28px;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: none;
+    color: var(--text-muted);
+}
+.pane-footer.is-tabs .branch-selector-btn:hover,
+.pane-footer.is-tabs .branch-selector-btn[aria-expanded="true"] {
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--border);
+}
+.branch-selector-name {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* In the dropdown button only problems are worth a mark — no check. */
+.branch-selector-btn .branch-tab-status[data-state="saved"] { display: none; }
+
+/* --- tabs hidden: back to floating controls over the editor ------------- */
+.pane-footer.is-compact {
+    position: absolute;
+    left: 10px;
+    right: 20px;
+    bottom: 8px;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    pointer-events: none;          /* the gaps between buttons are editor */
+}
+.pane-footer.is-compact .branch-tabs { display: none; }
+.pane-footer.is-compact .branch-strip,
+.pane-footer.is-compact .pane-footer-actions { align-items: center; gap: 4px; }
+.pane-footer.is-compact .branch-strip > *,
+.pane-footer.is-compact .branch-save-btn,
+.pane-footer.is-compact .branch-tabs-toggle {
+    pointer-events: auto;
+}
+.pane-footer.is-compact .branch-strip,
+.pane-footer.is-compact .branch-tabs-toggle {
+    opacity: 0.75;
+    transition: opacity 0.2s;
+}
+.cm-mergeViewEditor:hover .pane-footer.is-compact .branch-strip,
+.cm-mergeViewEditor:hover .pane-footer.is-compact .branch-tabs-toggle {
+    opacity: 1;
+}
+.pane-footer.is-compact .branch-tabs-toggle,
+.pane-footer.is-compact .branch-tab-add {
+    width: 26px;
+    height: 24px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 15px;
+}
+.pane-footer.is-compact .branch-tab-add:hover,
+.pane-footer.is-compact .branch-tabs-toggle:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+
+/* --- delete confirmation ------------------------------------------------- */
+.confirm-pop {
+    position: fixed;
+    z-index: 3500;
+    width: max-content;
+    max-width: min(320px, calc(100vw - 16px));
+    padding: var(--space-3);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    color: var(--text);
+    animation: notice-in 120ms ease-out;
+}
+.confirm-pop-title {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+.confirm-pop-text {
+    margin-top: 4px;
+    color: var(--text-muted);
+}
+.confirm-pop-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+.confirm-pop-actions .btn { padding: 4px 12px; font-size: 12.5px; }
+.btn-danger {
+    color: #fff;
+    background: #cf222e;
+    border-color: #cf222e;
+}
+.btn-danger:hover {
+    background: #a40e26;
+    border-color: #a40e26;
+}
+@media (prefers-reduced-motion: reduce) {
+    .confirm-pop { animation: none; }
 }
