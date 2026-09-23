@@ -3275,6 +3275,15 @@
           const normalized = (pred || tol != null) && res.changed;
           if (normalized || (res.stats && res.stats.truncated)) {
             _ignorePristine = { left: L, right: R };
+          } else {
+            // Otherwise the panes are about to hold the WHOLE pair, so a
+            // snapshot from an earlier window is stale — and it was never
+            // cleared here. Measured: window a 3,000-record pair, paste small
+            // JSON into each side; the panes showed "1 changed of 1 items"
+            // while autosave, Export and Copy kept writing the old 903 KB right
+            // document, and a reload brought it back. Every caller passes the
+            // full untransformed pair as L/R, so dropping it is always safe.
+            _ignorePristine = null;
           }
           writeAlignedPanes(res.left, res.right);
           dispatched = true;
