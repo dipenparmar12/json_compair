@@ -79,7 +79,7 @@ Loaded via ES Module Import Maps from unpkg.com:
   "@codemirror/language": "6.10.3",
   "@codemirror/commands": "6.7.1",
   "@codemirror/lang-json": "6.0.1",
-  "@codemirror/merge": "6.7.2",
+  "@codemirror/merge": "6.12.2",   // >= 6.12 for DiffConfig.override (Diff Engine §12)
   "@codemirror/search": "6.5.6",
   "@codemirror/autocomplete": "6.18.1",
   "@codemirror/lint": "6.8.2",
@@ -823,10 +823,17 @@ if (CSVUtils.isCSV(text) && settings.autoCsv) {
   Export · show/hide tabs (see below)
 
 ### Panel titles & branch tabs (v6)
-A panel shows one branch at a time, and **the branch's name is the panel title**: the
-editable text in the chip above the editor and the label of its tab. One name, three
-places to change it (chip title — click; tab — double-click / F2; branch list — ✏️), so
-title and tab can never disagree. The chip's validity dot is untouched.
+A panel shows one branch at a time, and two names are involved — deliberately different:
+- the **branch name** is the short label on its tab (double-click / F2, or ✏️ in the branch
+  list);
+- the **panel title** is a longer description in the chip above the editor (click it). It is
+  stored per branch as `metadata.title` (`BranchManager.setBranchTitle`), so switching tabs
+  switches titles, and until one is set the branch name stands in (`branchTitle()`).
+  Clearing it — or typing the branch name itself — removes it again.
+
+`saveBranch()` rebuilds `metadata` from scratch on every save, so it carries `title` across
+explicitly; anything new stored in branch metadata needs the same treatment or the next
+content save silently drops it. The chip's validity dot is untouched.
 
 - **Code:** the branch block in `v6/index.html` (`switchBranch`, `createNewBranch`,
   `renameBranchTo`, `requestDeleteBranch`, `renderBranchTabs`, `editInline`,
@@ -956,6 +963,13 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
 23. Eye → tabs hidden: floating dropdown + **+** in both panels; eye again restores the tabs
 24. Window a large pair, then paste small JSON into each side and reload — the small pair
     must come back, not the old collection
+25. Click the chip title and type a description — the tab keeps its short name; switch tabs and
+    back — each branch shows its own title; clear the title — the branch name comes back
+26. Proxyman's donut example (https://proxyman.com/tools/diff, "Show Diff") — ours must report
+    "1 changed of 1 items", with the removed `batter`/`topping` entries as whole blocks and
+    1002 / 5007 / 5004 aligned
+27. An object where a key exists only on the right, mid-object — it renders in place, and the
+    line above it shows no comma-only change; `]` / `},` rows after an added block stay unmarked
 
 ## Common Tasks
 
@@ -1141,8 +1155,9 @@ Understand the split before touching diff/perf code:
   [[v6-collapse-needs-reinit]].
 
 ### 6. Block-level (object-aware) JSON alignment — `json_align.js` + `applyBlockAlignment()`
-- **Why:** CM6's diff is char/line based and can't be replaced (`MergeView.chunks` is
-  read-only; no custom-diff hook). On arrays of objects it greedily matches shared boilerplate
+- **Why:** CM6's diff is char/line based (`MergeView.chunks` is read-only; since merge 6.12 the
+  diff *function* can be overridden — see §12, which now does so for aligned renders). On arrays
+  of objects it greedily matches shared boilerplate
   (`{`, `},`, `"id": `) ACROSS element boundaries, so a removed item shows as stray half-matched
   lines + a "comma" artifact instead of one clean block.
 - **How:** `window.JSONAlign.align(leftText, rightText)` (in `json_align.js`) parses both sides,
@@ -1165,6 +1180,52 @@ Understand the split before touching diff/perf code:
   strips gaps (only when the result is valid JSON) and CM6's default diff returns.
 - **Fallback:** any parse failure / non-JSON / >`MAX_BYTES` (24 MB) combined → `align()` returns
   `{ok:false}` → no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
+
+### 12. Nested JSON the way Proxyman shows it — pairing, key order, side-by-side, row diff
+Benchmarked against Proxyman's JSON diff (https://proxyman.com/tools/diff) on nested inputs:
+objects holding collections, collections of objects holding collections. Proxyman is a plain
+Monaco line diff over pretty JSON (no JSON awareness), and its strength is that a modified
+record stays in place with only its changed fields marked. We now do that and keep what a
+structural diff adds (anchoring on ids/equal items, reorders, exact counts). Four rules:
+
+1. **Pair small-array records by similarity, not by top-level equality.** `shouldPair()` only
+   looked at top-level values, so a nested collection was simply "not equal": Proxyman's own
+   donut example (id/type changed, two nested collections lost and gained entries) rendered as
+   one removal + one addition — 74 lines against Proxyman's 46 — and an order whose total and
+   one line item changed did the same. `similarity()` scores 0..1 recursively (objects: mean
+   over keys; arrays: exact survivors + partial credit for edited elements of short arrays),
+   bounded by `SIM_BUDGET`. In the `'lcs'` strategy (small arrays), each gap between anchors
+   is paired by `pairGapBySimilarity()`: an order-preserving alignment maximising total
+   similarity, pairing only at ≥ `PAIR_SIM` (0.3), ≤ `GAP_DP_CELLS` (2,500) cells, else the old
+   positional walk. **Large collections (`'id'`/`'hash'`) keep strict `shouldPair()`** and the
+   CSV protections — verified byte-identical output before/after, and 40×40 unrelated rows
+   sharing constant columns still do not pair (`informativeKeys` weighting at the top level).
+   Worst-case cost (a full 50×50 gap of different nested records): ~47 ms.
+2. **Right-only keys render where they are.** `alignObject()` used to append them at the end
+   of the object, which moved them away from their neighbours in the right pane AND turned the
+   previous line into a comma-only change (`"y": 2` vs `"y": 2,`). Each is now placed right
+   after the key that precedes it in the right document.
+3. **Unmatched runs render side by side** (`unmatchedRun()`): removed items/keys on the left,
+   added ones on the right, in parallel rows — one "these went, these came" block like
+   Proxyman's, instead of every removal stacked above every addition. The model still reports
+   them as removed + added. (The windowed large-collection renderer is unchanged.)
+4. **CM6 draws OUR alignment (`structuralDiff`, `DiffConfig.override`, merge ≥ 6.12).** CM6
+   used to re-diff the aligned text character by character and could pick an equally short edit
+   that "moved" a closing bracket, painting identical `]`/`},` rows as changed next to an added
+   block. When both panes hold block output (`_rowAligned`) CM6 now gets a row-for-row diff:
+   equal rows unchanged, a gap row = whole-line add/remove, a row differing on both sides =
+   character diff of that row only. Exact and linear — no scanLimit cliff for aligned content
+   (a page turn on a 3,000-record pair produced no task over 50 ms). Raw text, Block Diff off,
+   normalize-only output, or an edit that changes the line count → `cmDiff` with the usual
+   effort cap, exactly as before. `_rowAligned` is set where block output is written
+   (`applyTransformResult`, `gotoRecordPage`) and cleared wherever raw text is
+   (`commitPair` fallback, ingest raw write, `removeBlockAlignment`, `restoreIgnorePristine`,
+   an external edit that unbalances line counts). `writeAlignedPanes` force-re-diffs when the
+   text was already aligned but the live chunks came from CM6's own diff.
+
+Regression harnesses used for this (scratch, not in repo): the six curated examples in
+`docs/test-cases-example/` (four byte-identical, two improved — keys in place, fewer comma-only
+changes, same counts), plus id-keyed 5,000-record and disjoint 3,000-row pairs (identical).
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the
