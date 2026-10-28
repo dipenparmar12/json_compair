@@ -95,6 +95,39 @@
   </head>
 
   <body>
+    <!-- One icon set for the toolbar and its menus (24px grid, 2px stroke,
+         currentColor), replacing emoji that rendered differently on every
+         platform. Use: <svg class="i"><use href="#i-name"/></svg> -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none" aria-hidden="true">
+      <defs>
+        <symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></symbol>
+        <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+        <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+        <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+        <symbol id="i-sort" viewBox="0 0 24 24"><path d="m3 16 4 4 4-4M7 20V4M21 8l-4-4-4 4M17 4v16"/></symbol>
+        <symbol id="i-fold" viewBox="0 0 24 24"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></symbol>
+        <symbol id="i-highlight" viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></symbol>
+        <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+        <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.39-1.61M14.12 14.12a3 3 0 1 1-4.24-4.24M2 2l20 20"/></symbol>
+        <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+        <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5"/></symbol>
+        <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></symbol>
+        <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+        <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M12 3v18"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+        <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+        <symbol id="i-minimize" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></symbol>
+        <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L11 21M22 21H7M5 11l9 9"/></symbol>
+        <symbol id="i-sort-az" viewBox="0 0 24 24"><path d="m3 16 4 4 4-4M7 20V4M20 8h-5M15 10V6.5a2.5 2.5 0 0 1 5 0V10M15 14h5l-5 6h5"/></symbol>
+        <symbol id="i-reverse" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+        <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
+        <symbol id="i-import" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2z"/></symbol>
+        <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+        <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
+      </defs>
+    </svg>
     <div id="container">
       <div class="intro">
         <div class="intro-left">
@@ -102,19 +135,21 @@
                used to have nowhere to live: repair, minify, text cleanup and
                indent width. -->
           <div class="format-group menu-anchor">
-            <button id="btn-format" class="btn btn-primary" title="Pretty-print JSON in both panels">Format JSON</button>
+            <button id="btn-format" class="btn btn-primary" title="Pretty-print JSON in both panels">
+              <svg class="i"><use href="#i-braces"/></svg><span class="btn-label">Format</span>
+            </button>
             <button id="btn-format-menu" class="btn btn-primary btn-caret" title="More formatting actions"
-                    aria-haspopup="true" aria-expanded="false" aria-label="More formatting actions">▾</button>
+                    aria-haspopup="true" aria-expanded="false" aria-label="More formatting actions"><svg class="i"><use href="#i-chevron-down"/></svg></button>
             <div id="format-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
-              <button id="btn-fix-json" class="dropdown-item">🛠 Fix JSON <span class="dropdown-hint">repair syntax</span></button>
-              <button id="btn-minify" class="dropdown-item">🗜 Minify <span class="dropdown-hint">one line</span></button>
+              <button id="btn-fix-json" class="dropdown-item"><svg class="i"><use href="#i-wrench"/></svg>Fix JSON <span class="dropdown-hint">repair syntax</span></button>
+              <button id="btn-minify" class="dropdown-item"><svg class="i"><use href="#i-minimize"/></svg>Minify <span class="dropdown-hint">one line</span></button>
               <div class="settings-section-title settings-section-divided">Plain text</div>
               <div class="ignore-desc">
                 Whitespace and invisible characters — zero-width spaces, BOMs and
                 non-breaking spaces copied from web pages produce differences you
                 cannot see the cause of.
               </div>
-              <button id="btn-clean-text" class="dropdown-item">🧹 Clean up text</button>
+              <button id="btn-clean-text" class="dropdown-item"><svg class="i"><use href="#i-eraser"/></svg>Clean up text</button>
               <div id="clean-options" class="clean-options"></div>
               <div class="settings-section-title settings-section-divided">Indent</div>
               <select id="indent-width" class="settings-select dropdown-select" title="Spaces used when formatting">
@@ -128,7 +163,9 @@
 
           <!-- Sort dropdown: sort array items by field value(s), or sort keys A→Z -->
           <div class="sort-dropdown menu-anchor">
-            <button id="btn-sort" class="btn" title="Sort JSON data">Sort ▾</button>
+            <button id="btn-sort" class="btn" title="Sort by field value, keys A→Z, or reverse" aria-haspopup="true">
+              <svg class="i"><use href="#i-sort"/></svg><span class="btn-label">Sort</span><svg class="i i-caret"><use href="#i-chevron-down"/></svg>
+            </button>
             <div id="sort-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
               <div class="settings-section-title">Sort by field value</div>
               <!-- Sort adapts to what each panel actually holds; this line
@@ -158,24 +195,31 @@
               </div>
               <div id="sort-error" class="ignore-error" style="display: none;"></div>
               <div class="settings-section-title settings-section-divided">Other</div>
-              <button id="btn-sort-keys" class="dropdown-item">🔤 Sort keys A→Z (all levels)</button>
-              <button id="btn-sort-reverse" class="dropdown-item">🔃 Reverse current order</button>
+              <button id="btn-sort-keys" class="dropdown-item"><svg class="i"><use href="#i-sort-az"/></svg>Sort keys A→Z <span class="dropdown-hint">all levels</span></button>
+              <button id="btn-sort-reverse" class="dropdown-item"><svg class="i"><use href="#i-reverse"/></svg>Reverse current order</button>
             </div>
           </div>
 
           <span class="toolbar-divider"></span>
 
-          <!-- Quick toggles -->
-          <label class="toolbar-toggle" title="Collapse unchanged sections">
-            <input type="checkbox" id="quick-collapse-unchanged" /> Collapse
-          </label>
-          <label class="toolbar-toggle" title="Highlight character-level changes">
-            <input type="checkbox" id="quick-highlight-changes" checked /> Highlight
-          </label>
+          <!-- Quick view toggles. Still real checkboxes (the code reads
+               .checked); styled as pressed/unpressed chips. -->
+          <div class="toggle-group" role="group" aria-label="View">
+            <label class="toolbar-toggle" title="Collapse unchanged sections">
+              <input type="checkbox" id="quick-collapse-unchanged" />
+              <svg class="i"><use href="#i-fold"/></svg><span class="btn-label">Collapse</span>
+            </label>
+            <label class="toolbar-toggle" title="Highlight character-level changes">
+              <input type="checkbox" id="quick-highlight-changes" checked />
+              <svg class="i"><use href="#i-highlight"/></svg><span class="btn-label">Highlight</span>
+            </label>
+          </div>
 
           <!-- Diff Settings dropdown -->
           <div class="settings-dropdown menu-anchor">
-            <button id="btn-settings" class="btn">⚙️ Settings</button>
+            <button id="btn-settings" class="btn" title="Editor and diff settings" aria-haspopup="true">
+              <svg class="i"><use href="#i-sliders"/></svg><span class="btn-label">Settings</span>
+            </button>
             <div id="settings-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
               <div class="settings-section-title">Editor</div>
               
@@ -320,8 +364,8 @@
 
           <!-- Ignore keys / patterns dropdown (excludes matches from the diff) -->
           <div class="ignore-dropdown menu-anchor">
-            <button id="btn-ignore" class="btn" title="Exclude keys/patterns from the diff comparison">
-              🚫 Ignore<span id="ignore-count-badge" class="ignore-badge" style="display: none;">0</span>
+            <button id="btn-ignore" class="btn" title="Exclude keys/patterns and tiny number differences from the diff" aria-haspopup="true">
+              <svg class="i"><use href="#i-eye-off"/></svg><span class="btn-label">Ignore</span><span id="ignore-count-badge" class="ignore-badge" style="display: none;">0</span>
             </button>
             <div id="ignore-panel" class="dropdown-panel settings-panel settings-panel-left ignore-panel" style="display: none;">
               <div class="settings-section-title">Exclude from diff</div>
@@ -385,72 +429,82 @@
           </div>
         </div>
 
-        <div class="intro-center">
-          <div class="diff-nav">
-            <button id="btn-diff-prev" class="btn btn-icon" title="Previous difference (Alt+Up)" disabled aria-label="Previous difference (Alt+Up)">↑</button>
-            <button id="btn-diff-next" class="btn btn-icon" title="Next difference (Alt+Down)" disabled aria-label="Next difference (Alt+Down)">↓</button>
-          </div>
-          <div id="diff-summary" data-state="idle">Ready to compare JSON</div>
-          <!-- Record pager: shown only when the collection is too large to render
-               whole, so the panes hold one page of records at a time. -->
-          <div id="record-pager" class="record-pager" style="display: none">
-            <button id="btn-page-prev" class="btn btn-icon" title="Previous records" aria-label="Previous records">◀</button>
-            <span id="record-pager-label">–</span>
-            <button id="btn-page-next" class="btn btn-icon" title="Next records" aria-label="Next records">▶</button>
-          </div>
-          <button id="btn-diff-details" class="btn btn-ghost" style="display: none" title="Field-level breakdown of every change">Details</button>
-          <button id="btn-key-compare" class="btn btn-ghost" style="display: none"
-                  title="Key-by-key table: matching keys, different values, keys on one side only — filter and export">Keys</button>
-          <button id="btn-clear-all" class="btn btn-ghost" style="display: none">Clear All</button>
-        </div>
-
         <div class="intro-right">
-          <!-- Extra Settings Dropdown -->
+          <button id="btn-clear-all" class="btn btn-ghost btn-quiet-danger" style="display: none" title="Empty both panels">
+            <svg class="i"><use href="#i-trash"/></svg><span class="btn-label">Clear all</span>
+          </button>
+          <!-- More: files, sharing, examples, theme and help — everything that
+               is not about the comparison in front of you. -->
           <div class="extra-settings-dropdown menu-anchor">
-            <button id="btn-extra-settings" class="btn" title="Share, import & theme">⋯ More</button>
+            <button id="btn-extra-settings" class="btn" title="Open, share, examples, theme and help" aria-haspopup="true">
+              <svg class="i"><use href="#i-more"/></svg><span class="btn-label">More</span>
+            </button>
             <div id="extra-settings-panel" class="dropdown-panel">
-              <button id="btn-share" class="dropdown-item">📤 Export / Share</button>
-              <button id="btn-import" class="dropdown-item">📥 Import Snapshot</button>
+              <div class="dropdown-label dropdown-label-first">Files</div>
               <!-- Files could previously ONLY arrive by drag & drop, which is
                    undiscoverable and impossible from the keyboard. Two files
                    selected at once fill left and right. -->
-              <button id="btn-open-file" class="dropdown-item">📂 Open file(s)… <span class="dropdown-hint">1 or 2</span></button>
+              <button id="btn-open-file" class="dropdown-item"><svg class="i"><use href="#i-folder"/></svg>Open file(s)… <span class="dropdown-hint">1 or 2</span></button>
+              <button id="btn-import" class="dropdown-item"><svg class="i"><use href="#i-import"/></svg>Import snapshot</button>
+              <button id="btn-share" class="dropdown-item"><svg class="i"><use href="#i-share"/></svg>Export / Share</button>
               <input type="file" id="file-open" multiple
                      accept=".json,.csv,.tsv,.txt,.ndjson,.log,.md,application/json,text/csv,text/plain"
                      style="display: none" />
               <input type="file" id="file-import" accept=".zip,.gz,.gzip,application/zip,application/gzip,application/octet-stream,.json" style="display: none" />
               <div class="dropdown-label">Examples</div>
               <select id="select-templates" class="settings-select dropdown-select">
-                <option value="">Choose example...</option>
-                <option value="simple">⚡ Quick Start (Simple 3 Diffs)</option>
-                <option value="user_profile">👤 User Profile (v1 vs v2)</option>
-                <option value="api">🚀 REST API Response (v1 vs v2)</option>
-                <option value="array">📋 Array Reordering & Collection Diff</option>
-                <option value="config">⚙️ Environment Config (Staging vs Prod)</option>
-                <option value="ecommerce">🛒 E-Commerce Order State</option>
+                <option value="">Choose an example…</option>
+                <option value="simple">Quick start (3 simple diffs)</option>
+                <option value="user_profile">User profile (v1 vs v2)</option>
+                <option value="api">REST API response (v1 vs v2)</option>
+                <option value="array">Array reordering &amp; collection diff</option>
+                <option value="config">Environment config (staging vs prod)</option>
+                <option value="ecommerce">E-commerce order state</option>
               </select>
               <div class="dropdown-label">Theme</div>
               <select id="theme-selector" class="settings-select dropdown-select">
-                <option value="default">🎨 Default (System)</option>
-                <option value="light">☀️ Light</option>
-                <option value="dark">🌙 Dark</option>
-                <option value="oneDark">🌃 One Dark</option>
+                <option value="default">System default</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="oneDark">One Dark</option>
               </select>
+              <!-- Help: was a separate ℹ️ menu plus a "v5 Legacy" button. -->
+              <div class="dropdown-label">Help</div>
+              <button id="btn-dev-info" class="dropdown-item"><svg class="i"><use href="#i-info"/></svg>About this tool</button>
+              <a href="https://github.com/dipenparmar12/json_compair" target="_blank" rel="noopener noreferrer" class="dropdown-item dropdown-link"><svg class="i"><use href="#i-code"/></svg>Source on GitHub</a>
+              <a href="../v5/index.html" class="dropdown-item dropdown-link" title="Switch to CodeMirror 5 (Legacy)"><svg class="i"><use href="#i-history"/></svg>Switch to v5 (legacy)</a>
+              <div class="dropdown-hint dropdown-tip">Tip: <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd> jump between differences</div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <!-- v5 link Version Switcher -->
-          <a href="../v5/index.html" class="btn btn-ghost v5-link" title="Switch to CodeMirror 5 (Legacy)">⬅️ v5 Legacy</a>
-
-          <!-- Info Dropdown -->
-          <div class="info-dropdown menu-anchor">
-            <button id="btn-info" class="btn btn-icon" title="Info">ℹ️</button>
-            <div id="info-panel" class="dropdown-panel" style="min-width: 240px;">
-              <button id="btn-dev-info" class="dropdown-item">🧪 Dev Info</button>
-              <a href="https://github.com/dipenparmar12/json_compair" target="_blank" rel="noopener noreferrer" class="dropdown-item dropdown-link">💻 GitHub Repo</a>
-              <div class="dropdown-hint">Tip: Alt+↑ / Alt+↓ jump between diffs</div>
-            </div>
+      <!-- The comparison result and how to drill into it — separate from the
+           tools above so the answer is never squeezed between buttons. -->
+      <div class="compare-bar">
+        <div class="compare-left">
+          <div class="diff-nav" role="group" aria-label="Jump between differences">
+            <button id="btn-diff-prev" class="btn btn-icon" title="Previous difference (Alt+Up)" disabled aria-label="Previous difference (Alt+Up)"><svg class="i"><use href="#i-arrow-up"/></svg></button>
+            <button id="btn-diff-next" class="btn btn-icon" title="Next difference (Alt+Down)" disabled aria-label="Next difference (Alt+Down)"><svg class="i"><use href="#i-arrow-down"/></svg></button>
           </div>
+          <div id="diff-summary" data-state="idle">Ready to compare JSON</div>
+          <!-- Record pager: shown only when the collection is too large to render
+               whole, so the panes hold one page of records at a time. -->
+          <div id="record-pager" class="record-pager" style="display: none">
+            <button id="btn-page-prev" class="btn btn-icon" title="Previous records" aria-label="Previous records"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+            <span id="record-pager-label">–</span>
+            <button id="btn-page-next" class="btn btn-icon" title="Next records" aria-label="Next records"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+          </div>
+        </div>
+        <div class="compare-right" role="group" aria-label="Inspect the differences">
+          <button id="btn-diff-details" class="btn btn-ghost" style="display: none" aria-pressed="false"
+                  title="Field-level breakdown of every changed record">
+            <svg class="i"><use href="#i-list"/></svg><span class="btn-label">Details</span>
+          </button>
+          <button id="btn-key-compare" class="btn btn-ghost" style="display: none"
+                  title="Key-by-key table: matching keys, different values, keys on one side only — filter and export">
+            <svg class="i"><use href="#i-table"/></svg><span class="btn-label">Keys</span>
+          </button>
         </div>
       </div>
 
@@ -1124,7 +1178,7 @@
       // toggle now closes the rest first.
       // ---------------------------------------------------------------------
       const MENU_PANEL_IDS = ['format-panel', 'sort-panel', 'settings-panel',
-                              'ignore-panel', 'extra-settings-panel', 'info-panel'];
+                              'ignore-panel', 'extra-settings-panel'];
 
       function closeMenus(exceptId) {
         for (const id of MENU_PANEL_IDS) {
@@ -2022,6 +2076,9 @@
       }
 
       // Initialize settings panel
+      let _settingsPanelWired = false;
+      let _themeSelectorWired = false;
+
       function initializeSettingsPanel() {
         const btnSettings = document.getElementById('btn-settings');
         const settingsPanel = document.getElementById('settings-panel');
@@ -2050,7 +2107,15 @@
         const quickHighlight = document.getElementById('quick-highlight-changes');
         if (quickCollapse) quickCollapse.checked = settings.collapseUnchanged;
         if (quickHighlight) quickHighlight.checked = settings.highlightChanges;
-        
+
+        // Both snapshot-import paths call this again to re-sync the controls
+        // with the imported settings. Wiring the listeners a second time made
+        // the Settings button open the panel and then close it again in the
+        // same click (two toggle handlers), so after an import it appeared to
+        // do nothing — and every change applied twice. Sync again; wire once.
+        if (_settingsPanelWired) return;
+        _settingsPanelWired = true;
+
         // Toggle panel visibility
         btnSettings.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -2407,25 +2472,17 @@
             panel.style.display = 'none';
           }
         });
+        // An action item (open, import, share, about, links) is done with the
+        // menu; the selects below them keep it open while you choose.
+        panel.addEventListener('click', (e) => {
+          if (e.target.closest('.dropdown-item')) panel.style.display = 'none';
+        });
       }
 
-      // Initialize Info dropdown
+      // Help items. They used to sit in their own ℹ️ menu; they now live in the
+      // Help section of More, so only the item handlers are wired here.
       function initializeInfoDropdown() {
-        const btn = document.getElementById('btn-info');
-        const panel = document.getElementById('info-panel');
         const devInfo = document.getElementById('btn-dev-info');
-        if (!btn || !panel) return;
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const closed = panel.style.display === 'none' || panel.style.display === '';
-          closeMenus('info-panel');
-          panel.style.display = closed ? 'block' : 'none';
-        });
-        document.addEventListener('click', (e) => {
-          if (!panel.contains(e.target) && e.target !== btn) {
-            panel.style.display = 'none';
-          }
-        });
         if (devInfo) {
           devInfo.addEventListener('click', () => {
             alert('JSON Compare Tool\n\nClient-side only web app for comparing and formatting JSON/CSV.\n- CodeMirror 6 Merge View\n- URL sharing with gzip compression\n- CSV auto-conversion\n\nSee docs folder for details.');
@@ -2437,6 +2494,9 @@
       function initializeThemeSelector() {
         const themeSelector = document.getElementById('theme-selector');
         themeSelector.value = currentTheme || 'default';
+        // Re-run after a snapshot import to show the imported theme; wire once.
+        if (_themeSelectorWired) return;
+        _themeSelectorWired = true;
         themeSelector.addEventListener('change', applyTheme);
       }
 
@@ -7714,10 +7774,15 @@
         const filter = document.getElementById('diff-details-filter');
         if (!btn || !box) return;
         btn.addEventListener('click', () => {
+          closeMenus(null);
           box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+          btn.setAttribute('aria-pressed', String(box.style.display !== 'none'));
           renderDiffDetails();
         });
-        close.addEventListener('click', () => { box.style.display = 'none'; });
+        close.addEventListener('click', () => {
+          box.style.display = 'none';
+          btn.setAttribute('aria-pressed', 'false');
+        });
         filter.addEventListener('input', renderDiffDetails);
       }
 
@@ -8169,7 +8234,7 @@
         if (!btnClearAll) return;
 
         const hasContent = !docIsBlank(mergeView.a.state.doc) || !docIsBlank(mergeView.b.state.doc);
-        btnClearAll.style.display = hasContent ? "inline-block" : "none";
+        btnClearAll.style.display = hasContent ? "" : "none";
       }
 
       // Initialize when DOM is ready

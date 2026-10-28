@@ -801,6 +801,22 @@ if (CSVUtils.isCSV(text) && settings.autoCsv) {
 ## UI Components
 
 ### Header Controls
+**Two rows** (`.intro` + `.compare-bar`, styles in the "TOOLBAR — two calm rows" section at the
+end of `app.css`):
+- **Row 1 — tools:** Format ▾ · Sort ▾ · [Collapse | Highlight] chips · Settings · Ignore ⋯
+  Clear all · More ▾. **More** holds Files (Open, Import snapshot, Export/Share), Examples,
+  Theme and Help (About, GitHub, v5 legacy, shortcut tip) — the former ℹ️ menu and
+  "v5 Legacy" button live there now; `btn-dev-info` keeps its id.
+- **Row 2 — the result:** ↑ ↓ · status pill · record pager … Details · Keys.
+- One SVG icon set (`<symbol id="i-…">` at the top of `<body>`, used as
+  `<svg class="i"><use href="#i-…"/></svg>`); no emoji in the toolbar or its menus.
+  Labels sit in `.btn-label` and give way to icons ≤ 880 px (titles/aria still describe
+  them); ≤ 640 px every toolbar menu becomes a fixed sheet across the viewport, because a
+  menu anchored to its button runs off a phone screen. **Never give the toolbar
+  `overflow`** — it would clip its own menus; it wraps instead.
+- Collapse / Highlight are still `<input type="checkbox">` (the code reads `.checked`),
+  visually hidden inside chip labels styled with `:has(input:checked)`.
+
 - **Format JSON** + `▾` menu — Format · **Fix JSON** · **Minify** · **Clean up text** ·
   indent width (2/3/4/tab). Format works on ONE pane; it used to refuse unless both were
   filled, which also meant one broken pane blocked formatting of the good one.
@@ -817,17 +833,24 @@ if (CSVUtils.isCSV(text) && settings.autoCsv) {
      handlers never fire, so Settings, Ignore, Sort, Format and More could all be open at
      once, stacked over each other. Each toggle now calls `closeMenus(itsOwnPanelId)` first,
      and Escape closes them all (`initializeMenuKeys`). New menus must join `MENU_PANEL_IDS`.
+  3. "Settings sometimes doesn't open" — two causes, both fixed:
+     - **Layering.** The floating Details panel (`z-index: 1200`) is not a menu and stays
+       open; every dropdown sat at 1000, so Settings/Sort/Format/Ignore opened *underneath*
+       it (`display:block`, invisible). Menus are now 1210 — above Details, under the
+       Keys (1250) and repair (1260) modals — and opening Details closes any open menu.
+     - **Re-entrant init.** Both snapshot-import paths call `initializeSettingsPanel()` and
+       `initializeThemeSelector()` again to re-sync controls, which wired a second toggle
+       handler: one click opened and closed the panel. They re-sync values on every call
+       and wire listeners once (`_settingsPanelWired`, `_themeSelectorWired`). Any
+       `initialize*()` that can run twice needs the same guard.
 - **Sort ▾ dropdown** (v6): "Sort by field value" — a text input taking a spec like
   `category ASC, amount DESC` (comma-separated keys, per-key ASC/DESC default ASC, dot-notation
   for nested keys) that value-sorts the **top-level array of objects in both panes** (ideal for
   aligning two arrays before diffing); empty spec falls back to "Sort keys A→Z". Pure logic in
   `utils.js` (`parseSortSpec` / `sortJSONByFields`); UI in `initializeSortPanel()` + `sortByFields()`.
-- Clear All
-- Theme selector (v6 only)
-- Settings panel toggle (⚙️)
-- Share URL
-- Import/Export snapshots
-- Info dropdown (links to docs, GitHub)
+- Clear all (row 1, right)
+- Settings panel toggle (sliders icon)
+- More ▾ — Open file(s), Import snapshot, Export / Share, Examples, Theme, Help
 
 ### Per-Panel Controls
 - Copy content
