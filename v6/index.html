@@ -61,6 +61,7 @@
     <script src="./utils/viewport_diff.js"></script>
     <script src="./utils/progress.js"></script>
     <script src="./utils/json_align.js"></script>
+    <script src="./utils/key_compare.js"></script>
     <script src="./utils/diff_ignore.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
@@ -72,7 +73,7 @@
           "@codemirror/language": "https://unpkg.com/@codemirror/language@6.10.3/dist/index.js",
           "@codemirror/commands": "https://unpkg.com/@codemirror/commands@6.7.1/dist/index.js",
           "@codemirror/lang-json": "https://unpkg.com/@codemirror/lang-json@6.0.1/dist/index.js",
-          "@codemirror/merge": "https://unpkg.com/@codemirror/merge@6.7.2/dist/index.js",
+          "@codemirror/merge": "https://unpkg.com/@codemirror/merge@6.12.2/dist/index.js",
           "@codemirror/search": "https://unpkg.com/@codemirror/search@6.5.6/dist/index.js",
           "@codemirror/autocomplete": "https://unpkg.com/@codemirror/autocomplete@6.18.1/dist/index.js",
           "@codemirror/lint": "https://unpkg.com/@codemirror/lint@6.8.2/dist/index.js",
@@ -94,6 +95,39 @@
   </head>
 
   <body>
+    <!-- One icon set for the toolbar and its menus (24px grid, 2px stroke,
+         currentColor), replacing emoji that rendered differently on every
+         platform. Use: <svg class="i"><use href="#i-name"/></svg> -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none" aria-hidden="true">
+      <defs>
+        <symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></symbol>
+        <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+        <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+        <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+        <symbol id="i-sort" viewBox="0 0 24 24"><path d="m3 16 4 4 4-4M7 20V4M21 8l-4-4-4 4M17 4v16"/></symbol>
+        <symbol id="i-fold" viewBox="0 0 24 24"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></symbol>
+        <symbol id="i-highlight" viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></symbol>
+        <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+        <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.39-1.61M14.12 14.12a3 3 0 1 1-4.24-4.24M2 2l20 20"/></symbol>
+        <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+        <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5"/></symbol>
+        <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></symbol>
+        <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+        <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M12 3v18"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+        <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+        <symbol id="i-minimize" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></symbol>
+        <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L11 21M22 21H7M5 11l9 9"/></symbol>
+        <symbol id="i-sort-az" viewBox="0 0 24 24"><path d="m3 16 4 4 4-4M7 20V4M20 8h-5M15 10V6.5a2.5 2.5 0 0 1 5 0V10M15 14h5l-5 6h5"/></symbol>
+        <symbol id="i-reverse" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+        <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
+        <symbol id="i-import" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2z"/></symbol>
+        <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+        <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
+      </defs>
+    </svg>
     <div id="container">
       <div class="intro">
         <div class="intro-left">
@@ -101,19 +135,21 @@
                used to have nowhere to live: repair, minify, text cleanup and
                indent width. -->
           <div class="format-group menu-anchor">
-            <button id="btn-format" class="btn btn-primary" title="Pretty-print JSON in both panels">Format JSON</button>
+            <button id="btn-format" class="btn btn-primary" title="Pretty-print JSON in both panels">
+              <svg class="i"><use href="#i-braces"/></svg><span class="btn-label">Format</span>
+            </button>
             <button id="btn-format-menu" class="btn btn-primary btn-caret" title="More formatting actions"
-                    aria-haspopup="true" aria-expanded="false" aria-label="More formatting actions">▾</button>
+                    aria-haspopup="true" aria-expanded="false" aria-label="More formatting actions"><svg class="i"><use href="#i-chevron-down"/></svg></button>
             <div id="format-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
-              <button id="btn-fix-json" class="dropdown-item">🛠 Fix JSON <span class="dropdown-hint">repair syntax</span></button>
-              <button id="btn-minify" class="dropdown-item">🗜 Minify <span class="dropdown-hint">one line</span></button>
+              <button id="btn-fix-json" class="dropdown-item"><svg class="i"><use href="#i-wrench"/></svg>Fix JSON <span class="dropdown-hint">repair syntax</span></button>
+              <button id="btn-minify" class="dropdown-item"><svg class="i"><use href="#i-minimize"/></svg>Minify <span class="dropdown-hint">one line</span></button>
               <div class="settings-section-title settings-section-divided">Plain text</div>
               <div class="ignore-desc">
                 Whitespace and invisible characters — zero-width spaces, BOMs and
                 non-breaking spaces copied from web pages produce differences you
                 cannot see the cause of.
               </div>
-              <button id="btn-clean-text" class="dropdown-item">🧹 Clean up text</button>
+              <button id="btn-clean-text" class="dropdown-item"><svg class="i"><use href="#i-eraser"/></svg>Clean up text</button>
               <div id="clean-options" class="clean-options"></div>
               <div class="settings-section-title settings-section-divided">Indent</div>
               <select id="indent-width" class="settings-select dropdown-select" title="Spaces used when formatting">
@@ -127,7 +163,9 @@
 
           <!-- Sort dropdown: sort array items by field value(s), or sort keys A→Z -->
           <div class="sort-dropdown menu-anchor">
-            <button id="btn-sort" class="btn" title="Sort JSON data">Sort ▾</button>
+            <button id="btn-sort" class="btn" title="Sort by field value, keys A→Z, or reverse" aria-haspopup="true">
+              <svg class="i"><use href="#i-sort"/></svg><span class="btn-label">Sort</span><svg class="i i-caret"><use href="#i-chevron-down"/></svg>
+            </button>
             <div id="sort-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
               <div class="settings-section-title">Sort by field value</div>
               <!-- Sort adapts to what each panel actually holds; this line
@@ -157,24 +195,31 @@
               </div>
               <div id="sort-error" class="ignore-error" style="display: none;"></div>
               <div class="settings-section-title settings-section-divided">Other</div>
-              <button id="btn-sort-keys" class="dropdown-item">🔤 Sort keys A→Z (all levels)</button>
-              <button id="btn-sort-reverse" class="dropdown-item">🔃 Reverse current order</button>
+              <button id="btn-sort-keys" class="dropdown-item"><svg class="i"><use href="#i-sort-az"/></svg>Sort keys A→Z <span class="dropdown-hint">all levels</span></button>
+              <button id="btn-sort-reverse" class="dropdown-item"><svg class="i"><use href="#i-reverse"/></svg>Reverse current order</button>
             </div>
           </div>
 
           <span class="toolbar-divider"></span>
 
-          <!-- Quick toggles -->
-          <label class="toolbar-toggle" title="Collapse unchanged sections">
-            <input type="checkbox" id="quick-collapse-unchanged" /> Collapse
-          </label>
-          <label class="toolbar-toggle" title="Highlight character-level changes">
-            <input type="checkbox" id="quick-highlight-changes" checked /> Highlight
-          </label>
+          <!-- Quick view toggles. Still real checkboxes (the code reads
+               .checked); styled as pressed/unpressed chips. -->
+          <div class="toggle-group" role="group" aria-label="View">
+            <label class="toolbar-toggle" title="Collapse unchanged sections">
+              <input type="checkbox" id="quick-collapse-unchanged" />
+              <svg class="i"><use href="#i-fold"/></svg><span class="btn-label">Collapse</span>
+            </label>
+            <label class="toolbar-toggle" title="Highlight character-level changes">
+              <input type="checkbox" id="quick-highlight-changes" checked />
+              <svg class="i"><use href="#i-highlight"/></svg><span class="btn-label">Highlight</span>
+            </label>
+          </div>
 
           <!-- Diff Settings dropdown -->
           <div class="settings-dropdown menu-anchor">
-            <button id="btn-settings" class="btn">⚙️ Settings</button>
+            <button id="btn-settings" class="btn" title="Editor and diff settings" aria-haspopup="true">
+              <svg class="i"><use href="#i-sliders"/></svg><span class="btn-label">Settings</span>
+            </button>
             <div id="settings-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
               <div class="settings-section-title">Editor</div>
               
@@ -319,8 +364,8 @@
 
           <!-- Ignore keys / patterns dropdown (excludes matches from the diff) -->
           <div class="ignore-dropdown menu-anchor">
-            <button id="btn-ignore" class="btn" title="Exclude keys/patterns from the diff comparison">
-              🚫 Ignore<span id="ignore-count-badge" class="ignore-badge" style="display: none;">0</span>
+            <button id="btn-ignore" class="btn" title="Exclude keys/patterns and tiny number differences from the diff" aria-haspopup="true">
+              <svg class="i"><use href="#i-eye-off"/></svg><span class="btn-label">Ignore</span><span id="ignore-count-badge" class="ignore-badge" style="display: none;">0</span>
             </button>
             <div id="ignore-panel" class="dropdown-panel settings-panel settings-panel-left ignore-panel" style="display: none;">
               <div class="settings-section-title">Exclude from diff</div>
@@ -384,70 +429,82 @@
           </div>
         </div>
 
-        <div class="intro-center">
-          <div class="diff-nav">
-            <button id="btn-diff-prev" class="btn btn-icon" title="Previous difference (Alt+Up)" disabled aria-label="Previous difference (Alt+Up)">↑</button>
-            <button id="btn-diff-next" class="btn btn-icon" title="Next difference (Alt+Down)" disabled aria-label="Next difference (Alt+Down)">↓</button>
-          </div>
-          <div id="diff-summary" data-state="idle">Ready to compare JSON</div>
-          <!-- Record pager: shown only when the collection is too large to render
-               whole, so the panes hold one page of records at a time. -->
-          <div id="record-pager" class="record-pager" style="display: none">
-            <button id="btn-page-prev" class="btn btn-icon" title="Previous records" aria-label="Previous records">◀</button>
-            <span id="record-pager-label">–</span>
-            <button id="btn-page-next" class="btn btn-icon" title="Next records" aria-label="Next records">▶</button>
-          </div>
-          <button id="btn-diff-details" class="btn btn-ghost" style="display: none" title="Field-level breakdown of every change">Details</button>
-          <button id="btn-clear-all" class="btn btn-ghost" style="display: none">Clear All</button>
-        </div>
-
         <div class="intro-right">
-          <!-- Extra Settings Dropdown -->
+          <button id="btn-clear-all" class="btn btn-ghost btn-quiet-danger" style="display: none" title="Empty both panels">
+            <svg class="i"><use href="#i-trash"/></svg><span class="btn-label">Clear all</span>
+          </button>
+          <!-- More: files, sharing, examples, theme and help — everything that
+               is not about the comparison in front of you. -->
           <div class="extra-settings-dropdown menu-anchor">
-            <button id="btn-extra-settings" class="btn" title="Share, import & theme">⋯ More</button>
+            <button id="btn-extra-settings" class="btn" title="Open, share, examples, theme and help" aria-haspopup="true">
+              <svg class="i"><use href="#i-more"/></svg><span class="btn-label">More</span>
+            </button>
             <div id="extra-settings-panel" class="dropdown-panel">
-              <button id="btn-share" class="dropdown-item">📤 Export / Share</button>
-              <button id="btn-import" class="dropdown-item">📥 Import Snapshot</button>
+              <div class="dropdown-label dropdown-label-first">Files</div>
               <!-- Files could previously ONLY arrive by drag & drop, which is
                    undiscoverable and impossible from the keyboard. Two files
                    selected at once fill left and right. -->
-              <button id="btn-open-file" class="dropdown-item">📂 Open file(s)… <span class="dropdown-hint">1 or 2</span></button>
+              <button id="btn-open-file" class="dropdown-item"><svg class="i"><use href="#i-folder"/></svg>Open file(s)… <span class="dropdown-hint">1 or 2</span></button>
+              <button id="btn-import" class="dropdown-item"><svg class="i"><use href="#i-import"/></svg>Import snapshot</button>
+              <button id="btn-share" class="dropdown-item"><svg class="i"><use href="#i-share"/></svg>Export / Share</button>
               <input type="file" id="file-open" multiple
                      accept=".json,.csv,.tsv,.txt,.ndjson,.log,.md,application/json,text/csv,text/plain"
                      style="display: none" />
               <input type="file" id="file-import" accept=".zip,.gz,.gzip,application/zip,application/gzip,application/octet-stream,.json" style="display: none" />
               <div class="dropdown-label">Examples</div>
               <select id="select-templates" class="settings-select dropdown-select">
-                <option value="">Choose example...</option>
-                <option value="simple">⚡ Quick Start (Simple 3 Diffs)</option>
-                <option value="user_profile">👤 User Profile (v1 vs v2)</option>
-                <option value="api">🚀 REST API Response (v1 vs v2)</option>
-                <option value="array">📋 Array Reordering & Collection Diff</option>
-                <option value="config">⚙️ Environment Config (Staging vs Prod)</option>
-                <option value="ecommerce">🛒 E-Commerce Order State</option>
+                <option value="">Choose an example…</option>
+                <option value="simple">Quick start (3 simple diffs)</option>
+                <option value="user_profile">User profile (v1 vs v2)</option>
+                <option value="api">REST API response (v1 vs v2)</option>
+                <option value="array">Array reordering &amp; collection diff</option>
+                <option value="config">Environment config (staging vs prod)</option>
+                <option value="ecommerce">E-commerce order state</option>
               </select>
               <div class="dropdown-label">Theme</div>
               <select id="theme-selector" class="settings-select dropdown-select">
-                <option value="default">🎨 Default (System)</option>
-                <option value="light">☀️ Light</option>
-                <option value="dark">🌙 Dark</option>
-                <option value="oneDark">🌃 One Dark</option>
+                <option value="default">System default</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="oneDark">One Dark</option>
               </select>
+              <!-- Help: was a separate ℹ️ menu plus a "v5 Legacy" button. -->
+              <div class="dropdown-label">Help</div>
+              <button id="btn-dev-info" class="dropdown-item"><svg class="i"><use href="#i-info"/></svg>About this tool</button>
+              <a href="https://github.com/dipenparmar12/json_compair" target="_blank" rel="noopener noreferrer" class="dropdown-item dropdown-link"><svg class="i"><use href="#i-code"/></svg>Source on GitHub</a>
+              <a href="../v5/index.html" class="dropdown-item dropdown-link" title="Switch to CodeMirror 5 (Legacy)"><svg class="i"><use href="#i-history"/></svg>Switch to v5 (legacy)</a>
+              <div class="dropdown-hint dropdown-tip">Tip: <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd> jump between differences</div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <!-- v5 link Version Switcher -->
-          <a href="../v5/index.html" class="btn btn-ghost v5-link" title="Switch to CodeMirror 5 (Legacy)">⬅️ v5 Legacy</a>
-
-          <!-- Info Dropdown -->
-          <div class="info-dropdown menu-anchor">
-            <button id="btn-info" class="btn btn-icon" title="Info">ℹ️</button>
-            <div id="info-panel" class="dropdown-panel" style="min-width: 240px;">
-              <button id="btn-dev-info" class="dropdown-item">🧪 Dev Info</button>
-              <a href="https://github.com/dipenparmar12/json_compair" target="_blank" rel="noopener noreferrer" class="dropdown-item dropdown-link">💻 GitHub Repo</a>
-              <div class="dropdown-hint">Tip: Alt+↑ / Alt+↓ jump between diffs</div>
-            </div>
+      <!-- The comparison result and how to drill into it — separate from the
+           tools above so the answer is never squeezed between buttons. -->
+      <div class="compare-bar">
+        <div class="compare-left">
+          <div class="diff-nav" role="group" aria-label="Jump between differences">
+            <button id="btn-diff-prev" class="btn btn-icon" title="Previous difference (Alt+Up)" disabled aria-label="Previous difference (Alt+Up)"><svg class="i"><use href="#i-arrow-up"/></svg></button>
+            <button id="btn-diff-next" class="btn btn-icon" title="Next difference (Alt+Down)" disabled aria-label="Next difference (Alt+Down)"><svg class="i"><use href="#i-arrow-down"/></svg></button>
           </div>
+          <div id="diff-summary" data-state="idle">Ready to compare JSON</div>
+          <!-- Record pager: shown only when the collection is too large to render
+               whole, so the panes hold one page of records at a time. -->
+          <div id="record-pager" class="record-pager" style="display: none">
+            <button id="btn-page-prev" class="btn btn-icon" title="Previous records" aria-label="Previous records"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+            <span id="record-pager-label">–</span>
+            <button id="btn-page-next" class="btn btn-icon" title="Next records" aria-label="Next records"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+          </div>
+        </div>
+        <div class="compare-right" role="group" aria-label="Inspect the differences">
+          <button id="btn-diff-details" class="btn btn-ghost" style="display: none" aria-pressed="false"
+                  title="Field-level breakdown of every changed record">
+            <svg class="i"><use href="#i-list"/></svg><span class="btn-label">Details</span>
+          </button>
+          <button id="btn-key-compare" class="btn btn-ghost" style="display: none"
+                  title="Key-by-key table: matching keys, different values, keys on one side only — filter and export">
+            <svg class="i"><use href="#i-table"/></svg><span class="btn-label">Keys</span>
+          </button>
         </div>
       </div>
 
@@ -465,16 +522,22 @@
            and the one action that fixes it. This is the surface v6 had none of:
            broken JSON used to produce no error anywhere, and silently disabled
            block diff, the record pager and the Details panel with no
-           explanation. -->
+           explanation.
+
+           The title is the panel's active branch name, editable in place:
+           renaming the title renames the branch, so the title and the branch
+           tab can never disagree. -->
       <div id="pane-chips" class="pane-chips">
         <div class="pane-chip" id="pane-chip-left" data-side="left" data-state="empty">
           <span class="pane-chip-dot" aria-hidden="true"></span>
-          <span class="pane-chip-text" id="pane-chip-left-text">Left panel</span>
+          <button type="button" class="pane-chip-title" id="pane-chip-left-title" data-side="left">Left</button>
+          <span class="pane-chip-text" id="pane-chip-left-text">Empty</span>
           <span class="pane-chip-actions" id="pane-chip-left-actions"></span>
         </div>
         <div class="pane-chip" id="pane-chip-right" data-side="right" data-state="empty">
           <span class="pane-chip-dot" aria-hidden="true"></span>
-          <span class="pane-chip-text" id="pane-chip-right-text">Right panel</span>
+          <button type="button" class="pane-chip-title" id="pane-chip-right-title" data-side="right">Right</button>
+          <span class="pane-chip-text" id="pane-chip-right-text">Empty</span>
           <span class="pane-chip-actions" id="pane-chip-right-actions"></span>
         </div>
       </div>
@@ -520,6 +583,44 @@
         <div id="diff-details-items" class="diff-details-items"></div>
       </div>
 
+      <!-- Key comparison: every key of both documents as one table — matching,
+           different, or present on one side only — with filters and export.
+           Compares parsed values (utils/key_compare.js), so formatting and key
+           order never count; honours ignore patterns and numeric tolerance. -->
+      <div id="kc-modal" class="kc-modal" style="display: none" role="dialog"
+           aria-modal="true" aria-labelledby="kc-title">
+        <div class="kc-backdrop" data-kc-dismiss></div>
+        <div class="kc-body">
+          <div class="kc-head">
+            <h2 id="kc-title">Key comparison</h2>
+            <div id="kc-summary" class="kc-summary"></div>
+            <button class="btn btn-icon" id="kc-close" title="Close (Esc)" aria-label="Close">✕</button>
+          </div>
+          <div class="kc-toolbar">
+            <div id="kc-filters" class="kc-filters" role="tablist" aria-label="Show"></div>
+          </div>
+          <div class="kc-toolbar kc-toolbar-2">
+            <div class="kc-group" role="group" aria-label="Group rows">
+              <button class="kc-seg" data-kc-mode="columns" title="One row per key, counted across every record">By key</button>
+              <button class="kc-seg" data-kc-mode="rows" title="One row per key per record">Per record</button>
+            </div>
+            <input id="kc-search" type="search" placeholder="Search keys or values…" aria-label="Search keys or values" />
+            <span class="kc-spacer"></span>
+            <span id="kc-count" class="kc-count"></span>
+            <button class="btn" id="kc-export-csv" title="Download the rows shown as CSV">Export CSV</button>
+            <button class="btn" id="kc-export-json" title="Download the rows shown as JSON">Export JSON</button>
+          </div>
+          <div class="kc-table" id="kc-table">
+            <div class="kc-row kc-header" id="kc-header"></div>
+            <div class="kc-scroll" id="kc-scroll">
+              <div class="kc-spacer-rows" id="kc-rows"></div>
+            </div>
+            <div class="kc-empty" id="kc-empty" style="display: none"></div>
+          </div>
+          <div class="kc-foot" id="kc-foot"></div>
+        </div>
+      </div>
+
       <!-- Footer with version info -->
       <div class="app-footer">
         <span>CodeMirror 6 (Modern)</span>
@@ -538,7 +639,7 @@
       // `diff` is the same routine MergeView runs internally. We call it on a
       // small probe page to MEASURE how expensive this particular pair is before
       // choosing how much to render — see calibrateRenderBudget().
-      import { MergeView, goToNextChunk, goToPreviousChunk, diff as cmDiff } from "@codemirror/merge";
+      import { MergeView, Change, goToNextChunk, goToPreviousChunk, diff as cmDiff } from "@codemirror/merge";
       
       // Import themes
       import { oneDark } from "@codemirror/theme-one-dark";
@@ -631,6 +732,14 @@
           // on the next reload. Re-alignment recaptures a fresh pair when
           // normalization applies again.
           if (!_blockAligning) _ignorePristine = null;
+
+          // An edit that leaves the two panes with different line counts means
+          // they are no longer row-aligned; CM6's own diff takes over until the
+          // debounced re-align below restores an aligned render.
+          if (!_blockAligning && _rowAligned &&
+              mergeView && mergeView.a.state.doc.lines !== mergeView.b.state.doc.lines) {
+            _rowAligned = false;
+          }
 
           // Skip block re-alignment while the user is actively typing/deleting so
           // we never reformat mid-edit; paste/drop/programmatic changes re-align.
@@ -843,6 +952,7 @@
         if (!_ignorePristine || !mergeView) { _ignorePristine = null; return; }
         const orig = _ignorePristine;
         _ignorePristine = null;
+        _rowAligned = false;        // the originals are raw text
         _blockAligning = true;
         try {
           if (only !== 'right') setPaneIfChanged(mergeView.a, orig.left);
@@ -1068,7 +1178,7 @@
       // toggle now closes the rest first.
       // ---------------------------------------------------------------------
       const MENU_PANEL_IDS = ['format-panel', 'sort-panel', 'settings-panel',
-                              'ignore-panel', 'extra-settings-panel', 'info-panel'];
+                              'ignore-panel', 'extra-settings-panel'];
 
       function closeMenus(exceptId) {
         for (const id of MENU_PANEL_IDS) {
@@ -1078,11 +1188,14 @@
         }
         const caret = document.getElementById('btn-format-menu');
         if (caret && exceptId !== 'format-panel') caret.setAttribute('aria-expanded', 'false');
+        // The per-panel branch lists count as menus too.
+        document.querySelectorAll('.branch-dropdown').forEach((d) => { d.style.display = 'none'; });
+        document.querySelectorAll('.branch-selector-btn').forEach((b) => b.setAttribute('aria-expanded', 'false'));
       }
 
       function initializeMenuKeys() {
         document.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') closeMenus(null);
+          if (e.key === 'Escape') { closeMenus(null); closeKeyCompare(); }
         });
       }
 
@@ -1876,8 +1989,10 @@
         initializeInfoDropdown();
         initializeIgnorePanel();
         initDiffDetails();
+        initKeyCompare();
         initLintGutterUX();
         initializeMenuKeys();
+        initPanelTitles();
         updateIgnoreStyleClass();
 
         // Progressive disclosure: move verbose descriptions into ⓘ tooltips so
@@ -1890,13 +2005,16 @@
       
       // Initialize branch system and load saved branches
       async function initializeBranches() {
-        // Load active branch IDs from settings (use panel-specific defaults)
-        const leftBranchId = SettingsManager.get('leftBranch') || 'main-left';
-        const rightBranchId = SettingsManager.get('rightBranch') || 'main-right';
-        
-        // Update active branches tracker
-        activeBranches.left = leftBranchId;
-        activeBranches.right = rightBranchId;
+        // Resolve the stored ids against branches that actually exist in each
+        // panel — a stale id (the old "main" default) left no branch selected.
+        for (const side of ['left', 'right']) {
+          const stored = SettingsManager.get(side === 'left' ? 'leftBranch' : 'rightBranch');
+          const id = resolveActiveBranch(side, stored);
+          if (id !== stored) setActiveBranch(side, id);
+          else activeBranches[side] = id;
+        }
+        const leftBranchId = activeBranches.left;
+        const rightBranchId = activeBranches.right;
         
         // Try to load content from saved branches (if not already loaded from URL/storage)
         const leftContent = mergeView.a.state.doc.toString().trim();
@@ -1924,6 +2042,10 @@
           }
         }
         
+        // What each active branch last saved — the reference for its tab's
+        // saved / unsaved state.
+        await Promise.all([loadBaseline('left'), loadBaseline('right')]);
+
         // Update branch selectors
         updateBranchSelectors();
         // Align / normalize panes once initial content has settled (initial
@@ -1932,6 +2054,8 @@
         // diff nor ignore is active, strip any gap lines a snapshot carried.
         if (transformActive()) applyBlockAlignment();
         else removeBlockAlignment();
+        checkBranchModified('left');
+        checkBranchModified('right');
         updateDiffStatus();
       }
 
@@ -1952,6 +2076,9 @@
       }
 
       // Initialize settings panel
+      let _settingsPanelWired = false;
+      let _themeSelectorWired = false;
+
       function initializeSettingsPanel() {
         const btnSettings = document.getElementById('btn-settings');
         const settingsPanel = document.getElementById('settings-panel');
@@ -1980,7 +2107,15 @@
         const quickHighlight = document.getElementById('quick-highlight-changes');
         if (quickCollapse) quickCollapse.checked = settings.collapseUnchanged;
         if (quickHighlight) quickHighlight.checked = settings.highlightChanges;
-        
+
+        // Both snapshot-import paths call this again to re-sync the controls
+        // with the imported settings. Wiring the listeners a second time made
+        // the Settings button open the panel and then close it again in the
+        // same click (two toggle handlers), so after an import it appeared to
+        // do nothing — and every change applied twice. Sync again; wire once.
+        if (_settingsPanelWired) return;
+        _settingsPanelWired = true;
+
         // Toggle panel visibility
         btnSettings.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -2337,25 +2472,17 @@
             panel.style.display = 'none';
           }
         });
+        // An action item (open, import, share, about, links) is done with the
+        // menu; the selects below them keep it open while you choose.
+        panel.addEventListener('click', (e) => {
+          if (e.target.closest('.dropdown-item')) panel.style.display = 'none';
+        });
       }
 
-      // Initialize Info dropdown
+      // Help items. They used to sit in their own ℹ️ menu; they now live in the
+      // Help section of More, so only the item handlers are wired here.
       function initializeInfoDropdown() {
-        const btn = document.getElementById('btn-info');
-        const panel = document.getElementById('info-panel');
         const devInfo = document.getElementById('btn-dev-info');
-        if (!btn || !panel) return;
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const closed = panel.style.display === 'none' || panel.style.display === '';
-          closeMenus('info-panel');
-          panel.style.display = closed ? 'block' : 'none';
-        });
-        document.addEventListener('click', (e) => {
-          if (!panel.contains(e.target) && e.target !== btn) {
-            panel.style.display = 'none';
-          }
-        });
         if (devInfo) {
           devInfo.addEventListener('click', () => {
             alert('JSON Compare Tool\n\nClient-side only web app for comparing and formatting JSON/CSV.\n- CodeMirror 6 Merge View\n- URL sharing with gzip compression\n- CSV auto-conversion\n\nSee docs folder for details.');
@@ -2367,6 +2494,9 @@
       function initializeThemeSelector() {
         const themeSelector = document.getElementById('theme-selector');
         themeSelector.value = currentTheme || 'default';
+        // Re-run after a snapshot import to show the imported theme; wire once.
+        if (_themeSelectorWired) return;
+        _themeSelectorWired = true;
         themeSelector.addEventListener('change', applyTheme);
       }
 
@@ -2609,7 +2739,84 @@
       function buildDiffConfig(userScanLimit, combinedLen) {
         if (combinedLen == null) combinedLen = currentCombinedDocLen();
         _appliedScanLimit = clampScanLimit(userScanLimit, combinedLen);
-        return { scanLimit: _appliedScanLimit };
+        return { scanLimit: _appliedScanLimit, override: structuralDiff };
+      }
+
+      /* -------------------------------------------------------------------
+         The diff CM6 draws, when the panes hold Block Diff output.
+
+         json_align has already decided which lines correspond: it emits the
+         two sides row for row, with blank gap rows opposite anything only one
+         side has. CM6 then re-diffed that text CHARACTER by character and was
+         free to disagree — next to an inserted block it would happily pick an
+         equally short edit that "moved" a closing bracket, painting identical
+         `]` / `},` rows as changed. Proxyman gets clean block boundaries from
+         Monaco's heuristics; we can do better, because we know the answer.
+
+         So when both panes hold an aligned render (`_rowAligned`), CM6 is given
+         a row-for-row diff instead (@codemirror/merge >= 6.12, DiffConfig.
+         override): identical rows are unchanged, a gap row is a whole-line
+         insertion or deletion, and a row that differs on both sides gets a
+         character diff of that row alone. It is exact, and linear in the text —
+         no scanLimit cliff on aligned content. Anything else (raw text, Block
+         Diff off, an edit that changed the line count) falls back to CM6's own
+         diff with the usual effort cap.
+         ------------------------------------------------------------------- */
+      // True while both panes hold json_align's BLOCK output (normalize-only
+      // output is not row-aligned). Set where aligned text is written, cleared
+      // wherever raw text is.
+      let _rowAligned = false;
+      // Which path produced the last diff CM6 asked for: 'rows' | 'default'.
+      let _lastDiffMode = 'default';
+
+      function structuralDiff(a, b) {
+        if (_alignedRender && _rowAligned) {
+          const rows = rowAlignedDiff(a, b);
+          if (rows) { _lastDiffMode = 'rows'; return rows; }
+        }
+        _lastDiffMode = 'default';
+        return cmDiff(a, b, { scanLimit: _appliedScanLimit || SCAN_LIMIT_FLOOR });
+      }
+
+      // null when the two texts do not have the same number of rows — then they
+      // are not (or no longer) row-aligned and the caller must diff for real.
+      // CM6 also calls this for sub-ranges after an edit; those start at
+      // matching positions in identical text, so the rows still correspond.
+      function rowAlignedDiff(a, b) {
+        let na = 1, nb = 1, k;
+        for (k = a.indexOf('\n'); k !== -1; k = a.indexOf('\n', k + 1)) na++;
+        for (k = b.indexOf('\n'); k !== -1; k = b.indexOf('\n', k + 1)) nb++;
+        if (na !== nb) return null;
+
+        const out = [];
+        // A pending run of gap rows (blank on one side), emitted as one change.
+        let gap = null;
+        const flushGap = () => {
+          if (gap) { out.push(new Change(gap.fromA, gap.toA, gap.fromB, gap.toB)); gap = null; }
+        };
+        let pa = 0, pb = 0;
+        for (;;) {
+          const ea = a.indexOf('\n', pa), eb = b.indexOf('\n', pb);
+          const endA = ea === -1 ? a.length : ea, endB = eb === -1 ? b.length : eb;
+          const same = endA - pa === endB - pb && a.substring(pa, endA) === b.substring(pb, endB);
+          if (same) {
+            flushGap();
+          } else if (endA === pa || endB === pb) {
+            // One side is a gap row: the other side's row is added / removed.
+            if (gap) { gap.toA = endA; gap.toB = endB; }
+            else gap = { fromA: pa, toA: endA, fromB: pb, toB: endB };
+          } else {
+            // Both sides have this row and it differs: character diff of just
+            // this row, so "10" -> "12" highlights the digits, not the line.
+            flushGap();
+            const inner = cmDiff(a.substring(pa, endA), b.substring(pb, endB), { scanLimit: 2000 });
+            for (const c of inner) out.push(new Change(c.fromA + pa, c.toA + pa, c.fromB + pb, c.toB + pb));
+          }
+          if (ea === -1 || eb === -1) break;
+          pa = ea + 1; pb = eb + 1;
+        }
+        flushGap();
+        return out;
       }
 
       // Push a scanLimit appropriate to the CURRENT document size into the live
@@ -2630,7 +2837,7 @@
                                     combinedLen == null ? currentCombinedDocLen() : combinedLen);
         if (want === _appliedScanLimit) return;
         _appliedScanLimit = want;
-        try { mergeView.reconfigure({ diffConfig: { scanLimit: want } }); }
+        try { mergeView.reconfigure({ diffConfig: { scanLimit: want, override: structuralDiff } }); }
         catch (e) { console.warn('diffConfig reconfigure failed', e); }
       }
 
@@ -2975,8 +3182,11 @@
         }
         // Covers the "nothing to write" case (content already aligned, e.g. at
         // startup or on a re-align that changed nothing) where the live chunks may
-        // still be from an earlier, lower effort.
-        ensureDiffFresh();
+        // still be from an earlier, lower effort — or from CM6's own character
+        // diff rather than the row diff (the text arrived already aligned, so
+        // nothing was written and CM6 never asked structuralDiff()).
+        if (!aStale && !bStale && _rowAligned && _lastDiffMode !== 'rows') forceRediff();
+        else ensureDiffFresh();
       }
 
       // Transform both panes for diffing. Runs when Block Diff and/or ignore
@@ -3139,6 +3349,7 @@
           // Per-page: similarity varies between pages, and it decides the effort.
           _renderDiffRatio = (res.stats && typeof res.stats.diffLineRatio === 'number')
             ? res.stats.diffLineRatio : 0;
+          _rowAligned = true;       // a page of the block render
           writeAlignedPanes(res.left, res.right);
           _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
                              block: blockDiffEnabled(), pred: ignorePredicate,
@@ -3166,6 +3377,7 @@
         const pred = ignorePredicate;
         const tol = numToleranceActive();
         _alignedRender = false;
+        _rowAligned = false;
         _alignHandle = null;
         _renderBudget = null;   // new content ⇒ re-measure the diff cost
         let res = null;
@@ -3206,6 +3418,7 @@
           return transformAndDispatch(L, R);
         }
         _alignedRender = false;
+        _rowAligned = false;
         _alignHandle = null;
         _renderBudget = null;   // new content ⇒ re-measure the diff cost
 
@@ -3256,7 +3469,18 @@
           const normalized = (pred || tol != null) && res.changed;
           if (normalized || (res.stats && res.stats.truncated)) {
             _ignorePristine = { left: L, right: R };
+          } else {
+            // Otherwise the panes are about to hold the WHOLE pair, so a
+            // snapshot from an earlier window is stale — and it was never
+            // cleared here. Measured: window a 3,000-record pair, paste small
+            // JSON into each side; the panes showed "1 changed of 1 items"
+            // while autosave, Export and Copy kept writing the old 903 KB right
+            // document, and a reload brought it back. Every caller passes the
+            // full untransformed pair as L/R, so dropping it is always safe.
+            _ignorePristine = null;
           }
+          // Block alignment emits row-for-row text; normalize() does not.
+          _rowAligned = !!block;
           writeAlignedPanes(res.left, res.right);
           dispatched = true;
         } else {
@@ -3321,6 +3545,7 @@
       // text with intentional blank lines is never mangled.
       function removeBlockAlignment() {
         if (!window.JSONAlign) return;
+        _rowAligned = false;      // the panes go back to raw text
         _blockAligning = true;
         try {
           [mergeView.a, mergeView.b].forEach(view => {
@@ -3492,6 +3717,7 @@
           if (branchId && window.BranchManager) {
             try {
               await window.BranchManager.saveBranch(branchId, '', { source: 'clear' });
+              setBaseline(side, branchId, '');
               branchModified[side] = false;
               updateBranchModifiedIndicator(side);
             } catch (err) {
@@ -3523,574 +3749,1126 @@
         
         paneElement.style.position = 'relative';
         paneElement.appendChild(controls);
-        
-        // Add CSV conversion button (initially hidden)
-        addCSVConversionButton(paneElement, side);
-        
-        // Add JSON→CSV conversion button (initially hidden)
-        addJSONToCSVButton(paneElement, side);
-        
-        // Add export dropdown (initially hidden)
-        addExportDropdown(paneElement, side);
-        
-        // Add branch selector at bottom-right (replaces panel name input)
-        addBranchSelector(paneElement, side);
-        
+
+        // Bottom bar: branch tabs on the left, this panel's file actions on the
+        // right — CSV→JSON / JSON→CSV / Export (unchanged, just re-homed) and
+        // the show/hide-tabs toggle, which stays put in both modes.
+        const footer = addPaneFooter(paneElement, side);
+        addCSVConversionButton(footer.actions, side);
+        addJSONToCSVButton(footer.actions, side);
+        addExportDropdown(footer.actions, side);
+        footer.actions.appendChild(createTabsToggle());
+        applyBranchTabsVisibility();
+
         // Initial visibility update
         updatePaneButtonVisibility();
         updateConversionButtons();
       }
       
-      // Track active branches per side
+      // =====================================================================
+      // Branches: panel titles, tabs and per-branch save state
+      //
+      // A panel shows one branch at a time. Two names are involved and they
+      // are deliberately different things:
+      //   - the branch NAME is the short label on its tab (double-click / F2,
+      //     or ✏️ in the branch list);
+      //   - the panel TITLE is a longer description shown in the chip above the
+      //     editor (click it). It is stored per branch, so switching tabs
+      //     switches titles too, and until one is set the branch name stands in.
+      //
+      // Saving stays explicit: a branch holds what was last saved to it, the
+      // panel holds what you are working on, and switching away saves the panel
+      // into the branch it is leaving. So only a panel's ACTIVE branch can have
+      // unsaved changes; every other tab is saved by construction.
+      // =====================================================================
+
+      // Active branch per side. Resolved against the real branch list in
+      // initializeBranches(): the stored id can point at nothing.
       let activeBranches = {
         left: SettingsManager.get('leftBranch') || 'main-left',
         right: SettingsManager.get('rightBranch') || 'main-right'
       };
-      
-      // Track if content is modified from saved branch
-      let branchModified = {
-        left: false,
-        right: false
+
+      // The active branch's content differs from what was last saved to it.
+      let branchModified = { left: false, right: false };
+      // An IndexedDB write for this panel's branch is in flight.
+      const branchSaving = { left: false, right: false };
+      // A switch is in flight; a second click must not interleave with it.
+      const branchBusy = { left: false, right: false };
+      // What each active branch last saved. Answers "unsaved?" without reading
+      // the whole branch back out of IndexedDB on every debounced edit, which is
+      // what BranchManager.isModified() did.
+      const branchBaseline = { left: null, right: null };
+
+      const BRANCH_NAME_MAX = 60;
+      const PANEL_TITLE_MAX = 120;
+      // Above this the unsaved check compares bytes only: parsing a multi-MB
+      // document on every debounced edit is not worth the nicer answer.
+      const BRANCH_COMPARE_MAX_BYTES = 2 * 1024 * 1024;
+
+      const ICON_EYE = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M1.2 8S3.7 3.2 8 3.2 14.8 8 14.8 8 12.3 12.8 8 12.8 1.2 8 1.2 8z"/><circle cx="8" cy="8" r="2.1"/></svg>';
+      const ICON_EYE_OFF = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M1.2 8S3.7 3.2 8 3.2 14.8 8 14.8 8 12.3 12.8 8 12.8 1.2 8 1.2 8z"/><circle cx="8" cy="8" r="2.1"/><path d="M2.5 2.5l11 11"/></svg>';
+      const ICON_BRANCH_LIST = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M6 4h7.5M6 8h7.5M6 12h7.5"/><circle cx="2.8" cy="4" r=".6" fill="currentColor"/><circle cx="2.8" cy="8" r=".6" fill="currentColor"/><circle cx="2.8" cy="12" r=".6" fill="currentColor"/></svg>';
+      const ICON_ADD = '<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg>';
+      const ICON_CLOSE = '<svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg>';
+
+      const SAVE_STATE_LABEL = {
+        saved: 'Saved',
+        unsaved: 'Unsaved changes — click to save',
+        saving: 'Saving…'
       };
-      
-      // Add branch selector dropdown at bottom of each pane (left side for left panel, right side for right panel)
-      function addBranchSelector(paneElement, side) {
+
+      function sideName(side) { return side === 'left' ? 'Left' : 'Right'; }
+      function mainBranchOf(side) { return side === 'left' ? 'main-left' : 'main-right'; }
+      function isMainBranch(id) { return window.BranchManager.isMainBranch(id); }
+
+      function findBranch(id) {
+        return window.BranchManager.listBranches().find((b) => b.id === id) || null;
+      }
+
+      function branchName(id) {
+        const b = findBranch(id);
+        return b ? b.name : window.BranchManager.defaultName(id);
+      }
+
+      // The panel title for a branch: its own title when one was set, else the
+      // branch name.
+      function branchTitle(id) {
+        const b = findBranch(id);
+        const t = b && b.metadata && b.metadata.title;
+        return t || branchName(id);
+      }
+
+      // The stored id can be stale: the defaults were "main", an id that stopped
+      // existing when branches became per-panel, and a snapshot can name a
+      // branch this browser never had. Fall back to the panel's main branch.
+      function resolveActiveBranch(side, id) {
+        const own = window.BranchManager.listBranches(side);
+        return own.some((b) => b.id === id) ? id : mainBranchOf(side);
+      }
+
+      function setActiveBranch(side, id) {
+        activeBranches[side] = id;
+        SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', id);
+      }
+
+      function branchTabsVisible() {
+        return SettingsManager.get('branchTabs') !== false;
+      }
+
+      // ---- Save state -----------------------------------------------------
+
+      // The document behind one pane: the pristine copy when the pane shows a
+      // window or normalized values (see getDocumentPair), else the pane. Quiet
+      // on purpose — this runs from the debounced autosave, not from a click.
+      function currentDocumentText(side) {
+        const p = _ignorePristine;
+        if (p) return side === 'left' ? p.left : p.right;
+        return (side === 'left' ? mergeView.a : mergeView.b).state.doc.toString();
+      }
+
+      // Alignment rewrites the panes — pretty-printed, with blank gap lines
+      // opposite the other side's extra records — so a branch's saved text and
+      // its panel differ byte-for-byte without anyone editing anything. Byte
+      // equality painted every tab "unsaved" the moment it loaded. Compare the
+      // JSON VALUE when both sides parse, bytes otherwise.
+      function canonicalText(text) {
+        if (text.length > BRANCH_COMPARE_MAX_BYTES) return null;
+        try { return JSON.stringify(JSON.parse(text)); } catch (e) { return null; }
+      }
+
+      function setBaseline(side, id, text) {
+        branchBaseline[side] = { id, text: text || '', canon: undefined };
+      }
+
+      async function loadBaseline(side) {
+        const id = activeBranches[side];
+        try {
+          const b = await window.BranchManager.getBranch(id);
+          if (activeBranches[side] === id) setBaseline(side, id, b ? (b.content || '') : '');
+        } catch (err) {
+          console.warn('Failed to read branch baseline:', err);
+        }
+      }
+
+      function paneMatchesBaseline(side) {
+        const base = branchBaseline[side];
+        // Not known yet: say nothing rather than flash a false "unsaved".
+        if (!base || base.id !== activeBranches[side]) return true;
+        const cur = currentDocumentText(side);
+        if (cur === base.text) return true;
+        if (!cur.trim() && !base.text.trim()) return true;
+        if (base.canon === undefined) base.canon = canonicalText(base.text);
+        if (base.canon == null) return false;
+        return canonicalText(cur) === base.canon;
+      }
+
+      // Called from saveContent() after every debounced change.
+      function checkBranchModified(side) {
+        const next = !paneMatchesBaseline(side);
+        if (next !== branchModified[side]) {
+          branchModified[side] = next;
+          updateBranchModifiedIndicator(side);
+        }
+      }
+
+      function branchSaveState(side, id) {
+        if (id !== activeBranches[side]) return 'saved';
+        if (branchSaving[side]) return 'saving';
+        return branchModified[side] ? 'unsaved' : 'saved';
+      }
+
+      function paintSaveState(el, state) {
+        el.dataset.state = state;
+        el.title = SAVE_STATE_LABEL[state];
+        el.setAttribute('aria-label', SAVE_STATE_LABEL[state]);
+      }
+
+      // Repaint the save state in place — cheap, and never rebuilds the tabs, so
+      // it cannot tear down a rename box the user is typing in.
+      function updateBranchModifiedIndicator(side) {
+        const footer = document.getElementById(`pane-footer-${side}`);
+        if (!footer) return;
+        const state = branchSaveState(side, activeBranches[side]);
+        footer.querySelectorAll('.branch-tab[aria-selected="true"] .branch-tab-status, .branch-selector-btn .branch-tab-status')
+          .forEach((el) => paintSaveState(el, state));
+        const saveBtn = footer.querySelector('.branch-save-btn');
+        if (saveBtn) {
+          saveBtn.hidden = state === 'saved';
+          saveBtn.disabled = state === 'saving';
+        }
+      }
+
+      // A branch stores the panel's DOCUMENT minus alignment gap lines. Those
+      // blank lines only line records up against whatever the OTHER panel held
+      // at save time; storing them made a branch's text depend on its
+      // neighbour. Dropping whitespace-only lines from valid JSON cannot change
+      // its value — a string literal cannot contain a raw newline.
+      function branchContentFrom(text) {
+        if (!text || !window.JSONAlign || !looksLikeJSONStart(text)) return text;
+        try { JSON.parse(text); } catch (e) { return text; }
+        return window.JSONAlign.stripGaps(text);
+      }
+
+      async function persistBranch(side, id, text, source) {
+        const content = branchContentFrom(text);
+        branchSaving[side] = true;
+        updateBranchModifiedIndicator(side);
+        try {
+          await window.BranchManager.saveBranch(id, content, { source });
+          if (activeBranches[side] === id) setBaseline(side, id, content);
+        } finally {
+          branchSaving[side] = false;
+          // Re-check rather than assume "saved": typing during the write means
+          // the panel has already moved past what was stored.
+          if (activeBranches[side] === id) branchModified[side] = !paneMatchesBaseline(side);
+          updateBranchModifiedIndicator(side);
+        }
+      }
+
+      async function saveCurrentToBranch(side) {
+        const id = activeBranches[side];
+        const text = getPaneDocument(side);   // null (with a notice) for a fragment
+        if (text == null) return;
+        try {
+          await persistBranch(side, id, text, 'manual-save');
+          updateStatus(`Saved “${branchName(id)}”`);
+        } catch (err) {
+          showNotice('error', 'Could not save the branch: ' + (err && err.message ? err.message : err), { side });
+        }
+      }
+
+      // ---- Switch / create / rename / delete ------------------------------
+
+      /**
+       * Show another branch in this panel.
+       *
+       * Saves the panel into the branch it is leaving (unless `skipSave` — that
+       * branch may be about to be deleted), then writes the new branch through
+       * commitPair(), the one correct way to replace a pane: it re-aligns
+       * against the other panel's FULL document and resets the pristine/window
+       * state. This used to dispatch straight into the editor and read the pane
+       * for the save, so a windowed collection was saved as the page on screen.
+       *
+       * @returns {Promise<boolean>} whether the panel now shows `newBranchId`
+       */
+      async function switchBranch(side, newBranchId, opts = {}) {
+        if (activeBranches[side] === newBranchId) return true;
+        if (branchBusy[side]) return false;
+        branchBusy[side] = true;
+        const leaving = activeBranches[side];
+        try {
+          if (!opts.skipSave) {
+            const current = getPaneDocument(side);
+            if (current == null) return false;
+            // Only when it changed: re-saving untouched content would replace
+            // the stored text with its aligned, re-indented rendering. Empty
+            // content is never saved over a branch on the way out (as before).
+            branchModified[side] = !paneMatchesBaseline(side);
+            if (branchModified[side] && current.trim()) {
+              await persistBranch(side, leaving, current, 'auto-save');
+            }
+          }
+
+          const target = await window.BranchManager.getBranch(newBranchId);
+          const content = target ? (target.content || '') : '';
+
+          // Read the other panel only now, after the awaits — content can land
+          // there in the meantime.
+          const pair = getDocumentPair();
+          if (!pair) return false;
+
+          setActiveBranch(side, newBranchId);
+          setBaseline(side, newBranchId, content);
+          branchModified[side] = false;
+          commitPair(side === 'left' ? content : pair.left,
+                     side === 'left' ? pair.right : content);
+          updateBranchSelectors();
+          updateStatus(`✓ Switched to ${branchName(newBranchId)}`);
+          return true;
+        } catch (err) {
+          console.error('Failed to switch branch:', err);
+          showNotice('error', 'Could not switch branch: ' + (err && err.message ? err.message : err), { side });
+          updateBranchSelectors();
+          return false;
+        } finally {
+          branchBusy[side] = false;
+        }
+      }
+
+      function nextUntitledName(side) {
+        const taken = new Set(window.BranchManager.listBranches(side).map((b) => b.name.toLowerCase()));
+        if (!taken.has('untitled')) return 'Untitled';
+        let n = 2;
+        while (taken.has('untitled ' + n)) n++;
+        return 'Untitled ' + n;
+      }
+
+      // New branch: created empty, shown at once, and opened for naming — the
+      // spreadsheet/browser-tab gesture, replacing a prompt(). With tabs hidden
+      // the name is edited in the branch list instead.
+      async function createNewBranch(side) {
+        if (branchBusy[side]) return;
+        // Refuse up front (with a notice) rather than leave an orphan tab
+        // behind when the switch cannot save what the panel holds.
+        if (getPaneDocument(side) == null) return;
+        let branch;
+        try {
+          branch = await window.BranchManager.createBranch(nextUntitledName(side), '', {
+            source: 'manual',
+            panel: side
+          });
+        } catch (err) {
+          showNotice('error', 'Could not create a branch: ' + (err && err.message ? err.message : err), { side });
+          return;
+        }
+        if (!(await switchBranch(side, branch.id))) { updateBranchSelectors(); return; }
+        if (branchTabsVisible()) startTabRename(side, branch.id);
+        else startListRename(side, branch.id);
+      }
+
+      async function renameBranchTo(branchId, raw) {
+        const b = findBranch(branchId);
+        if (!b) { updateBranchSelectors(); return; }
+        // An emptied title falls back to the default name, never to nothing.
+        const name = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, BRANCH_NAME_MAX)
+          || window.BranchManager.defaultName(branchId);
+        if (name !== b.name) {
+          try {
+            await window.BranchManager.renameBranch(branchId, name);
+          } catch (err) {
+            showNotice('error', 'Could not rename the branch: ' + (err && err.message ? err.message : err));
+          }
+        }
+        updateBranchSelectors();
+      }
+
+      // Set the panel title of a branch. Clearing it — or typing the branch
+      // name itself — removes the custom title, so the title follows the
+      // branch name again (including through later renames).
+      async function setPanelTitle(branchId, raw) {
+        const b = findBranch(branchId);
+        if (!b) { updateBranchSelectors(); return; }
+        const text = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, PANEL_TITLE_MAX);
+        const title = text && text !== b.name ? text : '';
+        const current = (b.metadata && b.metadata.title) || '';
+        if (title !== current) {
+          try {
+            await window.BranchManager.setBranchTitle(branchId, title);
+          } catch (err) {
+            showNotice('error', 'Could not change the panel title: ' + (err && err.message ? err.message : err));
+          }
+        }
+        updateBranchSelectors();
+      }
+
+      // The tab that takes over when one closes: the next one, else the previous.
+      function neighbourBranch(side, id) {
+        const list = window.BranchManager.listBranches(side);
+        const i = list.findIndex((b) => b.id === id);
+        const next = i >= 0 ? (list[i + 1] || list[i - 1]) : null;
+        return next ? next.id : mainBranchOf(side);
+      }
+
+      async function requestDeleteBranch(side, branchId, anchor) {
+        if (isMainBranch(branchId)) return;
+        const dirty = activeBranches[side] === branchId && branchModified[side];
+        const ok = await confirmPopover(anchor, {
+          title: `Delete “${branchName(branchId)}”?`,
+          message: dirty
+            ? 'The branch and the unsaved changes in this panel will be removed.'
+            : 'The branch and its saved content will be removed.',
+          confirmLabel: 'Delete',
+          danger: true
+        });
+        if (ok) await deleteBranchById(branchId, side);
+      }
+
+      async function deleteBranchById(branchId, side) {
+        if (isMainBranch(branchId)) return;
+        const saved = await window.BranchManager.getBranch(branchId).catch(() => null);
+        const meta = (saved && saved.metadata) || {};
+        const name = branchName(branchId);
+        const panel = meta.panel || side;
+        const wasActive = activeBranches[panel] === branchId;
+        // Undo brings back what the panel showed, unsaved edits included.
+        let content = saved ? (saved.content || '') : '';
+        if (wasActive && branchModified[panel]) {
+          const cur = getPaneDocument(panel);
+          if (cur != null) content = cur;
+        }
+
+        // Leave the branch BEFORE deleting it, and without saving into it. The
+        // old order (delete, then switch) let the switch's save-on-leave write
+        // the panel straight back under the id just deleted — re-creating it
+        // with no panel, so it was invisible but still stored and counted.
+        for (const s of ['left', 'right']) {
+          if (activeBranches[s] === branchId &&
+              !(await switchBranch(s, neighbourBranch(s, branchId), { skipSave: true }))) {
+            return;
+          }
+        }
+        try {
+          await window.BranchManager.deleteBranch(branchId);
+        } catch (err) {
+          showNotice('error', 'Could not delete the branch: ' + (err && err.message ? err.message : err), { side });
+          return;
+        }
+        updateBranchSelectors();
+        updateStatus(`Deleted branch: ${name}`);
+        showNotice('ok', `Deleted branch “${name}”.`, {
+          key: 'branch-delete',
+          timeout: 15000,
+          actions: [{
+            label: 'Undo',
+            run: async () => {
+              await window.BranchManager.saveBranch(branchId, content, {
+                name,
+                title: meta.title,
+                panel,
+                created: meta.created,
+                source: meta.source || 'manual',
+                notes: meta.notes || ''
+              });
+              if (wasActive) await switchBranch(panel, branchId);
+              updateBranchSelectors();
+            }
+          }]
+        });
+      }
+
+      // Move a branch to the other panel. Leaves it first (saving the panel into
+      // it), so the move carries the latest content along.
+      async function moveBranchToPanel(branchId, targetPanel, currentPanel) {
+        const name = branchName(branchId);
+        try {
+          if (activeBranches[currentPanel] === branchId &&
+              !(await switchBranch(currentPanel, neighbourBranch(currentPanel, branchId)))) {
+            return;
+          }
+          await window.BranchManager.moveBranchToPanel(branchId, targetPanel);
+          updateBranchSelectors();
+          updateStatus(`✓ Moved “${name}” to the ${targetPanel} panel`);
+        } catch (err) {
+          showNotice('error', 'Could not move the branch: ' + (err && err.message ? err.message : err));
+        }
+      }
+
+      // Delete every branch except the two main ones.
+      async function resetAllBranches(side) {
+        const extra = window.BranchManager.listBranches().filter((b) => !isMainBranch(b.id));
+        if (extra.length === 0) {
+          updateStatus('No branches to reset');
+          return;
+        }
+        if (!confirm(`Delete ${extra.length} branch(es) and reset to default? This cannot be undone.`)) {
+          return;
+        }
+        try {
+          // Back to the main branches first, without saving into branches that
+          // are about to go (see deleteBranchById for why the order matters).
+          for (const s of ['left', 'right']) {
+            if (activeBranches[s] !== mainBranchOf(s) &&
+                !(await switchBranch(s, mainBranchOf(s), { skipSave: true }))) {
+              return;
+            }
+          }
+          for (const b of extra) await window.BranchManager.deleteBranch(b.id);
+          updateBranchSelectors();
+          updateStatus(`Reset complete: deleted ${extra.length} branch(es)`);
+        } catch (err) {
+          showNotice('error', 'Could not reset branches: ' + (err && err.message ? err.message : err));
+        }
+      }
+
+      // After a snapshot import: point each panel at the snapshot's branch when
+      // it exists here, else at the panel's main branch. (The old fallback was
+      // 'main' — not a branch — which left both panels pointing at nothing.)
+      async function syncActiveBranches() {
+        for (const side of ['left', 'right']) {
+          const stored = SettingsManager.get(side === 'left' ? 'leftBranch' : 'rightBranch');
+          const id = resolveActiveBranch(side, stored);
+          if (id !== activeBranches[side] || id !== stored) setActiveBranch(side, id);
+        }
+        await Promise.all([loadBaseline('left'), loadBaseline('right')]);
+        updateBranchSelectors();
+        checkBranchModified('left');
+        checkBranchModified('right');
+      }
+
+      // ---- Inline rename --------------------------------------------------
+
+      /**
+       * Swap `el` for a text box to rename something in place: Enter or
+       * clicking away saves, Escape cancels, and `el` goes back either way.
+       * Used by the panel title, the tabs and the branch list alike.
+       */
+      function editInline(el, opts) {
+        if (!el || !el.isConnected) return null;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'inline-rename' + (opts.className ? ' ' + opts.className : '');
+        input.value = opts.value || '';
+        input.placeholder = opts.placeholder || '';
+        const max = opts.maxLength || BRANCH_NAME_MAX;
+        input.maxLength = max;
+        input.spellcheck = false;
+        input.autocomplete = 'off';
+        input.setAttribute('aria-label', opts.label || 'Name');
+        const fit = () => {
+          const n = (input.value || input.placeholder).length + 2;
+          input.style.width = Math.min(max, Math.max(6, n)) + 'ch';
+        };
+        fit();
+
+        let done = false;
+        const finish = (commit, byKey) => {
+          if (done) return;
+          done = true;
+          if (input.isConnected) input.replaceWith(el);
+          const after = commit ? opts.onCommit(input.value) : (opts.onCancel && opts.onCancel());
+          if (byKey && opts.refocus) Promise.resolve(after).then(opts.refocus);
+        };
+        input.addEventListener('input', fit);
+        input.addEventListener('keydown', (e) => {
+          // Keep keys to ourselves: Escape would also close the menus, and
+          // arrows/Delete would drive the tab list underneath.
+          e.stopPropagation();
+          if (e.key === 'Enter') { e.preventDefault(); finish(true, true); }
+          else if (e.key === 'Escape') { e.preventDefault(); finish(false, true); }
+        });
+        input.addEventListener('blur', () => finish(true, false));
+        for (const type of ['click', 'dblclick', 'mousedown']) {
+          input.addEventListener(type, (e) => e.stopPropagation());
+        }
+        el.replaceWith(input);
+        input.focus();
+        input.select();
+        return input;
+      }
+
+      function focusActiveTab(side) {
+        const tab = document.querySelector(`#pane-footer-${side} .branch-tab[aria-selected="true"]`);
+        if (tab) tab.focus({ preventScroll: true });
+      }
+
+      function startTabRename(side, id) {
+        const tab = branchTabEl(side, id);
+        const nameEl = tab && tab.querySelector('.branch-tab-name');
+        if (!nameEl) return;
+        editInline(nameEl, {
+          value: branchName(id),
+          placeholder: window.BranchManager.defaultName(id),
+          label: 'Branch name',
+          onCommit: (v) => renameBranchTo(id, v),
+          onCancel: () => updateBranchSelectors(),
+          refocus: () => focusActiveTab(side)
+        });
+      }
+
+      // Edits the panel TITLE, not the branch name. The placeholder shows the
+      // branch name, which is what an empty title falls back to.
+      function startTitleRename(side) {
+        const el = document.getElementById(`pane-chip-${side}-title`);
+        if (!el || !el.isConnected) return;
+        const id = activeBranches[side];
+        editInline(el, {
+          value: branchTitle(id),
+          placeholder: branchName(id),
+          label: `${sideName(side)} panel title`,
+          className: 'pane-chip-title-input',
+          maxLength: PANEL_TITLE_MAX,
+          onCommit: (v) => setPanelTitle(id, v),
+          onCancel: () => updateBranchSelectors(),
+          refocus: () => el.focus({ preventScroll: true })
+        });
+      }
+
+      // Tabs hidden: name a branch from the branch list, opening it if needed.
+      function startListRename(side, id) {
+        const dropdown = document.getElementById(`branch-dropdown-${side}`);
+        const btn = document.getElementById(`branch-btn-${side}`);
+        if (!dropdown || !btn) return;
+        if (dropdown.style.display === 'none') btn.click();
+        const row = dropdown.querySelector(`.branch-item-row[data-branch-id="${CSS.escape(id)}"]`);
+        const edit = row && row.querySelector('.branch-rename-action');
+        if (edit) edit.click();
+      }
+
+      // ---- Delete confirmation --------------------------------------------
+
+      // Anchored to the tab rather than a browser confirm(): it stays next to
+      // what is being deleted and does not block the page.
+      let _confirmPop = null;
+      function confirmPopover(anchor, { title, message, confirmLabel = 'OK', danger = false }) {
+        if (_confirmPop) _confirmPop.cancel();
+        return new Promise((resolve) => {
+          const pop = document.createElement('div');
+          pop.className = 'confirm-pop';
+          pop.setAttribute('role', 'alertdialog');
+          pop.setAttribute('aria-labelledby', 'confirm-pop-title');
+          pop.setAttribute('aria-describedby', 'confirm-pop-text');
+
+          const head = document.createElement('div');
+          head.className = 'confirm-pop-title';
+          head.id = 'confirm-pop-title';
+          head.textContent = title;
+          const text = document.createElement('div');
+          text.className = 'confirm-pop-text';
+          text.id = 'confirm-pop-text';
+          text.textContent = message;
+
+          const row = document.createElement('div');
+          row.className = 'confirm-pop-actions';
+          const no = document.createElement('button');
+          no.type = 'button';
+          no.className = 'btn';
+          no.textContent = 'Cancel';
+          const yes = document.createElement('button');
+          yes.type = 'button';
+          yes.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+          yes.textContent = confirmLabel;
+          row.append(no, yes);
+          pop.append(head, text, row);
+          document.body.appendChild(pop);
+
+          // Above the anchor — these controls live at the bottom of the screen —
+          // flipped below when there is no room, and kept inside the viewport.
+          const r = anchor && anchor.isConnected ? anchor.getBoundingClientRect() : null;
+          const w = pop.offsetWidth;
+          const h = pop.offsetHeight;
+          let top = r ? r.top - h - 8 : (window.innerHeight - h) / 2;
+          if (r && top < 8) top = r.bottom + 8;
+          let left = r ? r.left + r.width / 2 - w / 2 : (window.innerWidth - w) / 2;
+          left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+          pop.style.top = Math.max(8, top) + 'px';
+          pop.style.left = left + 'px';
+
+          const prevFocus = document.activeElement;
+          const finish = (value) => {
+            if (!pop.isConnected) return;
+            pop.remove();
+            _confirmPop = null;
+            document.removeEventListener('mousedown', onDown, true);
+            document.removeEventListener('keydown', onKey, true);
+            window.removeEventListener('resize', onCancel);
+            if (prevFocus && prevFocus.isConnected && prevFocus.focus) prevFocus.focus({ preventScroll: true });
+            resolve(value);
+          };
+          const onCancel = () => finish(false);
+          const onDown = (e) => { if (!pop.contains(e.target)) finish(false); };
+          const onKey = (e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              finish(false);
+            } else if (e.key === 'Tab') {
+              // Two buttons; keep focus between them while the question is open.
+              e.preventDefault();
+              (document.activeElement === yes ? no : yes).focus();
+            }
+          };
+          no.onclick = () => finish(false);
+          yes.onclick = () => finish(true);
+          document.addEventListener('mousedown', onDown, true);
+          document.addEventListener('keydown', onKey, true);
+          window.addEventListener('resize', onCancel);
+          _confirmPop = { cancel: onCancel };
+          yes.focus();
+        });
+      }
+
+      // ---- Rendering ------------------------------------------------------
+
+      function updateBranchSelectors() {
+        renderBranchUI('left');
+        renderBranchUI('right');
+        updatePanelTitles();
+      }
+
+      function renderBranchUI(side) {
+        renderBranchTabs(side);
+        renderBranchButton(side);
+        updateBranchModifiedIndicator(side);
+      }
+
+      function updatePanelTitles() {
+        for (const side of ['left', 'right']) {
+          const el = document.getElementById(`pane-chip-${side}-title`);
+          if (!el) continue;
+          const id = activeBranches[side];
+          const title = branchTitle(id);
+          const name = branchName(id);
+          el.textContent = title;
+          el.title = title === name
+            ? `${title} — click to give this panel a title`
+            : `${title} (branch: ${name}) — click to edit the title`;
+          el.setAttribute('aria-label', `${sideName(side)} panel title: ${title}. Click to edit.`);
+        }
+      }
+
+      function initPanelTitles() {
+        for (const side of ['left', 'right']) {
+          const el = document.getElementById(`pane-chip-${side}-title`);
+          if (el) el.addEventListener('click', (e) => { e.stopPropagation(); startTitleRename(side); });
+        }
+        updatePanelTitles();
+      }
+
+      function branchTabEl(side, id) {
+        const list = document.querySelector(`#pane-footer-${side} .branch-tabs`);
+        return list ? list.querySelector(`.branch-tab[data-branch-id="${CSS.escape(id)}"]`) : null;
+      }
+
+      function renderBranchTabs(side) {
+        const list = document.querySelector(`#pane-footer-${side} .branch-tabs`);
+        if (!list) return;
+        // Never rebuild under an open rename box — the edit would vanish
+        // mid-word. Its commit / cancel renders afterwards.
+        if (list.querySelector('.inline-rename')) return;
+        const hadFocus = list.contains(document.activeElement);
+        const active = activeBranches[side];
+        list.textContent = '';
+        for (const b of window.BranchManager.listBranches(side)) {
+          list.appendChild(createBranchTab(side, b, b.id === active));
+        }
+        const cur = list.querySelector('.branch-tab[aria-selected="true"]');
+        if (cur) {
+          revealTab(list, cur);
+          if (hadFocus) cur.focus({ preventScroll: true });
+        }
+        updateTabOverflow(list);
+      }
+
+      function createBranchTab(side, b, isActive) {
+        const tab = document.createElement('div');
+        tab.className = isMainBranch(b.id) ? 'branch-tab is-main' : 'branch-tab';
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-selected', String(isActive));
+        tab.tabIndex = isActive ? 0 : -1;
+        tab.dataset.branchId = b.id;
+        tab.title = isActive
+          ? `${b.name} — double-click to rename`
+          : `Switch to ${b.name} (double-click to rename)`;
+
+        const status = document.createElement('span');
+        status.className = 'branch-tab-status';
+        status.setAttribute('role', 'img');
+        paintSaveState(status, branchSaveState(side, b.id));
+
+        const name = document.createElement('span');
+        name.className = 'branch-tab-name';
+        name.textContent = b.name;
+        tab.append(status, name);
+
+        // The main branch is the panel's home and cannot be deleted.
+        if (!isMainBranch(b.id)) {
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = 'branch-tab-close';
+          x.tabIndex = -1;          // Delete on a focused tab does the same
+          x.innerHTML = ICON_CLOSE;
+          x.title = `Delete ${b.name}`;
+          x.setAttribute('aria-label', `Delete branch ${b.name}`);
+          tab.appendChild(x);
+        }
+        return tab;
+      }
+
+      // Scroll the tab strip, not the page: scrollIntoView() would also scroll
+      // every scrollable ancestor.
+      function revealTab(list, tab) {
+        const l = tab.offsetLeft;
+        const r = l + tab.offsetWidth;
+        if (l < list.scrollLeft) list.scrollLeft = Math.max(0, l - 16);
+        else if (r > list.scrollLeft + list.clientWidth) list.scrollLeft = r - list.clientWidth + 16;
+      }
+
+      // Fade whichever edge has more tabs behind it.
+      function updateTabOverflow(list) {
+        const max = list.scrollWidth - list.clientWidth;
+        list.classList.toggle('fade-start', list.scrollLeft > 1);
+        list.classList.toggle('fade-end', max - list.scrollLeft > 1);
+      }
+
+      function wireBranchTabs(list, side) {
+        list.addEventListener('click', (e) => {
+          const tab = e.target.closest('.branch-tab');
+          if (!tab || e.target.closest('.inline-rename')) return;
+          const id = tab.dataset.branchId;
+          if (e.target.closest('.branch-tab-close')) {
+            e.stopPropagation();
+            requestDeleteBranch(side, id, tab);
+            return;
+          }
+          if (e.target.closest('.branch-tab-status[data-state="unsaved"]')) {
+            saveCurrentToBranch(side);
+            return;
+          }
+          if (id !== activeBranches[side]) switchBranch(side, id);
+        });
+
+        list.addEventListener('dblclick', (e) => {
+          const tab = e.target.closest('.branch-tab');
+          if (!tab || e.target.closest('.branch-tab-close, .inline-rename')) return;
+          startTabRename(side, tab.dataset.branchId);
+        });
+
+        // Roving focus with manual activation: loading a branch rewrites the
+        // panel, so arrows move focus and Enter/Space switches.
+        list.addEventListener('keydown', (e) => {
+          const tab = e.target.closest('.branch-tab');
+          if (!tab) return;
+          const tabs = Array.from(list.querySelectorAll('.branch-tab'));
+          const i = tabs.indexOf(tab);
+          const id = tab.dataset.branchId;
+          let target = null;
+          switch (e.key) {
+            case 'ArrowRight': target = tabs[i + 1] || tabs[0]; break;
+            case 'ArrowLeft': target = tabs[i - 1] || tabs[tabs.length - 1]; break;
+            case 'Home': target = tabs[0]; break;
+            case 'End': target = tabs[tabs.length - 1]; break;
+            case 'Enter':
+            case ' ':
+              e.preventDefault();
+              if (id !== activeBranches[side]) switchBranch(side, id);
+              return;
+            case 'F2':
+              e.preventDefault();
+              startTabRename(side, id);
+              return;
+            case 'Delete':
+              if (!isMainBranch(id)) {
+                e.preventDefault();
+                requestDeleteBranch(side, id, tab);
+              }
+              return;
+            default:
+              return;
+          }
+          e.preventDefault();
+          tabs.forEach((t) => { t.tabIndex = -1; });
+          target.tabIndex = 0;
+          target.focus();
+          revealTab(list, target);
+        });
+
+        // A vertical wheel scrolls an overflowing strip sideways.
+        list.addEventListener('wheel', (e) => {
+          if (list.scrollWidth <= list.clientWidth) return;
+          if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+          list.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }, { passive: false });
+        list.addEventListener('scroll', () => updateTabOverflow(list), { passive: true });
+        if (window.ResizeObserver) new ResizeObserver(() => updateTabOverflow(list)).observe(list);
+      }
+
+      // The branch button: the list of every branch in this panel. With tabs
+      // showing it is a compact icon (the tabs name the branches); with tabs
+      // hidden it is the dropdown that names the current one — the fallback.
+      function renderBranchButton(side) {
+        const btn = document.getElementById(`branch-btn-${side}`);
+        if (!btn) return;
+        const name = branchName(activeBranches[side]);
+        const count = window.BranchManager.listBranches(side).length;
+        btn.textContent = '';
+        if (branchTabsVisible()) {
+          btn.innerHTML = ICON_BRANCH_LIST;
+          btn.title = `All ${side} panel branches (${count})`;
+          btn.setAttribute('aria-label', btn.title);
+          return;
+        }
+        const icon = document.createElement('span');
+        icon.className = 'branch-icon';
+        icon.textContent = '🌿';
+        const status = document.createElement('span');
+        status.className = 'branch-tab-status';
+        status.setAttribute('role', 'img');
+        paintSaveState(status, branchSaveState(side, activeBranches[side]));
+        const label = document.createElement('span');
+        label.className = 'branch-selector-name';
+        label.textContent = name;
+        const arrow = document.createElement('span');
+        arrow.className = 'branch-arrow';
+        arrow.textContent = '▾';
+        btn.append(icon, status, label, arrow);
+        btn.title = `Branch: ${name} — switch branch (${side} panel)`;
+        btn.setAttribute('aria-label', btn.title);
+      }
+
+      function createBranchSelector(side) {
         const container = document.createElement('div');
         container.className = `branch-selector-container branch-selector-${side}`;
         container.id = `branch-container-${side}`;
-        
-        // Modified indicator
-        const modifiedIndicator = document.createElement('span');
-        modifiedIndicator.className = 'branch-modified-indicator';
-        modifiedIndicator.id = `branch-modified-${side}`;
-        modifiedIndicator.textContent = '●';
-        modifiedIndicator.title = 'Unsaved changes';
-        modifiedIndicator.style.display = 'none';
-        
-        // Branch name display / button
-        const branchBtn = document.createElement('button');
-        branchBtn.className = 'branch-selector-btn';
-        branchBtn.id = `branch-btn-${side}`;
-        branchBtn.title = `Switch branch (${side} panel)`;
-        
-        // Dropdown menu
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'branch-selector-btn';
+        btn.id = `branch-btn-${side}`;
+        btn.setAttribute('aria-haspopup', 'true');
+        btn.setAttribute('aria-expanded', 'false');
+
         const dropdown = document.createElement('div');
         dropdown.className = `branch-dropdown branch-dropdown-${side}`;
         dropdown.id = `branch-dropdown-${side}`;
         dropdown.style.display = 'none';
-        
-        // Update button text
-        const updateBranchButton = () => {
-          const branchId = activeBranches[side];
-          const branches = window.BranchManager.listBranches();
-          const branch = branches.find(b => b.id === branchId);
-          branchBtn.innerHTML = `<span class="branch-icon">🌿</span> ${branch ? branch.name : branchId} <span class="branch-arrow">▼</span>`;
-        };
-        
-        // Populate dropdown
-        const populateDropdown = async () => {
-          dropdown.innerHTML = '';
-          
-          // Get branches strictly filtered by this panel only
-          const panelBranches = window.BranchManager.listBranches(side);
-          const otherSide = side === 'left' ? 'right' : 'left';
-          
-          // Section header: This panel's branches
-          const sectionHeader = document.createElement('div');
-          sectionHeader.className = 'branch-dropdown-section-header';
-          sectionHeader.innerHTML = `<span class="section-icon">📌</span> ${side.charAt(0).toUpperCase() + side.slice(1)} Panel Branches`;
-          dropdown.appendChild(sectionHeader);
-          
-          // List branches for this panel only
-          if (panelBranches.length > 0) {
-            panelBranches.forEach(branch => {
-              const item = createBranchItem(branch, side, otherSide);
-              dropdown.appendChild(item);
-            });
-          } else {
-            const emptyMsg = document.createElement('div');
-            emptyMsg.className = 'branch-dropdown-item branch-info';
-            emptyMsg.textContent = 'No branches yet';
-            dropdown.appendChild(emptyMsg);
-          }
-          
-          // Actions section divider
-          const actionsDivider = document.createElement('div');
-          actionsDivider.className = 'branch-dropdown-divider';
-          dropdown.appendChild(actionsDivider);
-          
-          // New Branch option (starts empty)
-          const newBranchItem = document.createElement('div');
-          newBranchItem.className = 'branch-dropdown-item branch-action';
-          newBranchItem.innerHTML = '<span class="branch-item-icon">➕</span> New Empty Branch';
-          newBranchItem.title = 'Create a new branch with empty content';
-          newBranchItem.onclick = async (e) => {
-            e.stopPropagation();
-            dropdown.style.display = 'none';
-            await createNewBranch(side);
-          };
-          dropdown.appendChild(newBranchItem);
-          
-          // Reset All Branches option
-          const resetItem = document.createElement('div');
-          resetItem.className = 'branch-dropdown-item branch-action branch-delete';
-          resetItem.innerHTML = '<span class="branch-item-icon">🔄</span> Reset All Branches';
-          resetItem.title = 'Delete all branches and restore fresh state';
-          resetItem.onclick = async (e) => {
-            e.stopPropagation();
-            dropdown.style.display = 'none';
-            await resetAllBranches(side);
-          };
-          dropdown.appendChild(resetItem);
-          
-          // Branch count info
-          const allBranches = window.BranchManager.listBranches();
-          const infoItem = document.createElement('div');
-          infoItem.className = 'branch-dropdown-item branch-info';
-          infoItem.textContent = `${allBranches.length} branch${allBranches.length !== 1 ? 'es' : ''} total`;
-          dropdown.appendChild(infoItem);
-        };
-        
-        // Helper function to create a branch item
-        function createBranchItem(branch, side, otherSide) {
-          const item = document.createElement('div');
-          item.className = 'branch-dropdown-item branch-item-row';
-          if (branch.id === activeBranches[side]) {
-            item.classList.add('active');
-          }
-          
-          // Branch name (clickable for switch)
-          const nameSpan = document.createElement('span');
-          nameSpan.className = 'branch-item-name';
-          nameSpan.innerHTML = `<span class="branch-item-icon">🌿</span> ${branch.name}`;
-          nameSpan.onclick = async (e) => {
-            e.stopPropagation();
-            try {
-              await switchBranch(side, branch.id);
-              dropdown.style.display = 'none';
-            } catch (error) {
-              console.error(`Failed to switch branch: ${error}`);
-              updateStatus(`Error switching branch: ${error.message}`);
-            }
-          };
-          item.appendChild(nameSpan);
-          
-          // Action icons (only for non-main branches)
-          const isMainBranch = branch.id === 'main-left' || branch.id === 'main-right';
-          if (!isMainBranch) {
-            const actionsSpan = document.createElement('span');
-            actionsSpan.className = 'branch-item-actions';
-            
-            // Move to other panel icon
-            const moveIcon = document.createElement('span');
-            moveIcon.className = 'branch-action-icon';
-            moveIcon.innerHTML = otherSide === 'right' ? '➡️' : '⬅️';
-            moveIcon.title = `Move to ${otherSide} panel`;
-            moveIcon.onclick = async (e) => {
-              e.stopPropagation();
-              dropdown.style.display = 'none';
-              await moveBranchToPanel(branch.id, otherSide, side);
-            };
-            actionsSpan.appendChild(moveIcon);
-            
-            // Rename icon
-            const renameIcon = document.createElement('span');
-            renameIcon.className = 'branch-action-icon';
-            renameIcon.innerHTML = '✏️';
-            renameIcon.title = 'Rename branch';
-            renameIcon.onclick = async (e) => {
-              e.stopPropagation();
-              dropdown.style.display = 'none';
-              await renameBranchById(branch.id);
-            };
-            actionsSpan.appendChild(renameIcon);
-            
-            // Delete icon
-            const deleteIcon = document.createElement('span');
-            deleteIcon.className = 'branch-action-icon branch-action-delete';
-            deleteIcon.innerHTML = '🗑️';
-            deleteIcon.title = 'Delete branch';
-            deleteIcon.onclick = async (e) => {
-              e.stopPropagation();
-              dropdown.style.display = 'none';
-              await deleteBranchById(branch.id, side);
-            };
-            actionsSpan.appendChild(deleteIcon);
-            
-            item.appendChild(actionsSpan);
-          }
-          
-          return item;
-        }
-        
-        // Toggle dropdown
-        branchBtn.onclick = async (e) => {
-          e.stopPropagation();
-          const isVisible = dropdown.style.display !== 'none';
-          
-          // Close all other dropdowns
-          document.querySelectorAll('.branch-dropdown').forEach(d => d.style.display = 'none');
-          
-          if (!isVisible) {
-            await populateDropdown();
-            dropdown.style.display = 'block';
-            
-            // Add event listener specifically for this dropdown
-            const closeDropdown = (event) => {
-              if (!container.contains(event.target)) {
-                dropdown.style.display = 'none';
-                document.removeEventListener('click', closeDropdown);
-              }
-            };
-            
-            // Use setTimeout to allow the click event to complete
-            setTimeout(() => {
-              document.addEventListener('click', closeDropdown);
-            }, 0);
-          }
-        };
-        
-        // Save button (separate from dropdown, positioned to the left)
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'branch-save-btn';
-        saveBtn.id = `branch-save-${side}`;
-        saveBtn.innerHTML = '💾';
-        saveBtn.title = 'Save current content to branch';
-        saveBtn.onclick = async (e) => {
-          e.stopPropagation();
-          await saveCurrentToBranch(side);
-        };
-        
-        // Quick "New Empty Branch" button (one-click shortcut, no dropdown needed)
-        const newBranchQuickBtn = document.createElement('button');
-        newBranchQuickBtn.className = 'branch-new-quick-btn';
-        newBranchQuickBtn.innerHTML = '➕';
-        newBranchQuickBtn.title = 'New empty branch';
-        newBranchQuickBtn.onclick = async (e) => {
-          e.stopPropagation();
-          document.querySelectorAll('.branch-dropdown').forEach(d => d.style.display = 'none');
-          await createNewBranch(side);
+
+        const close = () => {
+          dropdown.style.display = 'none';
+          btn.setAttribute('aria-expanded', 'false');
         };
 
-        // Assemble container: [Save Button] [Modified Indicator] [Branch Dropdown Button] [New Branch Button]
-        container.appendChild(saveBtn);
-        container.appendChild(modifiedIndicator);
-        container.appendChild(branchBtn);
-        container.appendChild(newBranchQuickBtn);
-        container.appendChild(dropdown);
-        paneElement.appendChild(container);
-        
-        // Initial button text
-        updateBranchButton();
-        
-        // Store reference for updates
-        container._updateButton = updateBranchButton;
-        container._populateDropdown = populateDropdown;
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const open = dropdown.style.display !== 'none';
+          closeMenus(null);            // one menu at a time, toolbar menus included
+          if (open) return;
+          populateBranchDropdown(side, dropdown, close);
+          dropdown.style.display = 'block';
+          btn.setAttribute('aria-expanded', 'true');
+          const onOutside = (ev) => {
+            if (!container.contains(ev.target)) {
+              close();
+              document.removeEventListener('click', onOutside);
+            }
+          };
+          setTimeout(() => document.addEventListener('click', onOutside), 0);
+        };
+
+        container.append(btn, dropdown);
+        return container;
       }
-      
-      // Switch to a different branch
-      async function switchBranch(side, newBranchId) {
-        const currentBranchId = activeBranches[side];
-        
-        if (currentBranchId === newBranchId) return;
-        
-        const editor = side === 'left' ? mergeView.a : mergeView.b;
-        const currentContent = editor.state.doc.toString();
-        
-        // Show loading state
-        updateStatus(`Switching to branch: ${newBranchId}...`);
-        
-        try {
-          // Auto-save current content to current branch before switching
-          if (currentContent.trim()) {
-            await window.BranchManager.saveBranch(currentBranchId, currentContent, {
-              source: 'auto-save'
+
+      function populateBranchDropdown(side, dropdown, close) {
+        dropdown.textContent = '';
+        const otherSide = side === 'left' ? 'right' : 'left';
+        const refresh = () => {
+          if (dropdown.style.display !== 'none') populateBranchDropdown(side, dropdown, close);
+        };
+
+        const header = document.createElement('div');
+        header.className = 'branch-dropdown-section-header';
+        const pin = document.createElement('span');
+        pin.className = 'section-icon';
+        pin.textContent = '📌';
+        header.append(pin, ` ${sideName(side)} Panel Branches`);
+        dropdown.appendChild(header);
+
+        const branches = window.BranchManager.listBranches(side);
+        for (const b of branches) {
+          const row = document.createElement('div');
+          row.className = 'branch-dropdown-item branch-item-row';
+          row.dataset.branchId = b.id;
+          if (b.id === activeBranches[side]) row.classList.add('active');
+
+          // Names are user text (and can arrive in a snapshot): textContent,
+          // never innerHTML.
+          const nameWrap = document.createElement('span');
+          nameWrap.className = 'branch-item-name';
+          const icon = document.createElement('span');
+          icon.className = 'branch-item-icon';
+          icon.textContent = '🌿';
+          const label = document.createElement('span');
+          label.className = 'branch-item-label';
+          label.textContent = b.name;
+          nameWrap.append(icon, label);
+          row.appendChild(nameWrap);
+          row.onclick = async (e) => {
+            e.stopPropagation();
+            if (e.target.closest('.inline-rename')) return;
+            close();
+            await switchBranch(side, b.id);
+          };
+
+          const actions = document.createElement('span');
+          actions.className = 'branch-item-actions';
+          const action = (glyph, title, run, extraClass) => {
+            const el = document.createElement('span');
+            el.className = 'branch-action-icon' + (extraClass ? ' ' + extraClass : '');
+            el.textContent = glyph;
+            el.title = title;
+            el.onclick = (e) => { e.stopPropagation(); run(); };
+            actions.appendChild(el);
+          };
+          if (!isMainBranch(b.id)) {
+            action(otherSide === 'right' ? '➡️' : '⬅️', `Move to ${otherSide} panel`, () => {
+              close();
+              moveBranchToPanel(b.id, otherSide, side);
             });
           }
-          
-          // Load new branch
-          const newBranch = await window.BranchManager.getBranch(newBranchId);
-          const newContent = newBranch ? newBranch.content : '';
-          
-          // Update editor content
-          editor.dispatch({
-            changes: { from: 0, to: editor.state.doc.length, insert: newContent }
-          });
-          
-          // Update active branch
-          activeBranches[side] = newBranchId;
-          SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', newBranchId);
-          
-          // Update panel name from branch name
-          if (newBranch) {
-            SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', newBranch.name);
+          action('✏️', 'Rename branch', () => {
+            editInline(label, {
+              value: b.name,
+              placeholder: window.BranchManager.defaultName(b.id),
+              label: 'Branch name',
+              onCommit: (v) => renameBranchTo(b.id, v).then(refresh),
+              onCancel: refresh
+            });
+          }, 'rename-icon branch-rename-action');
+          if (!isMainBranch(b.id)) {
+            action('🗑️', 'Delete branch', () => {
+              close();
+              requestDeleteBranch(side, b.id, document.getElementById(`branch-btn-${side}`));
+            }, 'branch-action-delete');
           }
-          
-          // Reset modified state
-          branchModified[side] = false;
-          updateBranchModifiedIndicator(side);
-          
-          // Update UI
-          updateBranchSelectors();
-          updateDiffStatus();
-          updateStatus(`✓ Switched to branch: ${newBranch ? newBranch.name : newBranchId}`);
-          
-        } catch (error) {
-          console.error(`Failed to switch branch: ${error}`);
-          updateStatus(`✗ Error switching branch: ${error.message}`);
+          row.appendChild(actions);
+          dropdown.appendChild(row);
         }
+
+        const divider = document.createElement('div');
+        divider.className = 'branch-dropdown-divider';
+        dropdown.appendChild(divider);
+
+        const item = (glyph, text, title, run, extraClass) => {
+          const el = document.createElement('div');
+          el.className = 'branch-dropdown-item branch-action' + (extraClass ? ' ' + extraClass : '');
+          const i = document.createElement('span');
+          i.className = 'branch-item-icon';
+          i.textContent = glyph;
+          el.append(i, ' ' + text);
+          el.title = title;
+          el.onclick = (e) => { e.stopPropagation(); close(); run(); };
+          dropdown.appendChild(el);
+        };
+        item('➕', 'New Empty Branch', 'Create a new branch with empty content', () => createNewBranch(side));
+        item('🔄', 'Reset All Branches', 'Delete all branches and restore fresh state', () => resetAllBranches(side), 'branch-delete');
+
+        const total = window.BranchManager.listBranches().length;
+        const info = document.createElement('div');
+        info.className = 'branch-dropdown-item branch-info';
+        info.textContent = `${total} branch${total !== 1 ? 'es' : ''} total`;
+        dropdown.appendChild(info);
       }
-      
-      // Create a new branch (starts empty)
-      async function createNewBranch(side) {
-        const name = prompt('Enter new branch name:', '');
-        if (!name || !name.trim()) return;
-        
-        // Get current content and save to current branch before creating new one
-        const editor = side === 'left' ? mergeView.a : mergeView.b;
-        const currentBranchId = activeBranches[side];
-        const currentContent = editor.state.doc.toString();
-        
-        // Save current content to current branch first
-        if (currentContent.trim()) {
-          await window.BranchManager.saveBranch(currentBranchId, currentContent, {
-            source: 'auto-save'
-          });
-        }
-        
-        // New branches start with empty content
-        const content = '';
-        
-        try {
-          const branch = await window.BranchManager.createBranch(name.trim(), content, {
-            source: 'manual',
-            panel: side  // Track which panel this branch belongs to
-          });
-          
-          // Clear editor content for new empty branch
-          editor.dispatch({
-            changes: { from: 0, to: editor.state.doc.length, insert: '' }
-          });
-          
-          // Switch to new branch
-          activeBranches[side] = branch.id;
-          SettingsManager.set(side === 'left' ? 'leftBranch' : 'rightBranch', branch.id);
-          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', branch.name);
-          
-          branchModified[side] = false;
-          updateBranchModifiedIndicator(side);
-          updateBranchSelectors();
-          updateDiffStatus();
-          updateStatus(`✓ Created empty branch: ${branch.name}`);
-        } catch (err) {
-          showErrorMessage('Failed to create branch: ' + err.message);
-        }
+
+      // ---- Pane footer ----------------------------------------------------
+
+      // The bar under each editor: [branch list][tabs…][+] ... [💾][CSV][Export][👁].
+      // With tabs hidden it collapses to the floating controls this panel had
+      // before tabs existed (see .pane-footer.is-compact).
+      function addPaneFooter(paneElement, side) {
+        const footer = document.createElement('div');
+        footer.className = 'pane-footer';
+        footer.id = `pane-footer-${side}`;
+
+        const strip = document.createElement('div');
+        strip.className = 'branch-strip';
+
+        const list = document.createElement('div');
+        list.className = 'branch-tabs';
+        list.setAttribute('role', 'tablist');
+        list.setAttribute('aria-label', `${sideName(side)} panel branches`);
+        wireBranchTabs(list, side);
+
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'branch-tab-add';
+        add.innerHTML = ICON_ADD;
+        add.title = 'New branch';
+        add.setAttribute('aria-label', `New ${side} panel branch`);
+        add.onclick = (e) => {
+          e.stopPropagation();
+          closeMenus(null);
+          createNewBranch(side);
+        };
+
+        strip.append(createBranchSelector(side), list, add);
+
+        const actions = document.createElement('div');
+        actions.className = 'pane-footer-actions';
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'branch-save-btn';
+        save.hidden = true;
+        save.textContent = 'Save';     // the amber dot before it is CSS
+        save.title = 'Save this panel to its branch';
+        save.setAttribute('aria-label', 'Save this panel to its branch');
+        save.onclick = (e) => {
+          e.stopPropagation();
+          saveCurrentToBranch(side);
+        };
+        actions.appendChild(save);
+
+        footer.append(strip, actions);
+        paneElement.appendChild(footer);
+        renderBranchUI(side);
+        return { footer, actions };
       }
-      
-      // Rename current branch
-      async function renameBranch(side) {
-        const currentId = activeBranches[side];
-        const branches = window.BranchManager.listBranches();
-        const current = branches.find(b => b.id === currentId);
-        
-        const newName = prompt('Enter new name:', current ? current.name : currentId);
-        if (!newName || !newName.trim()) return;
-        
-        try {
-          await window.BranchManager.renameBranch(currentId, newName.trim());
-          SettingsManager.set(side === 'left' ? 'leftPanelName' : 'rightPanelName', newName.trim());
-          updateBranchSelectors();
-          updateStatus(`Renamed branch to: ${newName.trim()}`);
-        } catch (err) {
-          showErrorMessage('Failed to rename branch: ' + err.message);
-        }
+
+      function createTabsToggle() {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'branch-tabs-toggle';
+        b.onclick = (e) => {
+          e.stopPropagation();
+          setBranchTabsVisible(!branchTabsVisible());
+        };
+        return b;
       }
-      
-      // Delete current branch
-      async function deleteBranch(side) {
-        const currentId = activeBranches[side];
-        const branches = window.BranchManager.listBranches();
-        const current = branches.find(b => b.id === currentId);
-        
-        if (!confirm(`Delete branch "${current ? current.name : currentId}"? This cannot be undone.`)) {
-          return;
-        }
-        
-        try {
-          await window.BranchManager.deleteBranch(currentId);
-          
-          // Switch to the panel's main branch
-          const mainBranchId = side === 'left' ? 'main-left' : 'main-right';
-          await switchBranch(side, mainBranchId);
-          updateStatus(`Deleted branch: ${current ? current.name : currentId}`);
-        } catch (err) {
-          showErrorMessage('Failed to delete branch: ' + err.message);
-        }
+
+      // One setting for both panels: the two bars take the same height, so the
+      // editors stay level and scroll-sync keeps lining up.
+      function setBranchTabsVisible(on) {
+        SettingsManager.set('branchTabs', !!on);
+        applyBranchTabsVisibility();
       }
-      
-      // Save current content to branch
-      async function saveCurrentToBranch(side) {
-        const currentId = activeBranches[side];
-        const editor = side === 'left' ? mergeView.a : mergeView.b;
-        const content = editor.state.doc.toString();
-        
-        try {
-          await window.BranchManager.saveBranch(currentId, content, {
-            source: 'manual-save'
-          });
-          
-          branchModified[side] = false;
-          updateBranchModifiedIndicator(side);
-          updateStatus('Branch saved');
-        } catch (err) {
-          showErrorMessage('Failed to save branch: ' + err.message);
-        }
-      }
-      
-      // Rename a branch by ID (for inline icon)
-      async function renameBranchById(branchId) {
-        const branches = window.BranchManager.listBranches();
-        const branch = branches.find(b => b.id === branchId);
-        
-        const newName = prompt('Enter new name:', branch ? branch.name : branchId);
-        if (!newName || !newName.trim()) return;
-        
-        try {
-          await window.BranchManager.renameBranch(branchId, newName.trim());
-          
-          // Update panel name if this is the active branch on either side
-          if (activeBranches.left === branchId) {
-            SettingsManager.set('leftPanelName', newName.trim());
-          }
-          if (activeBranches.right === branchId) {
-            SettingsManager.set('rightPanelName', newName.trim());
-          }
-          
-          updateBranchSelectors();
-          updateStatus(`Renamed branch to: ${newName.trim()}`);
-        } catch (err) {
-          showErrorMessage('Failed to rename branch: ' + err.message);
-        }
-      }
-      
-      // Move a branch to another panel
-      async function moveBranchToPanel(branchId, targetPanel, currentPanel) {
-        const branches = window.BranchManager.listBranches();
-        const branch = branches.find(b => b.id === branchId);
-        
-        try {
-          await window.BranchManager.moveBranchToPanel(branchId, targetPanel);
-          
-          // If this branch was active on the current panel, switch to main branch
-          if (activeBranches[currentPanel] === branchId) {
-            const mainBranchId = currentPanel === 'left' ? 'main-left' : 'main-right';
-            await switchBranch(currentPanel, mainBranchId);
-          }
-          
-          updateBranchSelectors();
-          updateStatus(`✓ Moved "${branch ? branch.name : branchId}" to ${targetPanel} panel`);
-        } catch (err) {
-          showErrorMessage('Failed to move branch: ' + err.message);
-        }
-      }
-      
-      // Delete a branch by ID (for inline icon)
-      async function deleteBranchById(branchId, side) {
-        const branches = window.BranchManager.listBranches();
-        const branch = branches.find(b => b.id === branchId);
-        
-        if (!confirm(`Delete branch "${branch ? branch.name : branchId}"? This cannot be undone.`)) {
-          return;
-        }
-        
-        try {
-          await window.BranchManager.deleteBranch(branchId);
-          
-          // If deleted branch was active on left side, switch to main-left
-          if (activeBranches.left === branchId) {
-            await switchBranch('left', 'main-left');
-          }
-          // If deleted branch was active on right side, switch to main-right
-          if (activeBranches.right === branchId) {
-            await switchBranch('right', 'main-right');
-          }
-          
-          updateBranchSelectors();
-          updateStatus(`Deleted branch: ${branch ? branch.name : branchId}`);
-        } catch (err) {
-          showErrorMessage('Failed to delete branch: ' + err.message);
-        }
-      }
-      
-      // Reset all branches - delete all except main-left and main-right
-      async function resetAllBranches(side) {
-        const branches = window.BranchManager.listBranches();
-        const nonMainBranches = branches.filter(b => b.id !== 'main-left' && b.id !== 'main-right');
-        
-        if (nonMainBranches.length === 0) {
-          updateStatus('No branches to reset');
-          return;
-        }
-        
-        if (!confirm(`Delete ${nonMainBranches.length} branch(es) and reset to default? This cannot be undone.`)) {
-          return;
-        }
-        
-        try {
-          // Delete all non-main branches
-          for (const branch of nonMainBranches) {
-            await window.BranchManager.deleteBranch(branch.id);
-          }
-          
-          // Switch both sides to their main branches if needed
-          if (activeBranches.left !== 'main-left') {
-            await switchBranch('left', 'main-left');
-          }
-          if (activeBranches.right !== 'main-right') {
-            await switchBranch('right', 'main-right');
-          }
-          
-          updateBranchSelectors();
-          updateStatus(`Reset complete: Deleted ${nonMainBranches.length} branch(es)`);
-        } catch (err) {
-          showErrorMessage('Failed to reset branches: ' + err.message);
-        }
-      }
-      
-      // Update modified indicator for a side
-      function updateBranchModifiedIndicator(side) {
-        const indicator = document.getElementById(`branch-modified-${side}`);
-        if (indicator) {
-          indicator.style.display = branchModified[side] ? 'inline' : 'none';
-        }
-        
-        // Also update save button visibility
-        const saveBtn = document.getElementById(`branch-save-${side}`);
-        if (saveBtn) {
-          saveBtn.style.display = branchModified[side] ? 'inline-flex' : 'none';
-        }
-      }
-      
-      // Update all branch selectors
-      function updateBranchSelectors() {
-        ['left', 'right'].forEach(side => {
-          const container = document.getElementById(`branch-container-${side}`);
-          if (container && container._updateButton) {
-            container._updateButton();
-          }
+
+      function applyBranchTabsVisibility() {
+        const on = branchTabsVisible();
+        document.querySelectorAll('.pane-footer').forEach((f) => {
+          f.classList.toggle('is-tabs', on);
+          f.classList.toggle('is-compact', !on);
         });
+        document.querySelectorAll('.branch-tabs-toggle').forEach((b) => {
+          b.innerHTML = on ? ICON_EYE : ICON_EYE_OFF;
+          b.setAttribute('aria-pressed', String(on));
+          b.setAttribute('aria-label', 'Show branch tabs');
+          b.title = on ? 'Hide branch tabs' : 'Show branch tabs';
+        });
+        renderBranchUI('left');
+        renderBranchUI('right');
       }
-      
-      // Check if content is modified from saved branch (called on content change)
-      async function checkBranchModified(side) {
-        const editor = side === 'left' ? mergeView.a : mergeView.b;
-        const content = editor.state.doc.toString();
-        const branchId = activeBranches[side];
-        
-        branchModified[side] = await window.BranchManager.isModified(branchId, content);
-        updateBranchModifiedIndicator(side);
-      }
-      
+
       // Add CSV to JSON conversion button at bottom of pane
       function addCSVConversionButton(paneElement, side) {
         const convertBtn = document.createElement('button');
@@ -4212,8 +4990,12 @@
           return;
         }
         
-        const branchId = activeBranches[side] || 'panel';
-        const branchName = branchId.replace(/[^a-zA-Z0-9-_]/g, '_');
+        // Named after the panel title. The branch id used to stand in for it,
+        // which stopped meaning anything once branches could be renamed (a tab
+        // created as "untitled-2" keeps that id after it is named "Prod API").
+        const title = branchTitle(activeBranches[side])
+          .replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '');
+        const namePart = title && title.toLowerCase() !== side ? `${side}-${title}` : side;
         const timestamp = new Date().toISOString().slice(0, 10);
         
         try {
@@ -4239,7 +5021,7 @@
               }
             }
             
-            const filename = `${side}-${branchName}-${timestamp}.json`;
+            const filename = `${namePart}-${timestamp}.json`;
             window.CSVUtils.downloadFile(jsonContent, filename, 'application/json');
             showConversionMessage(`Exported as ${filename}`);
           } else if (format === 'csv') {
@@ -4260,7 +5042,7 @@
               return;
             }
             
-            const filename = `${side}-${branchName}-${timestamp}.csv`;
+            const filename = `${namePart}-${timestamp}.csv`;
             window.CSVUtils.downloadFile(csvContent, filename, 'text/csv');
             showConversionMessage(`Exported as ${filename}`);
           }
@@ -4296,8 +5078,13 @@
         const leftContent = leftDetectable ? mergeView.a.state.doc.toString() : '';
         const rightContent = rightDetectable ? mergeView.b.state.doc.toString() : '';
 
-        const leftIsCSV = leftDetectable && window.CSVUtils && window.CSVUtils.isCSV(leftContent);
-        const rightIsCSV = rightDetectable && window.CSVUtils && window.CSVUtils.isCSV(rightContent);
+        // isCSV() says yes to a one-line JSON object (it has commas). That was
+        // half-hidden while the button only appeared on hover; in the pane
+        // footer it is always on show, so rule out anything that opens as JSON.
+        const leftIsCSV = leftDetectable && window.CSVUtils && !looksLikeJSONStart(leftContent)
+          && window.CSVUtils.isCSV(leftContent);
+        const rightIsCSV = rightDetectable && window.CSVUtils && !looksLikeJSONStart(rightContent)
+          && window.CSVUtils.isCSV(rightContent);
         const leftIsConvertibleJSON = leftDetectable && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(leftContent);
         const rightIsConvertibleJSON = rightDetectable && window.CSVUtils && window.CSVUtils.isConvertibleToCSV(rightContent);
 
@@ -4541,6 +5328,7 @@
         // "Fixed the left panel — 1 issue repaired" notice.) That is the whole
         // "repair sometimes works, sometimes doesn't". Write it ourselves.
         if (!dispatched) {
+          _rowAligned = false;      // the pair goes in as raw text
           _blockAligning = true;
           try {
             setPaneIfChanged(mergeView.a, L);
@@ -4997,13 +5785,14 @@
 
         const view = side === 'left' ? mergeView.a : mergeView.b;
         const doc = view.state.doc;
-        const label = side === 'left' ? 'Left' : 'Right';
+        // The panel's name is the editable title beside this text (see
+        // updatePanelTitles), so the status no longer repeats "Left"/"Right".
         actionsEl.innerHTML = '';
 
         if (docIsBlank(doc)) {
           paneAnalysis[side] = null;
           chip.dataset.state = 'empty';
-          textEl.textContent = label + ' panel — empty';
+          textEl.textContent = 'Empty';
           return;
         }
 
@@ -5011,7 +5800,7 @@
         if (doc.length > CHIP_MAX_BYTES || !window.JSONRepairKit) {
           paneAnalysis[side] = null;
           chip.dataset.state = 'text';
-          textEl.textContent = `${label} · ${fmtBytes(doc.length)} — too large to validate continuously`;
+          textEl.textContent = `${fmtBytes(doc.length)} — too large to validate continuously`;
           return;
         }
 
@@ -5025,13 +5814,13 @@
 
         if (a.kind === 'json' && a.valid) {
           chip.dataset.state = 'valid';
-          textEl.textContent = `${label} · ${windowed ? 'Valid JSON · showing one page' : a.message}`;
+          textEl.textContent = windowed ? 'Valid JSON · showing one page' : a.message;
           return;
         }
 
         if (a.repairable) {
           chip.dataset.state = 'fixable';
-          textEl.textContent = `${label} · ${a.message}`;
+          textEl.textContent = a.message;
           addChipButton(actionsEl, 'Fix', 'Repair the syntax in this panel', () => openRepairPreview(side));
           return;
         }
@@ -5039,7 +5828,7 @@
         if (a.kind === 'jsonish' || a.kind === 'ndjson') {
           chip.dataset.state = 'invalid';
           const err = a.error || lastIngestParseError[side];
-          textEl.textContent = `${label} · Invalid JSON` +
+          textEl.textContent = 'Invalid JSON' +
             (err && err.line ? ` — line ${err.line}, column ${err.col}` : '') +
             (err && err.message ? `: ${err.message}` : '');
           if (err && err.pos != null) {
@@ -5051,7 +5840,7 @@
         chip.dataset.state = 'text';
         const kindLabel = { csv: 'CSV', tsv: 'TSV', xml: 'XML', yaml: 'YAML', text: 'Plain text' }[a.kind] || 'Plain text';
         const lines = countLines(doc);
-        textEl.textContent = `${label} · ${kindLabel} · ${lines.toLocaleString()} line${lines === 1 ? '' : 's'}`;
+        textEl.textContent = `${kindLabel} · ${lines.toLocaleString()} line${lines === 1 ? '' : 's'}`;
         if (a.kind === 'csv' || a.kind === 'tsv') {
           addChipButton(actionsEl, 'To JSON', 'Convert this panel to JSON', () => convertPaneCsv(side));
         }
@@ -5589,16 +6378,15 @@
             try {
               const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
               console.log('Branches imported:', importResult);
-              
-              // Update active branches from settings if present
-              if (data.settings) {
-                activeBranches.left = data.settings.leftBranch || 'main';
-                activeBranches.right = data.settings.rightBranch || 'main';
-              }
             } catch (err) {
               console.warn('Failed to import branches:', err);
             }
           }
+          // Point each panel at the snapshot's active branch when it exists
+          // here, else at the panel's main branch, and refresh tabs + titles.
+          // Runs with or without branches in the file: the snapshot's settings
+          // have already overwritten leftBranch / rightBranch either way.
+          await syncActiveBranches();
           
           // Recreate merge view with new settings if they were present
           if (data.settings && typeof data.settings === 'object') {
@@ -5667,16 +6455,15 @@
             try {
               const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
               console.log('Branches imported:', importResult);
-              
-              // Update active branches from settings if present
-              if (data.settings) {
-                activeBranches.left = data.settings.leftBranch || 'main';
-                activeBranches.right = data.settings.rightBranch || 'main';
-              }
             } catch (err) {
               console.warn('Failed to import branches:', err);
             }
           }
+          // Point each panel at the snapshot's active branch when it exists
+          // here, else at the panel's main branch, and refresh tabs + titles.
+          // Runs with or without branches in the file: the snapshot's settings
+          // have already overwritten leftBranch / rightBranch either way.
+          await syncActiveBranches();
           
           // Recreate merge view with new settings if they were present
           if (data.settings && typeof data.settings === 'object') {
@@ -6282,6 +7069,7 @@
             await window.ProcessingUI.yieldToPaint();
             if (job.cancelled) throw new CancelledError();
           }
+          _rowAligned = false;      // raw text, not an aligned render
           editor.dispatch({ changes: { from, to, insert: content } });
           if (job) job.update(1, 1, 'Done');
         }
@@ -6447,11 +7235,13 @@
             
             if (leftBranchId) {
               await window.BranchManager.saveBranch(leftBranchId, '', { source: 'clear-all' });
+              setBaseline('left', leftBranchId, '');
               branchModified.left = false;
               updateBranchModifiedIndicator('left');
             }
             if (rightBranchId) {
               await window.BranchManager.saveBranch(rightBranchId, '', { source: 'clear-all' });
+              setBaseline('right', rightBranchId, '');
               branchModified.right = false;
               updateBranchModifiedIndicator('right');
             }
@@ -6592,8 +7382,12 @@
       function updateDiffStatus() {
         const aDoc = mergeView.a.state.doc;
         const bDoc = mergeView.b.state.doc;
+        const keysBtn = document.getElementById('btn-key-compare');
+        const blank = docIsBlank(aDoc) || docIsBlank(bDoc);
+        if (keysBtn) keysBtn.style.display = blank ? 'none' : '';
+        refreshKeyCompareIfOpen();
 
-        if (docIsBlank(aDoc) || docIsBlank(bDoc)) {
+        if (blank) {
           setDiffSummary('idle', 'Add content to both panels to compare');
           updateDiffNavState();
           return;
@@ -6871,8 +7665,11 @@
         if (!il || !il.lines || !il.lines.length || !mergeView) return false;
         const k = p - il.from;
         if (k < 0 || k >= il.lines.length) return false;
-        const lineNo = il.offset + il.lines[k] + 1;      // itemLines is 0-based
+        return scrollPanesToLine(il.offset + il.lines[k] + 1);   // itemLines is 0-based
+      }
 
+      /** Scroll both panes to 1-based line `lineNo` and flash it. */
+      function scrollPanesToLine(lineNo) {
         const touched = [];
         for (const view of [mergeView.a, mergeView.b]) {
           if (lineNo < 1 || lineNo > view.state.doc.lines) continue;
@@ -6977,11 +7774,415 @@
         const filter = document.getElementById('diff-details-filter');
         if (!btn || !box) return;
         btn.addEventListener('click', () => {
+          closeMenus(null);
           box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+          btn.setAttribute('aria-pressed', String(box.style.display !== 'none'));
           renderDiffDetails();
         });
-        close.addEventListener('click', () => { box.style.display = 'none'; });
+        close.addEventListener('click', () => {
+          box.style.display = 'none';
+          btn.setAttribute('aria-pressed', 'false');
+        });
         filter.addEventListener('input', renderDiffDetails);
+      }
+
+      // =====================================================================
+      // Key comparison table (utils/key_compare.js)
+      //
+      // The panes answer "what does the text look like side by side". With two
+      // records of thousands of columns that is the wrong question: what you
+      // need is which keys match, which values differ and which keys exist on
+      // one side only — as a list, filterable, exportable. This is that list.
+      //
+      // It reads the whole documents through getDocumentPair(), never the
+      // panes: a windowed collection is a page, and with ignore or tolerance
+      // active the right pane holds the LEFT pane's values for matched fields.
+      // Records are paired with JSONAlign.matchArray, the pairing the panes are
+      // drawn with, so the table and the editors cannot disagree.
+      // =====================================================================
+      const KC_ROW_H = 30;          // px; fixed so the table can be virtualized
+      const KC_OVERSCAN = 12;
+      const kcState = {
+        filter: 'all',
+        mode: 'columns',            // 'columns' (one row per key) | 'rows' (per record)
+        query: '',
+        result: null,               // KeyCompare.compare() output
+        cols: null,                 // KeyCompare.columns(result)
+        counts: null,               // { columns: {...}, rows: {...} } per filter
+        key: null,                  // what result was computed from
+        view: [],                   // items currently listed
+        drawn: null,                // { from, to, view } last painted slice
+        records: null,              // { left, right } record counts for a root array
+        error: null,
+        ms: 0
+      };
+
+      function kcSideLabel(side) {
+        try { return branchTitle(activeBranches[side]) || (side === 'left' ? 'Left' : 'Right'); }
+        catch (e) { return side === 'left' ? 'Left' : 'Right'; }
+      }
+
+      /** (Re)compute when the documents or the comparison settings changed. */
+      function kcCompute() {
+        kcState.error = null;
+        const pair = getDocumentPair();
+        if (!pair) {
+          kcState.result = null;
+          kcState.error = 'Only part of this collection is on screen and the complete copy was lost. Reload the panel first.';
+          return;
+        }
+        const tol = numToleranceActive();
+        const k = kcState.key;
+        if (kcState.result && k && k.left === pair.left && k.right === pair.right &&
+            k.gen === _ignoreGen && k.tol === tol) return;
+
+        let L, R;
+        try { L = JSON.parse(pair.left); }
+        catch (e) { kcState.result = null; kcState.error = 'The left panel is not valid JSON. Use Format ▾ → Fix JSON, then reopen.'; return; }
+        try { R = JSON.parse(pair.right); }
+        catch (e) { kcState.result = null; kcState.error = 'The right panel is not valid JSON. Use Format ▾ → Fix JSON, then reopen.'; return; }
+
+        const t0 = performance.now();
+        const res = window.KeyCompare.compare(L, R, {
+          ignore: ignorePredicate, numTol: tol, matchArray: window.JSONAlign.matchArray
+        });
+        kcState.result = res;
+        kcState.cols = window.KeyCompare.columns(res);
+        kcState.counts = {
+          columns: window.KeyCompare.counts(kcState.cols, true),
+          rows: window.KeyCompare.counts(res.rows, false)
+        };
+        kcState.records = res.rootArray ? { left: L.length, right: R.length } : null;
+        kcState.key = { left: pair.left, right: pair.right, gen: _ignoreGen, tol };
+        kcState.ms = performance.now() - t0;
+        kcState.drawn = null;
+      }
+
+      function kcApplyFilter() {
+        const isCol = kcState.mode === 'columns';
+        const items = isCol ? kcState.cols : kcState.result.rows;
+        const q = kcState.query.trim().toLowerCase();
+        kcState.view = (kcState.filter === 'all' && !q)
+          ? items
+          : items.filter(it => window.KeyCompare.matches(it, kcState.filter, q, isCol));
+        kcState.drawn = null;
+      }
+
+      function renderKeyCompare() {
+        const modal = document.getElementById('kc-modal');
+        if (!modal || modal.style.display === 'none') return;
+        const empty = document.getElementById('kc-empty');
+        const scroll = document.getElementById('kc-scroll');
+        const header = document.getElementById('kc-header');
+
+        document.querySelectorAll('#kc-modal .kc-seg').forEach(b =>
+          b.setAttribute('aria-pressed', String(b.dataset.kcMode === kcState.mode)));
+
+        if (!kcState.result) {
+          document.getElementById('kc-summary').textContent = '';
+          document.getElementById('kc-filters').innerHTML = '';
+          document.getElementById('kc-count').textContent = '';
+          document.getElementById('kc-foot').textContent = '';
+          header.innerHTML = '';
+          scroll.style.display = 'none';
+          empty.style.display = '';
+          empty.textContent = kcState.error || 'Add JSON to both panels to compare keys.';
+          return;
+        }
+
+        const isCol = kcState.mode === 'columns';
+        const c = kcState.counts.columns;
+        const rec = kcState.records;
+        const recBit = rec && (rec.left > 1 || rec.right > 1)
+          ? ` across ${fmtNum(rec.left)} / ${fmtNum(rec.right)} records` : '';
+        document.getElementById('kc-summary').innerHTML =
+          `<strong>${fmtNum(c.all)}</strong> keys${recBit} · `
+          + `<span class="kc-t-equal">${fmtNum(c.valuesMatch)} match</span> · `
+          + `<span class="kc-t-changed">${fmtNum(c.valueDiff)} different</span> · `
+          + `<span class="kc-t-left">${fmtNum(c.leftOnly)} only in ${escapeHtml(kcSideLabel('left'))}</span> · `
+          + `<span class="kc-t-right">${fmtNum(c.rightOnly)} only in ${escapeHtml(kcSideLabel('right'))}</span>`;
+
+        // Filter chips, counted for the current grouping.
+        const counts = isCol ? kcState.counts.columns : kcState.counts.rows;
+        document.getElementById('kc-filters').innerHTML = window.KeyCompare.FILTERS
+          .filter(f => f.key !== 'ignored' || counts.ignored)
+          .map(f => {
+            const label = f.key === 'leftOnly' ? `Only in ${kcSideLabel('left')}`
+              : f.key === 'rightOnly' ? `Only in ${kcSideLabel('right')}` : f.label;
+            return `<button class="kc-chip kc-f-${f.key}" data-kc-filter="${f.key}" role="tab"
+                aria-selected="${f.key === kcState.filter}" title="${escapeHtml(f.hint)}">
+                ${escapeHtml(label)} <span class="kc-chip-n">${fmtNum(counts[f.key])}</span></button>`;
+          }).join('');
+
+        header.innerHTML = `<span>Status</span><span>${isCol ? 'Key' : 'Path'}</span>`
+          + `<span class="kc-h-left">◀ ${escapeHtml(kcSideLabel('left'))}</span>`
+          + `<span class="kc-h-right">${escapeHtml(kcSideLabel('right'))} ▶</span>`;
+
+        const n = kcState.view.length;
+        const total = isCol ? kcState.cols.length : kcState.result.rows.length;
+        document.getElementById('kc-count').textContent =
+          `${fmtNum(n)} of ${fmtNum(total)} ${isCol ? 'keys' : 'rows'}`;
+        document.getElementById('kc-export-csv').disabled = !n;
+        document.getElementById('kc-export-json').disabled = !n;
+
+        const foot = [`Values are compared after parsing — whitespace, indentation and key order never count.`];
+        if (ignorePatterns.length) foot.push(`Ignoring ${ignorePatterns.map(p => `<code>${escapeHtml(p)}</code>`).join(', ')}.`);
+        if (numToleranceActive() != null) foot.push(`Numbers within ±${numToleranceActive()} count as equal.`);
+        if (kcState.result.truncated) foot.push('<strong>Stopped at 2,000,000 rows</strong> — narrow the documents to see the rest.');
+        foot.push('Click a row to show it in the editors.');
+        document.getElementById('kc-foot').innerHTML = foot.join(' ');
+
+        if (!n) {
+          scroll.style.display = 'none';
+          empty.style.display = '';
+          empty.textContent = kcState.query ? 'Nothing matches that search.' : 'Nothing in this category.';
+          return;
+        }
+        empty.style.display = 'none';
+        scroll.style.display = '';
+        kcRenderRows();
+      }
+
+      // Paint only the rows in view: a 2,000 × 158 collection is 316k rows.
+      function kcRenderRows() {
+        const scroll = document.getElementById('kc-scroll');
+        const host = document.getElementById('kc-rows');
+        const n = kcState.view.length;
+        host.style.height = (n * KC_ROW_H) + 'px';
+        const top = scroll.scrollTop, h = scroll.clientHeight || 480;
+        const from = Math.max(0, Math.floor(top / KC_ROW_H) - KC_OVERSCAN);
+        const to = Math.min(n, Math.ceil((top + h) / KC_ROW_H) + KC_OVERSCAN);
+        const d = kcState.drawn;
+        if (d && d.from === from && d.to === to && d.view === kcState.view) return;
+        let html = '';
+        for (let i = from; i < to; i++) html += kcRowHtml(kcState.view[i], i);
+        host.innerHTML = html;
+        kcState.drawn = { from, to, view: kcState.view };
+      }
+
+      const KC_BADGE = {
+        equal: 'Match', changed: 'Different', leftOnly: 'Only left',
+        rightOnly: 'Only right', ignored: 'Ignored', mixed: 'Partial'
+      };
+
+      function kcRowHtml(it, i) {
+        const isCol = kcState.mode === 'columns';
+        const row = isCol ? it.first : it;
+        const name = isCol ? it.label : it.path;
+        const KC = window.KeyCompare;
+        // Cells are coloured by what happened to THIS value; the badge by what
+        // happened to the key overall (a column can differ in some records).
+        const cls = { equal: ['', ''], changed: ['kc-del', 'kc-add'], leftOnly: ['kc-del', 'kc-gap'],
+                      rightOnly: ['kc-gap', 'kc-add'], ignored: ['kc-ign', 'kc-ign'] }[row.status] || ['', ''];
+        const cell = (v, c) => v === undefined
+          ? `<span class="kc-cell ${c}"><span class="kc-missing">missing</span></span>`
+          : `<span class="kc-cell ${c}" title="${escapeHtml(KC.preview(v, 2000))}">${escapeHtml(KC.preview(v, 300))}</span>`;
+
+        let sub = '';
+        if (isCol && it.n > 1) {
+          if (it.status === 'changed') sub = `${fmtNum(it.changed)} of ${fmtNum(it.n)} differ`;
+          else if (it.status === 'mixed') {
+            const bits = [];
+            if (it.equal + it.changed) bits.push(`${fmtNum(it.equal + it.changed)} both`);
+            if (it.leftOnly) bits.push(`${fmtNum(it.leftOnly)} left`);
+            if (it.rightOnly) bits.push(`${fmtNum(it.rightOnly)} right`);
+            sub = bits.join(' · ');
+          } else sub = `${fmtNum(it.n)} records`;
+        }
+        const note = KC.noteText(row);
+        return `<div class="kc-row kc-s-${it.status}" data-i="${i}" style="top:${i * KC_ROW_H}px"
+                     title="Show in the editors">
+            <span class="kc-status"><span class="kc-badge kc-b-${it.status}">${KC_BADGE[it.status]}</span>${
+              sub ? `<span class="kc-sub">${sub}</span>` : ''}</span>
+            <span class="kc-path" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+            ${cell(row.left, cls[0])}
+            ${cell(row.right, cls[1])}${note ? `<span class="kc-note">${escapeHtml(note)}</span>` : ''}
+          </div>`;
+      }
+
+      function openKeyCompare() {
+        const modal = document.getElementById('kc-modal');
+        closeMenus(null);
+        modal.style.display = 'flex';
+        const empty = document.getElementById('kc-empty');
+        // A large pair takes a moment; let the dialog paint first.
+        if (!kcState.result) {
+          document.getElementById('kc-scroll').style.display = 'none';
+          empty.style.display = '';
+          empty.textContent = 'Comparing keys…';
+        }
+        setTimeout(() => {
+          kcCompute();
+          if (kcState.result) kcApplyFilter();
+          renderKeyCompare();
+          document.getElementById('kc-search').focus();
+        }, 16);
+      }
+
+      function closeKeyCompare() {
+        document.getElementById('kc-modal').style.display = 'none';
+      }
+
+      // Called after every comparison update: keep an open table current.
+      function refreshKeyCompareIfOpen() {
+        const modal = document.getElementById('kc-modal');
+        if (!modal || modal.style.display === 'none') return;
+        const before = kcState.result;
+        kcCompute();
+        if (kcState.result !== before) {
+          if (kcState.result) kcApplyFilter();
+          renderKeyCompare();
+        }
+      }
+
+      function kcExport(kind) {
+        const isCol = kcState.mode === 'columns';
+        const items = kcState.view;
+        if (!items.length) return;
+        const f = window.KeyCompare.FILTERS.find(x => x.key === kcState.filter);
+        const safe = (s) => String(s).replace(/[^\w.-]+/g, '_');
+        const labels = { left: safe(kcSideLabel('left')), right: safe(kcSideLabel('right')) };
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const slug = kcState.filter.replace(/[A-Z]/g, ch => '-' + ch.toLowerCase());
+        const name = `json-compare-keys-${slug}-${stamp}.${kind}`;
+        let text, type;
+        if (kind === 'csv') {
+          text = window.KeyCompare.toCSV(items, isCol, labels);
+          type = 'text/csv;charset=utf-8';
+        } else {
+          text = window.KeyCompare.toJSON(items, isCol, {
+            generated: new Date().toISOString(),
+            left: kcSideLabel('left'), right: kcSideLabel('right'),
+            filter: f ? f.label : kcState.filter,
+            search: kcState.query || undefined,
+            grouping: isCol ? 'by key' : 'per record',
+            summary: kcState.counts[isCol ? 'columns' : 'rows'],
+            ignorePatterns: ignorePatterns.length ? ignorePatterns : undefined,
+            numericTolerance: numToleranceActive() == null ? undefined : numToleranceActive()
+          });
+          type = 'application/json';
+        }
+        const url = URL.createObjectURL(new Blob([text], { type }));
+        const a = document.createElement('a');
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showNotice('ok', `Exported ${fmtNum(items.length)} ${isCol ? 'keys' : 'rows'} (${f ? f.label : 'All'}) to ${name}`,
+          { timeout: 4000, key: 'kc-export' });
+      }
+
+      /**
+       * Close the table and put the key under the cursor in both panes. A root
+       * array goes to the record first (paging a windowed collection), then
+       * walks the path's keys down the pretty-printed text at the indentation
+       * each level must have.
+       */
+      function revealKeyPath(row, paged) {
+        const res = kcState.result;
+        if (!res || !mergeView) return;
+        const segs = window.KeyCompare.parsePath(row.path);
+        const onRight = row.status === 'rightOnly';
+        const view = onRight ? mergeView.b : mergeView.a;
+        let start = 1, rest = segs;
+        if (res.rootArray && typeof segs[0] === 'number' && diffModel && diffModel.path == null) {
+          const idx = onRight ? row.ri : row.li;
+          const p = diffModel.items.findIndex(x => (onRight ? x.b : x.a) === idx);
+          if (p >= 0) {
+            if (!paged && diffStats && (p < diffStats.from || p >= diffStats.to)) {
+              revealRecord(p);
+              setTimeout(() => revealKeyPath(row, true), 260);
+              return;
+            }
+            const il = diffStats && diffStats.itemLines;
+            const k = il && il.lines ? p - il.from : -1;
+            if (k >= 0 && k < il.lines.length) { start = il.offset + il.lines[k] + 1; rest = segs.slice(1); }
+          }
+        }
+        const line = findKeyLine(view.state.doc, start, rest);
+        if (!line || !scrollPanesToLine(line)) {
+          showNotice('info', `Could not place ${row.path} in the editor text — it may be minified or windowed out.`,
+            { timeout: 5000, key: 'kc-reveal' });
+        }
+      }
+
+      // Line of `segs` (object keys; array indices are passed over) below the
+      // container that starts on line `start`. Each key must sit exactly one
+      // level deeper than its container, so a same-named key in a nested
+      // object is never mistaken for it. Blank lines are alignment gaps.
+      function findKeyLine(doc, start, segs) {
+        if (start < 1 || start > doc.lines) return 0;
+        let lineNo = start;
+        const indentOf = (t) => t.length - t.trimStart().length;
+        let indent = indentOf(doc.line(start).text);
+        for (const s of segs) {
+          if (typeof s !== 'string' || s === '*') continue;
+          const needle = JSON.stringify(s) + ':';
+          let child = -1, found = 0;
+          for (let n = lineNo + 1; n <= doc.lines; n++) {
+            const text = doc.line(n).text;
+            const t = text.trimStart();
+            if (!t) continue;
+            const ind = text.length - t.length;
+            if (ind <= indent) break;                 // left the container
+            if (child < 0) child = ind;
+            if (ind === child && t.startsWith(needle)) { found = n; indent = ind; break; }
+          }
+          if (!found) return 0;
+          lineNo = found;
+        }
+        return lineNo;
+      }
+
+      function initKeyCompare() {
+        const btn = document.getElementById('btn-key-compare');
+        const modal = document.getElementById('kc-modal');
+        if (!btn || !modal || !window.KeyCompare) return;
+        btn.addEventListener('click', openKeyCompare);
+        document.getElementById('kc-close').addEventListener('click', closeKeyCompare);
+        modal.querySelector('[data-kc-dismiss]').addEventListener('click', closeKeyCompare);
+        modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeKeyCompare(); });
+
+        document.getElementById('kc-filters').addEventListener('click', (e) => {
+          const chip = e.target.closest('[data-kc-filter]');
+          if (!chip || !kcState.result) return;
+          kcState.filter = chip.dataset.kcFilter;
+          document.getElementById('kc-scroll').scrollTop = 0;
+          kcApplyFilter();
+          renderKeyCompare();
+        });
+        modal.querySelectorAll('.kc-seg').forEach(b => b.addEventListener('click', () => {
+          if (!kcState.result || kcState.mode === b.dataset.kcMode) return;
+          kcState.mode = b.dataset.kcMode;
+          document.getElementById('kc-scroll').scrollTop = 0;
+          kcApplyFilter();
+          renderKeyCompare();
+        }));
+        let searchTimer = null;
+        document.getElementById('kc-search').addEventListener('input', (e) => {
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => {
+            kcState.query = e.target.value || '';
+            if (!kcState.result) return;
+            document.getElementById('kc-scroll').scrollTop = 0;
+            kcApplyFilter();
+            renderKeyCompare();
+          }, 120);
+        });
+        let raf = 0;
+        document.getElementById('kc-scroll').addEventListener('scroll', () => {
+          if (raf) return;
+          raf = requestAnimationFrame(() => { raf = 0; kcRenderRows(); });
+        });
+        document.getElementById('kc-rows').addEventListener('click', (e) => {
+          const el = e.target.closest('.kc-row');
+          if (!el) return;
+          const it = kcState.view[parseInt(el.dataset.i, 10)];
+          if (!it) return;
+          closeKeyCompare();
+          revealKeyPath(kcState.mode === 'columns' ? it.first : it);
+        });
+        document.getElementById('kc-export-csv').addEventListener('click', () => kcExport('csv'));
+        document.getElementById('kc-export-json').addEventListener('click', () => kcExport('json'));
       }
 
       // Count diff chunks, skipping any whose changed lines lie entirely within
@@ -7033,7 +8234,7 @@
         if (!btnClearAll) return;
 
         const hasContent = !docIsBlank(mergeView.a.state.doc) || !docIsBlank(mergeView.b.state.doc);
-        btnClearAll.style.display = hasContent ? "inline-block" : "none";
+        btnClearAll.style.display = hasContent ? "" : "none";
       }
 
       // Initialize when DOM is ready

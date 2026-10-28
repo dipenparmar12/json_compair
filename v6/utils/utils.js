@@ -288,9 +288,12 @@
       // Panel names for UX (deprecated, replaced by branches)
       leftPanelName: "",    // Name/ID for left panel
       rightPanelName: "",   // Name/ID for right panel
-      // Branch settings - track active branch per panel
-      leftBranch: "main",   // Active branch ID for left panel
-      rightBranch: "main",  // Active branch ID for right panel
+      // Branch settings - track active branch per panel. These were "main", an
+      // id that stopped existing when branches became per-panel, so a fresh
+      // profile started with no branch selected at all.
+      leftBranch: "main-left",   // Active branch ID for left panel
+      rightBranch: "main-right", // Active branch ID for right panel
+      branchTabs: true,          // Branch tabs under each panel (false = compact dropdown)
     },
 
     loadAll: function () {

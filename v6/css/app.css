@@ -478,167 +478,72 @@ ins {
     background: #f5f5f5;
 }
 
-/* CSV conversion button */
-.csv-convert-btn {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    z-index: 100;
-    font-size: 11px;
-    padding: 4px 8px;
-    background: white;
-    border: 1px solid #007bff;
-    border-radius: 3px;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.2s;
-    pointer-events: none;
-}
-
-/* Show CSV button only on panel hover when content is CSV */
-.cm-mergeViewEditor:hover .csv-convert-btn.visible {
-    opacity: 0.85;
-    pointer-events: auto;
-}
-
-.cm-mergeViewEditor:hover .csv-convert-btn.visible:hover {
-    opacity: 1;
-    background: #e7f3ff;
-}
-
-/* JSON→CSV conversion button */
-.json-convert-btn {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    z-index: 100;
-    font-size: 11px;
-    padding: 4px 8px;
-    background: white;
-    border: 1px solid #28a745;
-    border-radius: 3px;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.2s;
-    pointer-events: none;
-}
-
-/* Show JSON→CSV button only on panel hover when convertible */
-.cm-mergeViewEditor:hover .json-convert-btn.visible {
-    opacity: 0.85;
-    pointer-events: auto;
-}
-
-.cm-mergeViewEditor:hover .json-convert-btn.visible:hover {
-    opacity: 1;
-    background: #e6f4ea;
-}
-
-/* Export dropdown container */
-.export-dropdown-container {
-    position: absolute;
-    bottom: 10px;
-    left: 110px;
-    z-index: 100;
-    opacity: 0;
-    transition: opacity 0.2s;
-    pointer-events: none;
-}
-
-/* Show export dropdown only on panel hover when content exists */
-.cm-mergeViewEditor:hover .export-dropdown-container.visible {
-    opacity: 0.85;
-    pointer-events: auto;
-}
-
-.cm-mergeViewEditor:hover .export-dropdown-container.visible:hover {
-    opacity: 1;
-}
-
+/* Per-pane file actions: CSV→JSON / JSON→CSV / Export.
+   They live in the bar under each editor (see "Panel titles & branch tabs"
+   at the end of this file), which decides where they sit and when they show.
+   Built on the theme tokens, so one rule set serves light and dark. */
+.csv-convert-btn,
+.json-convert-btn,
 .export-dropdown-btn {
-    font-size: 11px;
-    padding: 4px 8px;
-    background: white;
-    border: 1px solid #6c757d;
-    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 9px;
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--text-muted);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.2s;
+    white-space: nowrap;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
+.csv-convert-btn:hover,
+.json-convert-btn:hover,
 .export-dropdown-btn:hover {
-    background: #f8f9fa;
-    border-color: #495057;
+    color: var(--text);
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+}
+
+.export-dropdown-container {
+    position: relative;
 }
 
 .export-dropdown-menu {
     position: absolute;
-    bottom: 100%;
-    left: 0;
-    margin-bottom: 4px;
-    min-width: 140px;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-    overflow: hidden;
+    bottom: calc(100% + 6px);
+    right: 0;
+    min-width: 160px;
+    padding: 4px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
 }
 
 .export-dropdown-item {
     display: block;
     width: 100%;
-    padding: 8px 12px;
-    font-size: 11px;
+    padding: 7px 10px;
+    font-family: var(--font-ui);
+    font-size: 12px;
     text-align: left;
-    background: white;
-    border: none;
-    border-bottom: 1px solid #eee;
+    color: var(--text);
+    background: none;
+    border: 0;
+    border-radius: 5px;
     cursor: pointer;
-    transition: background 0.15s;
-}
-
-.export-dropdown-item:last-child {
-    border-bottom: none;
 }
 
 .export-dropdown-item:hover {
-    background: #f8f9fa;
-}
-
-/* Dark theme support for conversion buttons */
-.cm-theme-dark .csv-convert-btn,
-.cm-theme-dark .json-convert-btn {
-    background: #2d2d2d;
-    color: #ccc;
-}
-
-.cm-theme-dark .cm-mergeViewEditor:hover .csv-convert-btn.visible:hover,
-.cm-theme-dark .cm-mergeViewEditor:hover .json-convert-btn.visible:hover {
-    background: #3d3d3d;
-}
-
-.cm-theme-dark .export-dropdown-btn {
-    background: #2d2d2d;
-    color: #ccc;
-    border-color: #555;
-}
-
-.cm-theme-dark .export-dropdown-btn:hover {
-    background: #3d3d3d;
-}
-
-.cm-theme-dark .export-dropdown-menu {
-    background: #2d2d2d;
-    border-color: #444;
-}
-
-.cm-theme-dark .export-dropdown-item {
-    background: #2d2d2d;
-    color: #ccc;
-    border-bottom-color: #444;
-}
-
-.cm-theme-dark .export-dropdown-item:hover {
-    background: #3d3d3d;
+    background: var(--bg-hover);
+    border: 0;
 }
 
 /* Dark theme — Copy / Paste / Clear hover buttons */
@@ -652,30 +557,6 @@ ins {
     background: #3d3d3d;
     color: #eee;
     border-color: #777;
-}
-
-/* Dark theme — Save branch button */
-.cm-theme-dark .branch-save-btn {
-    background: #2d2d2d;
-    color: #ccc;
-    border-color: #555;
-}
-
-.cm-theme-dark .branch-save-btn:hover {
-    background: #1e3a2f;
-    border-color: #08c988;
-}
-
-/* Dark theme — New Empty Branch quick button */
-.cm-theme-dark .branch-new-quick-btn {
-    background: #2d2d2d;
-    color: #ccc;
-    border-color: #555;
-}
-
-.cm-theme-dark .branch-new-quick-btn:hover {
-    background: #1e3a2f;
-    border-color: #08c988;
 }
 
 .pane-wrapper {
@@ -695,7 +576,7 @@ ins {
     padding: 12px;
     min-width: 260px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-    z-index: 1000;
+    z-index: 1210;
     margin-top: 4px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     max-height: calc(100vh - 100px);
@@ -1127,434 +1008,8 @@ select.toggle-button {
     }
 }
 
-/* ============================================================
-   BRANCH SELECTOR STYLES
-   Git-like branch switching for JSON Compare panels
-   ============================================================ */
-
-.branch-selector-container {
-    position: absolute;
-    bottom: 8px;
-    right: 10px;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    opacity: 0.7;  /* Always visible by default */
-    transition: opacity 0.2s;
-    pointer-events: auto;  /* Always clickable */
-}
-
-/* Brighten on panel hover */
-.cm-mergeViewEditor:hover .branch-selector-container {
-    opacity: 1;
-}
-
-/* Both panels keep branch selector on the RIGHT side */
-.branch-selector-left,
-.branch-selector-right {
-    right: 20px;
-    left: auto;
-}
-
-/* Save button (positioned to the left of dropdown button, hidden by default) */
-.branch-save-btn {
-    display: none;  /* Hidden until changes detected */
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 26px;
-    font-size: 14px;
-    background: rgba(248, 249, 250, 0.95);
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.branch-save-btn:hover {
-    background: #e8f5e9;
-    border-color: #08c988;
-    transform: scale(1.05);
-}
-
-.branch-save-btn:active {
-    transform: scale(0.98);
-}
-
-/* Quick "New Empty Branch" button — always visible next to the dropdown */
-.branch-new-quick-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    font-size: 13px;
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
-
-.branch-new-quick-btn:hover {
-    background: #e8f5e9;
-    border-color: #08c988;
-    transform: scale(1.05);
-}
-
-.branch-new-quick-btn:active {
-    transform: scale(0.98);
-}
-
-.branch-modified-indicator {
-    color: #f0ad4e;
-    font-size: 10px;
-    margin-right: 2px;
-    animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
-}
-
-.branch-selector-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    font-size: 11px;
-    font-weight: 500;
-    color: #555;
-    background: rgba(248, 249, 250, 0.95);
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-}
-
-.branch-selector-btn:hover {
-    background: rgba(255, 255, 255, 0.98);
-    border-color: #08c988;
-    color: #333;
-}
-
-.branch-selector-btn:active {
-    transform: scale(0.98);
-}
-
-.branch-icon {
-    font-size: 12px;
-}
-
-.branch-arrow {
-    font-size: 8px;
-    opacity: 0.6;
-    margin-left: 2px;
-}
-
-.branch-dropdown {
-    position: absolute;
-    bottom: 100%;
-    right: 0;
-    margin-bottom: 4px;
-    min-width: 200px;
-    max-width: 280px;
-    max-height: 350px;
-    overflow-y: auto;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-    z-index: 1001;
-    opacity: 1;
-    pointer-events: auto;
-    transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-/* Both dropdowns open upward from the right */
-.branch-dropdown-left,
-.branch-dropdown-right {
-    right: 0;
-    left: auto;
-}
-
-.branch-dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    font-size: 12px;
-    color: #333;
-    cursor: pointer;
-    transition: background 0.15s;
-    position: relative;
-}
-
-.branch-dropdown-item:hover {
-    background-color: #f5f5f5;
-}
-
-.branch-dropdown-item.active {
-    background-color: #e8f5e9;
-    font-weight: 500;
-}
-
-.branch-dropdown-item.active::before {
-    content: '✓';
-    color: #08c988;
-    font-weight: bold;
-    margin-right: 4px;
-}
-
-.branch-dropdown-item.branch-info {
-    cursor: default;
-    font-size: 11px;
-    color: #666;
-    padding: 6px 12px 4px;
-}
-
-.branch-dropdown-item.branch-info:hover {
-    background-color: transparent;
-}
-
-.branch-item-actions {
-    margin-left: auto;
-    display: flex;
-    gap: 8px;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-.branch-item-row:hover .branch-item-actions {
-    opacity: 1;
-}
-
-.branch-action-icon {
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.branch-action-icon:hover {
-    opacity: 0.8;
-}
-
-.branch-action-icon.branch-action-delete:hover {
-    color: #e74c3c;
-}
-
-.branch-dropdown-item:last-child {
-    border-bottom: none;
-}
-
-.branch-dropdown-item:hover {
-    background: #f8f9fa;
-}
-
-.branch-dropdown-item.active {
-    background: #e8f5e9;
-    color: #08c988;
-    font-weight: 600;
-}
-
-.branch-dropdown-item.active::before {
-    content: '✓';
-    margin-right: 4px;
-    font-size: 10px;
-}
-
-.branch-item-icon {
-    font-size: 12px;
-    opacity: 0.7;
-}
-
-.branch-dropdown-divider {
-    height: 1px;
-    background: #e0e0e0;
-    margin: 4px 0;
-}
-
-.branch-dropdown-item.branch-action {
-    color: #666;
-    font-size: 11px;
-}
-
-.branch-dropdown-item.branch-action:hover {
-    background: #f0f8ff;
-}
-
-.branch-dropdown-item.branch-delete {
-    color: #dc3545;
-}
-
-.branch-dropdown-item.branch-delete:hover {
-    background: #fff5f5;
-}
-
-/* Branch item row with inline icons */
-.branch-item-row {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    gap: 8px;
-}
-
-.branch-item-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.branch-item-actions {
-    display: flex;
-    gap: 2px;
-    opacity: 0;
-    transition: opacity 0.15s;
-}
-
-.branch-dropdown-item:hover .branch-item-actions {
-    opacity: 1;
-}
-
-.branch-action-icon {
-    padding: 2px 4px;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-    opacity: 0.7;
-    transition: all 0.15s;
-}
-
-.branch-action-icon:hover {
-    opacity: 1;
-    background: rgba(0, 0, 0, 0.1);
-}
-
-/* Section headers in dropdown */
-.branch-dropdown-section-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    font-size: 10px;
-    font-weight: 600;
-    color: #08c988;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    background: linear-gradient(to right, #f8fdf9, transparent);
-    border-bottom: 1px solid #e8f5e9;
-}
-
-.branch-dropdown-section-header.branch-section-other {
-    color: #999;
-    background: linear-gradient(to right, #fafafa, transparent);
-    border-bottom: 1px solid #eee;
-}
-
-.branch-dropdown-section-header .section-icon {
-    font-size: 12px;
-}
-
-/* Branches from other panel */
-.branch-dropdown-item.branch-from-other {
-    opacity: 0.75;
-    font-style: italic;
-}
-
-.branch-dropdown-item.branch-from-other:hover {
-    opacity: 1;
-    background: #f8f9fa;
-}
-
-/* Branch info footer */
-.branch-dropdown-item.branch-info {
-    cursor: default;
-    font-size: 10px;
-    color: #888;
-    padding: 6px 12px;
-    border-top: 1px solid #eee;
-    margin-top: 4px;
-    background: #fafafa;
-}
-
-.branch-action-icon.rename-icon:hover {
-    background: #e3f2fd;
-}
-
-.branch-action-icon.delete-icon:hover {
-    background: #ffebee;
-    color: #dc3545;
-}
-
-/* Dark theme support for branch selector */
-.cm-editor[style*="background-color: rgb(30"] .branch-selector-btn,
-.cm-theme-dark .branch-selector-btn {
-    background: rgba(50, 50, 50, 0.95);
-    color: #aaa;
-    border-color: #555;
-}
-
-.cm-theme-dark .branch-selector-btn:hover {
-    background: rgba(60, 60, 60, 0.98);
-    border-color: #08c988;
-    color: #ccc;
-}
-
-.cm-theme-dark .branch-dropdown {
-    background: #2d2d2d;
-    border-color: #444;
-}
-
-.cm-theme-dark .branch-dropdown-item {
-    color: #ccc;
-    border-bottom-color: #3a3a3a;
-}
-
-.cm-theme-dark .branch-dropdown-item:hover {
-    background: #3a3a3a;
-}
-
-.cm-theme-dark .branch-dropdown-item.active {
-    background: #1e3a2f;
-    color: #08c988;
-}
-
-.cm-theme-dark .branch-action-icon:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.cm-theme-dark .branch-action-icon.rename-icon:hover {
-    background: #1e3a5f;
-}
-
-.cm-theme-dark .branch-action-icon.delete-icon:hover {
-    background: #3a1e1e;
-}
-
-.cm-theme-dark .branch-dropdown-divider {
-    background: #444;
-}
-
-/* Responsive - smaller on mobile */
-@media (max-width: 768px) {
-    .branch-selector-btn {
-        padding: 3px 8px;
-        font-size: 10px;
-    }
-    
-    .branch-dropdown {
-        min-width: 150px;
-    }
-    
-    .branch-dropdown-item {
-        padding: 6px 10px;
-        font-size: 11px;
-    }
-}
+/* Branch selector, tabs and branch list: see "Panel titles & branch tabs"
+   at the end of this file. */
 
 /* ===== Drop Overlay for Snapshot Import ===== */
 #drop-overlay {
@@ -1853,7 +1308,7 @@ button:disabled,
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow);
     padding: var(--space-2);
-    z-index: 1000;
+    z-index: 1210;   /* above the floating Details panel (1200), under modals */
     font-family: var(--font-ui);
 }
 
@@ -2797,7 +2252,7 @@ button:disabled,
 .repair-modal {
     position: fixed;
     inset: 0;
-    z-index: 1200;
+    z-index: 1260;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3039,4 +2494,1136 @@ button:disabled,
 @media (max-width: 720px) {
     .pane-chips { grid-template-columns: 1fr; }
     .repair-modal-body { max-height: 90vh; }
+}
+
+/* ==========================================================================
+   Panel titles & branch tabs
+   The panel title (chip) and each branch tab show the same name — the active
+   branch's — and both edit it in place. Tabs live in a real bar under each
+   editor rather than floating over the last lines of code; hiding them
+   (the eye) collapses the bar back to floating controls with a dropdown.
+
+   Everything here is paint-only: no rule depends on document size, and the
+   JS behind it never touches the diff, so it costs nothing on large data.
+   ========================================================================== */
+
+:root {
+    --branch-unsaved: #d98e04;
+    --branch-unsaved-halo: rgba(217, 142, 4, 0.18);
+    --branch-danger: #cf222e;
+    --branch-danger-soft: rgba(207, 34, 46, 0.12);
+}
+[data-theme="dark"] {
+    --branch-unsaved: #f0b43c;
+    --branch-unsaved-halo: rgba(240, 180, 60, 0.2);
+    --branch-danger: #ff8b8b;
+    --branch-danger-soft: rgba(255, 120, 120, 0.14);
+}
+
+/* --- panel title in the chip -------------------------------------------- */
+.pane-chip-title {
+    position: relative;
+    flex: 0 1 auto;
+    min-width: 2ch;
+    max-width: 45%;
+    margin: 0 -4px;
+    padding: 1px 16px 1px 5px;          /* right: room for the pencil */
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+/* Pencil: says "you can rename this" without a label. */
+.pane-chip-title::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    width: 10px;
+    height: 10px;
+    margin-top: -5px;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M11.1 1.9a1.8 1.8 0 0 1 2.6 0l.4.4a1.8 1.8 0 0 1 0 2.6L5.4 13.6 1.5 14.5l.9-3.9z'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M11.1 1.9a1.8 1.8 0 0 1 2.6 0l.4.4a1.8 1.8 0 0 1 0 2.6L5.4 13.6 1.5 14.5l.9-3.9z'/%3E%3C/svg%3E") center / contain no-repeat;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.pane-chip:hover .pane-chip-title::after { opacity: 0.35; }
+.pane-chip-title:hover::after,
+.pane-chip-title:focus-visible::after { opacity: 0.8; }
+.pane-chip-title:hover {
+    background: var(--bg);
+    border-color: var(--border-strong);
+}
+.pane-chip-title:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.pane-chip[data-state="fixable"] .pane-chip-title,
+.pane-chip[data-state="invalid"] .pane-chip-title { color: inherit; }
+.pane-chip-text::before {
+    content: '·';
+    margin-right: 6px;
+    opacity: 0.6;
+}
+
+/* --- the rename box (title, tab, branch list) --------------------------- */
+.inline-rename {
+    min-width: 6ch;
+    max-width: 100%;
+    height: 22px;
+    padding: 0 6px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: 5px;
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.inline-rename.pane-chip-title-input {
+    max-width: 45%;
+    margin: 0 -4px;
+    font-size: 12.5px;
+}
+.branch-tab .inline-rename { height: 20px; }
+
+/* --- the bar under each editor ------------------------------------------ */
+.cm-mergeViewEditor {
+    display: flex;
+    flex-direction: column;
+}
+.cm-mergeView .cm-mergeViewEditor > .cm-editor {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto !important;
+}
+
+.pane-footer {
+    position: relative;
+    z-index: 250;                 /* menus open upward, over the gutters (200) */
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    height: 32px;
+    padding: 0 6px 0 4px;
+    background: var(--bg-muted);
+    /* The top rule is a shadow, not a border: the active tab paints over it,
+       so it reads as the sheet the editor above belongs to. */
+    box-shadow: inset 0 1px 0 var(--border);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.branch-strip {
+    display: flex;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.pane-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+/* Icon buttons: branch list, new branch, show/hide tabs. */
+.pane-footer.is-tabs .branch-selector-btn,
+.branch-tab-add,
+.branch-tabs-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    color: var(--text-muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+.pane-footer.is-tabs .branch-selector-btn:hover,
+.pane-footer.is-tabs .branch-selector-btn[aria-expanded="true"],
+.branch-tab-add:hover,
+.branch-tabs-toggle:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+    border-color: transparent;
+}
+.branch-tab-add { margin-left: 2px; }
+.branch-tab-add:hover { color: var(--accent); }
+.branch-tabs-toggle[aria-pressed="false"] { color: var(--text-faint); }
+
+/* Hairline dividers: after the branch list, and before the eye (a view
+   control, not a file action). */
+.pane-footer.is-tabs .branch-selector-container::after {
+    content: '';
+    align-self: center;
+    width: 1px;
+    height: 16px;
+    margin: 0 4px 0 6px;
+    background: var(--border);
+}
+.pane-footer.is-tabs .branch-tabs-toggle { position: relative; margin-left: 5px; }
+.pane-footer.is-tabs .branch-tabs-toggle::before {
+    content: '';
+    position: absolute;
+    left: -7px;
+    top: 5px;
+    bottom: 5px;
+    width: 1px;
+    background: var(--border);
+}
+
+/* The pane's file actions: shown only when they apply. */
+.pane-footer .csv-convert-btn:not(.visible),
+.pane-footer .json-convert-btn:not(.visible),
+.pane-footer .export-dropdown-container:not(.visible) {
+    display: none;
+}
+
+/* Save — visible only while the active branch has unsaved changes; the dot
+   is the same one its tab shows. */
+.branch-save-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px 0 9px;
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--text);
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+.branch-save-btn::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--branch-unsaved);
+}
+.branch-save-btn[hidden] { display: none; }
+.branch-save-btn:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+.branch-save-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* --- tabs ----------------------------------------------------------------- */
+.branch-tabs {
+    position: relative;          /* each tab's offsetLeft is measured from here */
+    display: flex;
+    align-items: flex-start;
+    gap: 1px;
+    min-width: 0;
+    padding: 0 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;       /* wheel, arrows and the branch list scroll it */
+}
+.branch-tabs::-webkit-scrollbar { display: none; }
+.branch-tabs.fade-start {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 20px);
+            mask-image: linear-gradient(to right, transparent, #000 20px);
+}
+.branch-tabs.fade-end {
+    -webkit-mask-image: linear-gradient(to left, transparent, #000 20px);
+            mask-image: linear-gradient(to left, transparent, #000 20px);
+}
+.branch-tabs.fade-start.fade-end {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+            mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+}
+
+/* A sheet tab hanging from the editor. Same weight active or not, so tabs
+   never change width (and shove their neighbours) when you switch. */
+.branch-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+    height: 28px;
+    max-width: 220px;
+    padding: 0 5px 1px 11px;
+    border: 1px solid transparent;
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+    color: var(--text-muted);
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    transition: background-color 0.12s, color 0.12s;
+}
+.branch-tab.is-main { padding-right: 11px; }
+.branch-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+.branch-tab[aria-selected="true"] {
+    background: var(--bg);
+    border-color: var(--border);
+    color: var(--text);
+    box-shadow: 0 3px 6px -4px rgba(0, 0, 0, 0.25);
+}
+.branch-tab[aria-selected="true"]::after {
+    content: '';
+    position: absolute;
+    left: 11px;
+    right: 11px;
+    bottom: 3px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+/* Hairline dividers between resting tabs, dropped beside the hovered or
+   active one so it reads as a single shape. */
+.branch-tab + .branch-tab::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 8px;
+    bottom: 9px;
+    width: 1px;
+    background: var(--border);
+}
+.branch-tab:hover::before,
+.branch-tab:hover + .branch-tab::before,
+.branch-tab[aria-selected="true"]::before,
+.branch-tab[aria-selected="true"] + .branch-tab::before { opacity: 0; }
+.branch-tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -3px;
+}
+.branch-tab-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.branch-tab-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-faint);
+    opacity: 0.45;
+    transition: opacity 0.12s, background-color 0.12s, color 0.12s;
+}
+.branch-tab:hover .branch-tab-close,
+.branch-tab[aria-selected="true"] .branch-tab-close { opacity: 1; }
+.branch-tab-close:hover {
+    background: var(--branch-danger-soft);
+    color: var(--branch-danger);
+    border: 0;
+}
+
+/* Per-branch save state: saved = check, unsaved = amber dot (click saves),
+   saving = spinner. */
+.branch-tab-status {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+}
+.branch-tab-status::before { content: ''; display: block; }
+.branch-tab-status[data-state="saved"]::before {
+    width: 3.5px;
+    height: 7px;
+    margin-top: -2px;
+    border: solid var(--text-faint);
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+    opacity: 0.75;
+}
+.branch-tab[aria-selected="true"] .branch-tab-status[data-state="saved"]::before {
+    border-color: var(--accent);
+    opacity: 1;
+}
+.branch-tab-status[data-state="unsaved"] { cursor: pointer; }
+.branch-tab-status[data-state="unsaved"]::before {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--branch-unsaved);
+    box-shadow: 0 0 0 2.5px var(--branch-unsaved-halo);
+    transition: box-shadow 0.15s;
+}
+.branch-tab-status[data-state="unsaved"]:hover::before {
+    box-shadow: 0 0 0 4px var(--branch-unsaved-halo);
+}
+.branch-tab-status[data-state="saving"]::before {
+    width: 9px;
+    height: 9px;
+    border: 1.5px solid var(--accent);
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: branch-saving-spin 0.7s linear infinite;
+}
+@keyframes branch-saving-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .branch-tab-status[data-state="saving"]::before { animation: none; }
+}
+
+/* --- the branch button -------------------------------------------------- */
+/* Tabs on: an icon at the left end of the bar (every branch, plus move and
+   reset). Tabs off: a labelled dropdown naming the current branch. */
+.branch-selector-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+.branch-selector-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-ui);
+    white-space: nowrap;
+    cursor: pointer;
+}
+.branch-selector-btn .branch-icon { font-size: 12px; }
+.branch-selector-btn .branch-arrow { font-size: 9px; opacity: 0.6; }
+.branch-selector-name {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* In the dropdown button only problems are worth a mark — no check. */
+.branch-selector-btn .branch-tab-status[data-state="saved"] { display: none; }
+
+/* --- tabs hidden: floating controls over the editor --------------------- */
+.pane-footer.is-compact {
+    position: absolute;
+    left: 10px;
+    right: 20px;
+    bottom: 10px;
+    height: auto;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    pointer-events: none;           /* the gaps between buttons are editor */
+}
+.pane-footer.is-compact .branch-tabs { display: none; }
+.pane-footer.is-compact .branch-strip,
+.pane-footer.is-compact .pane-footer-actions {
+    align-items: center;
+    gap: 6px;
+}
+.pane-footer.is-compact .branch-strip > *,
+.pane-footer.is-compact .branch-save-btn,
+.pane-footer.is-compact .branch-tabs-toggle {
+    pointer-events: auto;
+}
+.pane-footer.is-compact .branch-selector-btn,
+.pane-footer.is-compact .branch-tab-add,
+.pane-footer.is-compact .branch-tabs-toggle,
+.pane-footer.is-compact .branch-save-btn,
+.pane-footer.is-compact .csv-convert-btn,
+.pane-footer.is-compact .json-convert-btn,
+.pane-footer.is-compact .export-dropdown-btn {
+    height: 26px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    box-shadow: var(--shadow-sm);
+}
+.pane-footer.is-compact .branch-tab-add,
+.pane-footer.is-compact .branch-tabs-toggle { width: 26px; }
+.pane-footer.is-compact .branch-selector-btn {
+    max-width: 260px;
+    padding: 0 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text);
+}
+.pane-footer.is-compact .branch-selector-btn:hover,
+.pane-footer.is-compact .branch-tab-add:hover,
+.pane-footer.is-compact .branch-tabs-toggle:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+.pane-footer.is-compact .branch-strip,
+.pane-footer.is-compact .branch-tabs-toggle {
+    opacity: 0.85;
+    transition: opacity 0.2s;
+}
+.cm-mergeViewEditor:hover .pane-footer.is-compact .branch-strip,
+.cm-mergeViewEditor:hover .pane-footer.is-compact .branch-tabs-toggle {
+    opacity: 1;
+}
+/* File actions stay out of the way until the pointer is over the panel, as
+   they always did when they floated over the code. */
+.pane-footer.is-compact .csv-convert-btn,
+.pane-footer.is-compact .json-convert-btn,
+.pane-footer.is-compact .export-dropdown-container {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+.cm-mergeViewEditor:hover .pane-footer.is-compact .csv-convert-btn,
+.cm-mergeViewEditor:hover .pane-footer.is-compact .json-convert-btn,
+.cm-mergeViewEditor:hover .pane-footer.is-compact .export-dropdown-container {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* --- branch list (the dropdown) ------------------------------------------ */
+.branch-dropdown {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    z-index: 1001;
+    min-width: 240px;
+    max-width: 300px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 4px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--text);
+}
+.branch-dropdown-section-header {
+    padding: 6px 8px 4px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.branch-dropdown-section-header .section-icon { display: none; }
+.branch-dropdown-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    color: var(--text);
+    cursor: pointer;
+}
+.branch-dropdown-item:hover { background: var(--bg-hover); }
+.branch-dropdown-item.active {
+    background: var(--accent-soft);
+    font-weight: 600;
+}
+.branch-dropdown-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+.branch-item-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.branch-item-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.branch-item-icon {
+    flex: 0 0 auto;
+    font-size: 12px;
+    opacity: 0.75;
+}
+.branch-item-actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+.branch-dropdown-item:hover .branch-item-actions,
+.branch-dropdown-item:focus-within .branch-item-actions { opacity: 1; }
+.branch-action-icon {
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 11px;
+    opacity: 0.75;
+    cursor: pointer;
+}
+.branch-action-icon:hover {
+    opacity: 1;
+    background: var(--border);
+}
+.branch-action-icon.branch-action-delete:hover { background: var(--branch-danger-soft); }
+.branch-dropdown-divider {
+    height: 1px;
+    margin: 4px 2px;
+    background: var(--border);
+}
+.branch-dropdown-item.branch-action { color: var(--text-muted); }
+.branch-dropdown-item.branch-action:hover { color: var(--text); }
+.branch-dropdown-item.branch-delete { color: var(--branch-danger); }
+.branch-dropdown-item.branch-info {
+    cursor: default;
+    padding: 4px 8px 2px;
+    font-size: 10.5px;
+    color: var(--text-faint);
+}
+.branch-dropdown-item.branch-info:hover { background: none; }
+
+/* --- delete confirmation ------------------------------------------------- */
+.confirm-pop {
+    position: fixed;
+    z-index: 3500;
+    width: max-content;
+    max-width: min(320px, calc(100vw - 16px));
+    padding: var(--space-3);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    color: var(--text);
+    animation: notice-in 120ms ease-out;
+}
+.confirm-pop-title {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+.confirm-pop-text {
+    margin-top: 4px;
+    color: var(--text-muted);
+}
+.confirm-pop-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+.confirm-pop-actions .btn { padding: 4px 12px; font-size: 12.5px; }
+.btn-danger {
+    color: #fff;
+    background: #cf222e;
+    border-color: #cf222e;
+}
+.btn-danger:hover {
+    background: #a40e26;
+    border-color: #a40e26;
+}
+@media (prefers-reduced-motion: reduce) {
+    .confirm-pop { animation: none; }
+}
+
+/* ====================================================================
+   KEY COMPARISON — one table of every key: match / different / one side
+   (utils/key_compare.js, initKeyCompare in index.html). Rows are absolutely
+   positioned at a fixed height so 300k of them can be virtualized.
+   ==================================================================== */
+.kc-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1250;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+}
+.kc-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+}
+.kc-body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(1400px, 100%);
+    height: min(88vh, 960px);
+    background: var(--bg-elev);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    overflow: hidden;
+}
+.kc-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+}
+.kc-head h2 {
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+.kc-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.kc-summary strong { color: var(--text); }
+.kc-t-changed { color: #b26a00; }
+.kc-t-left    { color: #b4383a; }
+.kc-t-right   { color: #2f7d45; }
+.kc-t-equal   { color: var(--text-muted); }
+
+.kc-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border);
+}
+.kc-toolbar-2 { background: var(--bg-muted); }
+.kc-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.kc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+}
+.kc-chip:hover { background: var(--bg-hover); }
+.kc-chip[aria-selected="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    font-weight: 600;
+}
+.kc-chip-n {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+}
+/* A colour key on each chip, matching the row edges and badges below. */
+.kc-chip::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--border-strong);
+}
+.kc-f-valueDiff::before   { background: #e0a030; }
+.kc-f-keyDiff::before     { background: linear-gradient(90deg, #d05555 50%, #45a865 50%); }
+.kc-f-leftOnly::before    { background: #d05555; }
+.kc-f-rightOnly::before   { background: #45a865; }
+.kc-f-keysMatch::before   { background: linear-gradient(90deg, #9aa0a6 50%, #e0a030 50%); }
+.kc-f-valuesMatch::before { background: #9aa0a6; }
+.kc-f-ignored::before     { background: repeating-linear-gradient(45deg, #9aa0a6 0 2px, transparent 2px 4px); }
+
+.kc-group { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.kc-seg {
+    padding: 4px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+}
+.kc-seg + .kc-seg { border-left: 1px solid var(--border); }
+.kc-seg[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
+#kc-search {
+    flex: 0 1 280px;
+    min-width: 140px;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+}
+.kc-spacer { flex: 1 1 auto; }
+.kc-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.kc-table {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.kc-row {
+    display: grid;
+    grid-template-columns: 170px minmax(180px, 1.1fr) minmax(120px, 1fr) minmax(120px, 1fr);
+    align-items: center;
+    column-gap: 10px;
+    padding: 0 var(--space-4);
+}
+.kc-header {
+    flex: 0 0 auto;
+    height: 30px;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}
+.kc-header > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kc-h-left  { color: #b4383a; }
+.kc-h-right { color: #2f7d45; }
+.kc-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+.kc-spacer-rows { position: relative; }
+.kc-spacer-rows .kc-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 30px;
+    border-bottom: 1px solid var(--border);
+    border-left: 3px solid transparent;
+    cursor: pointer;
+}
+.kc-spacer-rows .kc-row:hover { background: var(--bg-hover); }
+/* The left edge says what happened to the key at a glance while scrolling. */
+.kc-row.kc-s-changed   { border-left-color: #e0a030; }
+.kc-row.kc-s-leftOnly  { border-left-color: #d05555; }
+.kc-row.kc-s-rightOnly { border-left-color: #45a865; }
+.kc-row.kc-s-mixed     { border-left-color: #8a6ad0; }
+.kc-row.kc-s-equal .kc-path,
+.kc-row.kc-s-ignored .kc-path { color: var(--text-muted); }
+
+.kc-status { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.kc-badge {
+    flex: 0 0 auto;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+.kc-b-equal     { background: rgba(130, 130, 130, 0.16); color: var(--text-muted); }
+.kc-b-changed   { background: rgba(224, 160, 48, 0.2);  color: #9a5b00; }
+.kc-b-leftOnly  { background: rgba(208, 85, 85, 0.18);  color: #a83a3a; }
+.kc-b-rightOnly { background: rgba(69, 168, 101, 0.18); color: #2f7d45; }
+.kc-b-mixed     { background: rgba(138, 106, 208, 0.2); color: #6a4aa8; }
+.kc-b-ignored   { background: transparent; color: var(--text-faint); border: 1px dashed var(--border-strong); }
+.kc-sub {
+    color: var(--text-muted);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.kc-path,
+.kc-cell {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+.kc-cell { padding: 3px 6px; border-radius: var(--radius-sm); }
+.kc-cell.kc-del { background: var(--diff-del-line); }
+.kc-cell.kc-add { background: var(--diff-add-line); }
+.kc-cell.kc-gap { background: var(--diff-gap-fill); }
+.kc-cell.kc-ign { color: var(--text-faint); }
+.kc-missing {
+    font-family: var(--font-ui);
+    font-style: italic;
+    font-size: 11px;
+    color: var(--text-faint);
+}
+.kc-note {
+    position: absolute;
+    right: var(--space-4);
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0 5px;
+    border-radius: 3px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 10.5px;
+    pointer-events: none;
+}
+.kc-empty {
+    flex: 1 1 auto;
+    padding: 40px var(--space-4);
+    text-align: center;
+    color: var(--text-muted);
+}
+.kc-foot {
+    flex: 0 0 auto;
+    padding: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 11.5px;
+}
+.kc-foot code { font-size: 11px; }
+
+[data-theme="dark"] .kc-t-changed { color: #e8b25a; }
+[data-theme="dark"] .kc-t-left,
+[data-theme="dark"] .kc-h-left    { color: #f0a0a0; }
+[data-theme="dark"] .kc-t-right,
+[data-theme="dark"] .kc-h-right   { color: #8ed6a4; }
+[data-theme="dark"] .kc-b-changed   { background: rgba(224, 160, 48, 0.25); color: #f0c070; }
+[data-theme="dark"] .kc-b-leftOnly  { background: rgba(208, 85, 85, 0.25);  color: #f0a0a0; }
+[data-theme="dark"] .kc-b-rightOnly { background: rgba(69, 168, 101, 0.25); color: #8ed6a4; }
+[data-theme="dark"] .kc-b-mixed     { background: rgba(138, 106, 208, 0.28); color: #c0a8f0; }
+
+/* Phone width: the table scrolls sideways inside its own box, never the page. */
+@media (max-width: 720px) {
+    .kc-modal { padding: 0; }
+    .kc-body { height: 100vh; border-radius: 0; }
+    .kc-row { grid-template-columns: 96px 160px 140px 140px; min-width: 580px; }
+    .kc-spacer-rows { min-width: 600px; }
+    .kc-sub { display: none; }
+}
+
+/* ====================================================================
+   TOOLBAR — two calm rows
+   Row 1 (.intro):       tools that change the content or the view
+   Row 2 (.compare-bar): the comparison result and how to inspect it
+   Every control that existed before is still here; the tools got one
+   height, one icon set and one spacing rhythm, and the result got a row
+   of its own instead of being squeezed between buttons.
+   ==================================================================== */
+.i {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.i-caret { width: 14px; height: 14px; margin-left: -2px; opacity: 0.6; }
+
+.intro {
+    min-height: 48px;
+    padding: 6px var(--space-3);
+    gap: var(--space-3);
+    flex-wrap: nowrap;
+}
+.intro-left,
+.intro-right {
+    gap: 6px;
+    min-width: 0;
+}
+.intro-left { flex: 1 1 auto; }
+.intro-right { flex: 0 0 auto; }
+
+.intro .btn,
+.compare-bar .btn {
+    height: 32px;
+    padding: 0 10px;
+    gap: 6px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.intro .btn-caret { padding: 0 7px; }
+.compare-bar .btn-icon { width: 30px; height: 30px; padding: 0; justify-content: center; }
+.intro .toolbar-divider { min-height: 20px; margin: 0 2px; align-self: center; height: 20px; }
+
+/* Collapse / Highlight: pressed-state chips over real checkboxes. */
+.toggle-group {
+    display: inline-flex;
+    height: 32px;
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-elev);
+}
+.toggle-group .toolbar-toggle {
+    position: relative;
+    height: 26px;
+    padding: 0 9px;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+}
+.toggle-group .toolbar-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+}
+.toggle-group .toolbar-toggle:has(input:checked) {
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+.toggle-group .toolbar-toggle:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Open menu = pressed button. */
+.menu-anchor:has(> .dropdown-panel[style*="display: block"]) > .btn:not(.btn-primary) {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+}
+
+.btn-quiet-danger { color: var(--text-muted); }
+.btn-quiet-danger:hover { color: #cf222e; }
+[data-theme="dark"] .btn-quiet-danger:hover { color: #ff7b72; }
+
+/* ---- Row 2: comparison bar ---- */
+.compare-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-height: 44px;
+    padding: 6px var(--space-3);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-ui);
+}
+.compare-left,
+.compare-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+}
+.compare-left { flex: 1 1 auto; }
+.compare-right { flex: 0 0 auto; gap: 4px; }
+.compare-bar .diff-nav { gap: 2px; flex: 0 0 auto; }
+.compare-bar #diff-summary {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.compare-bar .record-pager { margin-left: 0; }
+.compare-right .btn[aria-pressed="true"] {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: transparent;
+}
+/* The floating Details panel opens under both bars, not over them. */
+.diff-details { top: 100px; }
+
+/* ---- Menus: icon + label + right-aligned hint ---- */
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.dropdown-item .i { color: var(--text-muted); }
+.dropdown-item .dropdown-hint {
+    margin: 0 0 0 auto;
+    padding: 0 0 0 12px;
+    background: none;
+}
+#extra-settings-panel { min-width: 260px; padding: var(--space-2) var(--space-2) var(--space-3); }
+.dropdown-label-first { margin-top: 4px; }
+.dropdown-tip {
+    display: block;
+    margin: 12px 0 0;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    background: var(--bg-muted);
+    color: var(--text-muted);
+}
+.dropdown-tip kbd {
+    font-family: var(--font-ui);
+    font-size: 10.5px;
+    padding: 0 4px;
+    border: 1px solid var(--border-strong);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    background: var(--bg-elev);
+}
+
+/* ---- Narrower windows: labels give way to icons (titles still say what
+   each one does), the result row keeps its full width. ---- */
+@media (max-width: 880px) {
+    .intro .toolbar-toggle .btn-label,
+    #btn-settings .btn-label,
+    #btn-ignore .btn-label,
+    #btn-clear-all .btn-label,
+    #btn-extra-settings .btn-label { display: none; }
+    #btn-settings, #btn-ignore, #btn-clear-all, #btn-extra-settings { padding: 0 9px; }
+}
+@media (max-width: 768px) {
+    /* Wrap rather than scroll: a scrolling toolbar would clip its own menus. */
+    .intro { flex-wrap: wrap; row-gap: 6px; }
+    .intro-left { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-start; }
+    .intro-right { flex: 0 0 auto; justify-content: flex-end; }
+    .intro .toolbar-divider { display: none; }
+    .settings-panel { min-width: 0; width: min(340px, calc(100vw - 24px)); }
+    #btn-sort .btn-label, #btn-sort .i-caret { display: none; }
+    .compare-bar { flex-wrap: wrap; }
+    .compare-right .btn-label { display: none; }
+}
+@media (max-width: 520px) {
+    #btn-format .btn-label { display: none; }
+}
+/* Phones: a menu anchored to its button runs off the screen, so every
+   toolbar menu becomes a sheet across the viewport just under the bars. */
+@media (max-width: 640px) {
+    .intro .dropdown-panel,
+    .intro .settings-panel {
+        position: fixed;
+        top: 96px;
+        left: 8px;
+        right: 8px;
+        width: auto;
+        min-width: 0;
+        max-height: calc(100vh - 112px);
+        overflow-y: auto;
+        margin-top: 0;
+    }
 }
