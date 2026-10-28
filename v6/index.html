@@ -61,6 +61,7 @@
     <script src="./utils/viewport_diff.js"></script>
     <script src="./utils/progress.js"></script>
     <script src="./utils/json_align.js"></script>
+    <script src="./utils/key_compare.js"></script>
     <script src="./utils/diff_ignore.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
@@ -398,6 +399,8 @@
             <button id="btn-page-next" class="btn btn-icon" title="Next records" aria-label="Next records">▶</button>
           </div>
           <button id="btn-diff-details" class="btn btn-ghost" style="display: none" title="Field-level breakdown of every change">Details</button>
+          <button id="btn-key-compare" class="btn btn-ghost" style="display: none"
+                  title="Key-by-key table: matching keys, different values, keys on one side only — filter and export">Keys</button>
           <button id="btn-clear-all" class="btn btn-ghost" style="display: none">Clear All</button>
         </div>
 
@@ -524,6 +527,44 @@
         <div id="diff-details-fields" class="diff-details-fields"></div>
         <div class="diff-details-section">Items — click to jump</div>
         <div id="diff-details-items" class="diff-details-items"></div>
+      </div>
+
+      <!-- Key comparison: every key of both documents as one table — matching,
+           different, or present on one side only — with filters and export.
+           Compares parsed values (utils/key_compare.js), so formatting and key
+           order never count; honours ignore patterns and numeric tolerance. -->
+      <div id="kc-modal" class="kc-modal" style="display: none" role="dialog"
+           aria-modal="true" aria-labelledby="kc-title">
+        <div class="kc-backdrop" data-kc-dismiss></div>
+        <div class="kc-body">
+          <div class="kc-head">
+            <h2 id="kc-title">Key comparison</h2>
+            <div id="kc-summary" class="kc-summary"></div>
+            <button class="btn btn-icon" id="kc-close" title="Close (Esc)" aria-label="Close">✕</button>
+          </div>
+          <div class="kc-toolbar">
+            <div id="kc-filters" class="kc-filters" role="tablist" aria-label="Show"></div>
+          </div>
+          <div class="kc-toolbar kc-toolbar-2">
+            <div class="kc-group" role="group" aria-label="Group rows">
+              <button class="kc-seg" data-kc-mode="columns" title="One row per key, counted across every record">By key</button>
+              <button class="kc-seg" data-kc-mode="rows" title="One row per key per record">Per record</button>
+            </div>
+            <input id="kc-search" type="search" placeholder="Search keys or values…" aria-label="Search keys or values" />
+            <span class="kc-spacer"></span>
+            <span id="kc-count" class="kc-count"></span>
+            <button class="btn" id="kc-export-csv" title="Download the rows shown as CSV">Export CSV</button>
+            <button class="btn" id="kc-export-json" title="Download the rows shown as JSON">Export JSON</button>
+          </div>
+          <div class="kc-table" id="kc-table">
+            <div class="kc-row kc-header" id="kc-header"></div>
+            <div class="kc-scroll" id="kc-scroll">
+              <div class="kc-spacer-rows" id="kc-rows"></div>
+            </div>
+            <div class="kc-empty" id="kc-empty" style="display: none"></div>
+          </div>
+          <div class="kc-foot" id="kc-foot"></div>
+        </div>
       </div>
 
       <!-- Footer with version info -->
@@ -1100,7 +1141,7 @@
 
       function initializeMenuKeys() {
         document.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') closeMenus(null);
+          if (e.key === 'Escape') { closeMenus(null); closeKeyCompare(); }
         });
       }
 
@@ -1894,6 +1935,7 @@
         initializeInfoDropdown();
         initializeIgnorePanel();
         initDiffDetails();
+        initKeyCompare();
         initLintGutterUX();
         initializeMenuKeys();
         initPanelTitles();
@@ -7280,8 +7322,12 @@
       function updateDiffStatus() {
         const aDoc = mergeView.a.state.doc;
         const bDoc = mergeView.b.state.doc;
+        const keysBtn = document.getElementById('btn-key-compare');
+        const blank = docIsBlank(aDoc) || docIsBlank(bDoc);
+        if (keysBtn) keysBtn.style.display = blank ? 'none' : '';
+        refreshKeyCompareIfOpen();
 
-        if (docIsBlank(aDoc) || docIsBlank(bDoc)) {
+        if (blank) {
           setDiffSummary('idle', 'Add content to both panels to compare');
           updateDiffNavState();
           return;
@@ -7559,8 +7605,11 @@
         if (!il || !il.lines || !il.lines.length || !mergeView) return false;
         const k = p - il.from;
         if (k < 0 || k >= il.lines.length) return false;
-        const lineNo = il.offset + il.lines[k] + 1;      // itemLines is 0-based
+        return scrollPanesToLine(il.offset + il.lines[k] + 1);   // itemLines is 0-based
+      }
 
+      /** Scroll both panes to 1-based line `lineNo` and flash it. */
+      function scrollPanesToLine(lineNo) {
         const touched = [];
         for (const view of [mergeView.a, mergeView.b]) {
           if (lineNo < 1 || lineNo > view.state.doc.lines) continue;
@@ -7670,6 +7719,405 @@
         });
         close.addEventListener('click', () => { box.style.display = 'none'; });
         filter.addEventListener('input', renderDiffDetails);
+      }
+
+      // =====================================================================
+      // Key comparison table (utils/key_compare.js)
+      //
+      // The panes answer "what does the text look like side by side". With two
+      // records of thousands of columns that is the wrong question: what you
+      // need is which keys match, which values differ and which keys exist on
+      // one side only — as a list, filterable, exportable. This is that list.
+      //
+      // It reads the whole documents through getDocumentPair(), never the
+      // panes: a windowed collection is a page, and with ignore or tolerance
+      // active the right pane holds the LEFT pane's values for matched fields.
+      // Records are paired with JSONAlign.matchArray, the pairing the panes are
+      // drawn with, so the table and the editors cannot disagree.
+      // =====================================================================
+      const KC_ROW_H = 30;          // px; fixed so the table can be virtualized
+      const KC_OVERSCAN = 12;
+      const kcState = {
+        filter: 'all',
+        mode: 'columns',            // 'columns' (one row per key) | 'rows' (per record)
+        query: '',
+        result: null,               // KeyCompare.compare() output
+        cols: null,                 // KeyCompare.columns(result)
+        counts: null,               // { columns: {...}, rows: {...} } per filter
+        key: null,                  // what result was computed from
+        view: [],                   // items currently listed
+        drawn: null,                // { from, to, view } last painted slice
+        records: null,              // { left, right } record counts for a root array
+        error: null,
+        ms: 0
+      };
+
+      function kcSideLabel(side) {
+        try { return branchTitle(activeBranches[side]) || (side === 'left' ? 'Left' : 'Right'); }
+        catch (e) { return side === 'left' ? 'Left' : 'Right'; }
+      }
+
+      /** (Re)compute when the documents or the comparison settings changed. */
+      function kcCompute() {
+        kcState.error = null;
+        const pair = getDocumentPair();
+        if (!pair) {
+          kcState.result = null;
+          kcState.error = 'Only part of this collection is on screen and the complete copy was lost. Reload the panel first.';
+          return;
+        }
+        const tol = numToleranceActive();
+        const k = kcState.key;
+        if (kcState.result && k && k.left === pair.left && k.right === pair.right &&
+            k.gen === _ignoreGen && k.tol === tol) return;
+
+        let L, R;
+        try { L = JSON.parse(pair.left); }
+        catch (e) { kcState.result = null; kcState.error = 'The left panel is not valid JSON. Use Format ▾ → Fix JSON, then reopen.'; return; }
+        try { R = JSON.parse(pair.right); }
+        catch (e) { kcState.result = null; kcState.error = 'The right panel is not valid JSON. Use Format ▾ → Fix JSON, then reopen.'; return; }
+
+        const t0 = performance.now();
+        const res = window.KeyCompare.compare(L, R, {
+          ignore: ignorePredicate, numTol: tol, matchArray: window.JSONAlign.matchArray
+        });
+        kcState.result = res;
+        kcState.cols = window.KeyCompare.columns(res);
+        kcState.counts = {
+          columns: window.KeyCompare.counts(kcState.cols, true),
+          rows: window.KeyCompare.counts(res.rows, false)
+        };
+        kcState.records = res.rootArray ? { left: L.length, right: R.length } : null;
+        kcState.key = { left: pair.left, right: pair.right, gen: _ignoreGen, tol };
+        kcState.ms = performance.now() - t0;
+        kcState.drawn = null;
+      }
+
+      function kcApplyFilter() {
+        const isCol = kcState.mode === 'columns';
+        const items = isCol ? kcState.cols : kcState.result.rows;
+        const q = kcState.query.trim().toLowerCase();
+        kcState.view = (kcState.filter === 'all' && !q)
+          ? items
+          : items.filter(it => window.KeyCompare.matches(it, kcState.filter, q, isCol));
+        kcState.drawn = null;
+      }
+
+      function renderKeyCompare() {
+        const modal = document.getElementById('kc-modal');
+        if (!modal || modal.style.display === 'none') return;
+        const empty = document.getElementById('kc-empty');
+        const scroll = document.getElementById('kc-scroll');
+        const header = document.getElementById('kc-header');
+
+        document.querySelectorAll('#kc-modal .kc-seg').forEach(b =>
+          b.setAttribute('aria-pressed', String(b.dataset.kcMode === kcState.mode)));
+
+        if (!kcState.result) {
+          document.getElementById('kc-summary').textContent = '';
+          document.getElementById('kc-filters').innerHTML = '';
+          document.getElementById('kc-count').textContent = '';
+          document.getElementById('kc-foot').textContent = '';
+          header.innerHTML = '';
+          scroll.style.display = 'none';
+          empty.style.display = '';
+          empty.textContent = kcState.error || 'Add JSON to both panels to compare keys.';
+          return;
+        }
+
+        const isCol = kcState.mode === 'columns';
+        const c = kcState.counts.columns;
+        const rec = kcState.records;
+        const recBit = rec && (rec.left > 1 || rec.right > 1)
+          ? ` across ${fmtNum(rec.left)} / ${fmtNum(rec.right)} records` : '';
+        document.getElementById('kc-summary').innerHTML =
+          `<strong>${fmtNum(c.all)}</strong> keys${recBit} · `
+          + `<span class="kc-t-equal">${fmtNum(c.valuesMatch)} match</span> · `
+          + `<span class="kc-t-changed">${fmtNum(c.valueDiff)} different</span> · `
+          + `<span class="kc-t-left">${fmtNum(c.leftOnly)} only in ${escapeHtml(kcSideLabel('left'))}</span> · `
+          + `<span class="kc-t-right">${fmtNum(c.rightOnly)} only in ${escapeHtml(kcSideLabel('right'))}</span>`;
+
+        // Filter chips, counted for the current grouping.
+        const counts = isCol ? kcState.counts.columns : kcState.counts.rows;
+        document.getElementById('kc-filters').innerHTML = window.KeyCompare.FILTERS
+          .filter(f => f.key !== 'ignored' || counts.ignored)
+          .map(f => {
+            const label = f.key === 'leftOnly' ? `Only in ${kcSideLabel('left')}`
+              : f.key === 'rightOnly' ? `Only in ${kcSideLabel('right')}` : f.label;
+            return `<button class="kc-chip kc-f-${f.key}" data-kc-filter="${f.key}" role="tab"
+                aria-selected="${f.key === kcState.filter}" title="${escapeHtml(f.hint)}">
+                ${escapeHtml(label)} <span class="kc-chip-n">${fmtNum(counts[f.key])}</span></button>`;
+          }).join('');
+
+        header.innerHTML = `<span>Status</span><span>${isCol ? 'Key' : 'Path'}</span>`
+          + `<span class="kc-h-left">◀ ${escapeHtml(kcSideLabel('left'))}</span>`
+          + `<span class="kc-h-right">${escapeHtml(kcSideLabel('right'))} ▶</span>`;
+
+        const n = kcState.view.length;
+        const total = isCol ? kcState.cols.length : kcState.result.rows.length;
+        document.getElementById('kc-count').textContent =
+          `${fmtNum(n)} of ${fmtNum(total)} ${isCol ? 'keys' : 'rows'}`;
+        document.getElementById('kc-export-csv').disabled = !n;
+        document.getElementById('kc-export-json').disabled = !n;
+
+        const foot = [`Values are compared after parsing — whitespace, indentation and key order never count.`];
+        if (ignorePatterns.length) foot.push(`Ignoring ${ignorePatterns.map(p => `<code>${escapeHtml(p)}</code>`).join(', ')}.`);
+        if (numToleranceActive() != null) foot.push(`Numbers within ±${numToleranceActive()} count as equal.`);
+        if (kcState.result.truncated) foot.push('<strong>Stopped at 2,000,000 rows</strong> — narrow the documents to see the rest.');
+        foot.push('Click a row to show it in the editors.');
+        document.getElementById('kc-foot').innerHTML = foot.join(' ');
+
+        if (!n) {
+          scroll.style.display = 'none';
+          empty.style.display = '';
+          empty.textContent = kcState.query ? 'Nothing matches that search.' : 'Nothing in this category.';
+          return;
+        }
+        empty.style.display = 'none';
+        scroll.style.display = '';
+        kcRenderRows();
+      }
+
+      // Paint only the rows in view: a 2,000 × 158 collection is 316k rows.
+      function kcRenderRows() {
+        const scroll = document.getElementById('kc-scroll');
+        const host = document.getElementById('kc-rows');
+        const n = kcState.view.length;
+        host.style.height = (n * KC_ROW_H) + 'px';
+        const top = scroll.scrollTop, h = scroll.clientHeight || 480;
+        const from = Math.max(0, Math.floor(top / KC_ROW_H) - KC_OVERSCAN);
+        const to = Math.min(n, Math.ceil((top + h) / KC_ROW_H) + KC_OVERSCAN);
+        const d = kcState.drawn;
+        if (d && d.from === from && d.to === to && d.view === kcState.view) return;
+        let html = '';
+        for (let i = from; i < to; i++) html += kcRowHtml(kcState.view[i], i);
+        host.innerHTML = html;
+        kcState.drawn = { from, to, view: kcState.view };
+      }
+
+      const KC_BADGE = {
+        equal: 'Match', changed: 'Different', leftOnly: 'Only left',
+        rightOnly: 'Only right', ignored: 'Ignored', mixed: 'Partial'
+      };
+
+      function kcRowHtml(it, i) {
+        const isCol = kcState.mode === 'columns';
+        const row = isCol ? it.first : it;
+        const name = isCol ? it.label : it.path;
+        const KC = window.KeyCompare;
+        // Cells are coloured by what happened to THIS value; the badge by what
+        // happened to the key overall (a column can differ in some records).
+        const cls = { equal: ['', ''], changed: ['kc-del', 'kc-add'], leftOnly: ['kc-del', 'kc-gap'],
+                      rightOnly: ['kc-gap', 'kc-add'], ignored: ['kc-ign', 'kc-ign'] }[row.status] || ['', ''];
+        const cell = (v, c) => v === undefined
+          ? `<span class="kc-cell ${c}"><span class="kc-missing">missing</span></span>`
+          : `<span class="kc-cell ${c}" title="${escapeHtml(KC.preview(v, 2000))}">${escapeHtml(KC.preview(v, 300))}</span>`;
+
+        let sub = '';
+        if (isCol && it.n > 1) {
+          if (it.status === 'changed') sub = `${fmtNum(it.changed)} of ${fmtNum(it.n)} differ`;
+          else if (it.status === 'mixed') {
+            const bits = [];
+            if (it.equal + it.changed) bits.push(`${fmtNum(it.equal + it.changed)} both`);
+            if (it.leftOnly) bits.push(`${fmtNum(it.leftOnly)} left`);
+            if (it.rightOnly) bits.push(`${fmtNum(it.rightOnly)} right`);
+            sub = bits.join(' · ');
+          } else sub = `${fmtNum(it.n)} records`;
+        }
+        const note = KC.noteText(row);
+        return `<div class="kc-row kc-s-${it.status}" data-i="${i}" style="top:${i * KC_ROW_H}px"
+                     title="Show in the editors">
+            <span class="kc-status"><span class="kc-badge kc-b-${it.status}">${KC_BADGE[it.status]}</span>${
+              sub ? `<span class="kc-sub">${sub}</span>` : ''}</span>
+            <span class="kc-path" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+            ${cell(row.left, cls[0])}
+            ${cell(row.right, cls[1])}${note ? `<span class="kc-note">${escapeHtml(note)}</span>` : ''}
+          </div>`;
+      }
+
+      function openKeyCompare() {
+        const modal = document.getElementById('kc-modal');
+        closeMenus(null);
+        modal.style.display = 'flex';
+        const empty = document.getElementById('kc-empty');
+        // A large pair takes a moment; let the dialog paint first.
+        if (!kcState.result) {
+          document.getElementById('kc-scroll').style.display = 'none';
+          empty.style.display = '';
+          empty.textContent = 'Comparing keys…';
+        }
+        setTimeout(() => {
+          kcCompute();
+          if (kcState.result) kcApplyFilter();
+          renderKeyCompare();
+          document.getElementById('kc-search').focus();
+        }, 16);
+      }
+
+      function closeKeyCompare() {
+        document.getElementById('kc-modal').style.display = 'none';
+      }
+
+      // Called after every comparison update: keep an open table current.
+      function refreshKeyCompareIfOpen() {
+        const modal = document.getElementById('kc-modal');
+        if (!modal || modal.style.display === 'none') return;
+        const before = kcState.result;
+        kcCompute();
+        if (kcState.result !== before) {
+          if (kcState.result) kcApplyFilter();
+          renderKeyCompare();
+        }
+      }
+
+      function kcExport(kind) {
+        const isCol = kcState.mode === 'columns';
+        const items = kcState.view;
+        if (!items.length) return;
+        const f = window.KeyCompare.FILTERS.find(x => x.key === kcState.filter);
+        const safe = (s) => String(s).replace(/[^\w.-]+/g, '_');
+        const labels = { left: safe(kcSideLabel('left')), right: safe(kcSideLabel('right')) };
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const slug = kcState.filter.replace(/[A-Z]/g, ch => '-' + ch.toLowerCase());
+        const name = `json-compare-keys-${slug}-${stamp}.${kind}`;
+        let text, type;
+        if (kind === 'csv') {
+          text = window.KeyCompare.toCSV(items, isCol, labels);
+          type = 'text/csv;charset=utf-8';
+        } else {
+          text = window.KeyCompare.toJSON(items, isCol, {
+            generated: new Date().toISOString(),
+            left: kcSideLabel('left'), right: kcSideLabel('right'),
+            filter: f ? f.label : kcState.filter,
+            search: kcState.query || undefined,
+            grouping: isCol ? 'by key' : 'per record',
+            summary: kcState.counts[isCol ? 'columns' : 'rows'],
+            ignorePatterns: ignorePatterns.length ? ignorePatterns : undefined,
+            numericTolerance: numToleranceActive() == null ? undefined : numToleranceActive()
+          });
+          type = 'application/json';
+        }
+        const url = URL.createObjectURL(new Blob([text], { type }));
+        const a = document.createElement('a');
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showNotice('ok', `Exported ${fmtNum(items.length)} ${isCol ? 'keys' : 'rows'} (${f ? f.label : 'All'}) to ${name}`,
+          { timeout: 4000, key: 'kc-export' });
+      }
+
+      /**
+       * Close the table and put the key under the cursor in both panes. A root
+       * array goes to the record first (paging a windowed collection), then
+       * walks the path's keys down the pretty-printed text at the indentation
+       * each level must have.
+       */
+      function revealKeyPath(row, paged) {
+        const res = kcState.result;
+        if (!res || !mergeView) return;
+        const segs = window.KeyCompare.parsePath(row.path);
+        const onRight = row.status === 'rightOnly';
+        const view = onRight ? mergeView.b : mergeView.a;
+        let start = 1, rest = segs;
+        if (res.rootArray && typeof segs[0] === 'number' && diffModel && diffModel.path == null) {
+          const idx = onRight ? row.ri : row.li;
+          const p = diffModel.items.findIndex(x => (onRight ? x.b : x.a) === idx);
+          if (p >= 0) {
+            if (!paged && diffStats && (p < diffStats.from || p >= diffStats.to)) {
+              revealRecord(p);
+              setTimeout(() => revealKeyPath(row, true), 260);
+              return;
+            }
+            const il = diffStats && diffStats.itemLines;
+            const k = il && il.lines ? p - il.from : -1;
+            if (k >= 0 && k < il.lines.length) { start = il.offset + il.lines[k] + 1; rest = segs.slice(1); }
+          }
+        }
+        const line = findKeyLine(view.state.doc, start, rest);
+        if (!line || !scrollPanesToLine(line)) {
+          showNotice('info', `Could not place ${row.path} in the editor text — it may be minified or windowed out.`,
+            { timeout: 5000, key: 'kc-reveal' });
+        }
+      }
+
+      // Line of `segs` (object keys; array indices are passed over) below the
+      // container that starts on line `start`. Each key must sit exactly one
+      // level deeper than its container, so a same-named key in a nested
+      // object is never mistaken for it. Blank lines are alignment gaps.
+      function findKeyLine(doc, start, segs) {
+        if (start < 1 || start > doc.lines) return 0;
+        let lineNo = start;
+        const indentOf = (t) => t.length - t.trimStart().length;
+        let indent = indentOf(doc.line(start).text);
+        for (const s of segs) {
+          if (typeof s !== 'string' || s === '*') continue;
+          const needle = JSON.stringify(s) + ':';
+          let child = -1, found = 0;
+          for (let n = lineNo + 1; n <= doc.lines; n++) {
+            const text = doc.line(n).text;
+            const t = text.trimStart();
+            if (!t) continue;
+            const ind = text.length - t.length;
+            if (ind <= indent) break;                 // left the container
+            if (child < 0) child = ind;
+            if (ind === child && t.startsWith(needle)) { found = n; indent = ind; break; }
+          }
+          if (!found) return 0;
+          lineNo = found;
+        }
+        return lineNo;
+      }
+
+      function initKeyCompare() {
+        const btn = document.getElementById('btn-key-compare');
+        const modal = document.getElementById('kc-modal');
+        if (!btn || !modal || !window.KeyCompare) return;
+        btn.addEventListener('click', openKeyCompare);
+        document.getElementById('kc-close').addEventListener('click', closeKeyCompare);
+        modal.querySelector('[data-kc-dismiss]').addEventListener('click', closeKeyCompare);
+        modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeKeyCompare(); });
+
+        document.getElementById('kc-filters').addEventListener('click', (e) => {
+          const chip = e.target.closest('[data-kc-filter]');
+          if (!chip || !kcState.result) return;
+          kcState.filter = chip.dataset.kcFilter;
+          document.getElementById('kc-scroll').scrollTop = 0;
+          kcApplyFilter();
+          renderKeyCompare();
+        });
+        modal.querySelectorAll('.kc-seg').forEach(b => b.addEventListener('click', () => {
+          if (!kcState.result || kcState.mode === b.dataset.kcMode) return;
+          kcState.mode = b.dataset.kcMode;
+          document.getElementById('kc-scroll').scrollTop = 0;
+          kcApplyFilter();
+          renderKeyCompare();
+        }));
+        let searchTimer = null;
+        document.getElementById('kc-search').addEventListener('input', (e) => {
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => {
+            kcState.query = e.target.value || '';
+            if (!kcState.result) return;
+            document.getElementById('kc-scroll').scrollTop = 0;
+            kcApplyFilter();
+            renderKeyCompare();
+          }, 120);
+        });
+        let raf = 0;
+        document.getElementById('kc-scroll').addEventListener('scroll', () => {
+          if (raf) return;
+          raf = requestAnimationFrame(() => { raf = 0; kcRenderRows(); });
+        });
+        document.getElementById('kc-rows').addEventListener('click', (e) => {
+          const el = e.target.closest('.kc-row');
+          if (!el) return;
+          const it = kcState.view[parseInt(el.dataset.i, 10)];
+          if (!it) return;
+          closeKeyCompare();
+          revealKeyPath(kcState.mode === 'columns' ? it.first : it);
+        });
+        document.getElementById('kc-export-csv').addEventListener('click', () => kcExport('csv'));
+        document.getElementById('kc-export-json').addEventListener('click', () => kcExport('json'));
       }
 
       // Count diff chunks, skipping any whose changed lines lie entirely within

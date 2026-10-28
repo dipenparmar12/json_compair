@@ -49,6 +49,7 @@ json_compair/
 │       ├── viewport_diff.js # ViewportDiffManager, PerformanceMode, LargeFileDetector, PerformanceToast
 │       ├── json_align.js   # Record matcher + item/field diff model + block-level aligner (window.JSONAlign)
 │       ├── diff_ignore.js  # Exclude keys/patterns from the diff (window.DiffIgnore) — key-name matcher + line-scan
+│       ├── key_compare.js  # Keys dialog: match / different / one-side-only per key + filters + CSV/JSON export (window.KeyCompare)
 │       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
 ├── v5/                     # Legacy CodeMirror 5 version
@@ -61,6 +62,7 @@ json_compair/
 ├── tests/                  # Test files + regression suites
 │   ├── json_repair.test.js # node tests/json_repair.test.js  (integrity + repair + perf)
 │   ├── text_tools.test.js  # node tests/text_tools.test.js   (cleanup + universal sort)
+│   ├── key_compare.test.js # node tests/key_compare.test.js  (record pairing + key table + export)
 │   └── selftest.html       # the same assertions, in a real browser
 └── _archive/               # Old iterations
 ```
@@ -268,6 +270,16 @@ window.BranchManager
   .isMainBranch(id)
   .defaultName(id)      // 'Left' | 'Right' | 'Untitled' — what an emptied title falls back to
 
+// key_compare.js (v6) — the Keys dialog (btn-key-compare / initKeyCompare)
+window.KeyCompare
+  .compare(l, r, {ignore, numTol, matchArray}) // PARSED values → {rows[], totals, rootArray, truncated}
+                        //   row: {path, col, status, left, right, li, ri, note}
+                        //   status: equal|changed|leftOnly|rightOnly|ignored; note: 'type'|'tolerance'
+  .columns(result)      // one entry per key path ([*] for indices), counted across every record
+  .FILTERS / .matches(item, filter, query, isColumn) / .counts(items, isColumn)
+  .toCSV(items, isColumn, labels) / .toJSON(items, isColumn, meta)
+  .parsePath('a.b[3]["x y"]')  // → ['a', 'b', 3, 'x y']
+
 // diff_ignore.js (v6)
 window.DiffIgnore
   .parseOne()           // "/re/flags" → regex descriptor, else plain match
@@ -318,6 +330,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/vendor/jsonrepair.umd.js"></script>  <!-- v6 only: vendored, loaded BEFORE json_repair -->
 <script src="./utils/json_repair.js"></script>    <!-- v6 only: repair chain + classifier -->
 <script src="./utils/text_tools.js"></script>     <!-- v6 only: text cleanup + universal sort -->
+<script src="./utils/key_compare.js"></script>    <!-- v6 only: Keys table; AFTER json_align (uses matchArray) -->
 ```
 
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
@@ -681,6 +694,7 @@ returns a **count**, so the report says "3 zero-width characters", not "cleaned"
 ```bash
 node tests/json_repair.test.js    # 104 checks: integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
+node tests/key_compare.test.js    #  55 checks: record pairing, key table, filters, export
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -925,6 +939,7 @@ Located in `tests/`:
 ```bash
 node tests/json_repair.test.js    # 104 checks — data integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
+node tests/key_compare.test.js    #  55 checks — record pairing, key table, filters, export
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -970,6 +985,10 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     1002 / 5007 / 5004 aligned
 27. An object where a key exists only on the right, mid-object — it renders in place, and the
     line above it shows no comma-only change; `]` / `},` rows after an added block stay unmarked
+28. `[{…2,206 keys}]` vs `[{…5,229 keys}]` sharing a UUID (the 2026-10-28 snapshot zip) — must
+    read "1 changed of 1 items · N field changes" with shared keys on the same row, NOT
+    "1 removed, 1 added". **Keys** → 214 match / 229 different / 1,763 left-only / 4,786
+    right-only; clicking a row puts that key under the cursor; Export = exactly the rows shown
 
 ## Common Tasks
 
@@ -1226,6 +1245,30 @@ structural diff adds (anchoring on ids/equal items, reorders, exact counts). Fou
 Regression harnesses used for this (scratch, not in repo): the six curated examples in
 `docs/test-cases-example/` (four byte-identical, two improved — keys in place, fewer comma-only
 changes, same counts), plus id-keyed 5,000-record and disjoint 3,000-row pairs (identical).
+
+5. **An equal identifier pairs records whose schema drifted** (`identityKeys` /
+   `sharesIdentity` / `agreesOnShared` in `pairGapBySimilarity`). `similarity()` is a mean over
+   the UNION of keys, so two exports of the same record with different column sets scored ~0.03:
+   one record per side, same UUID, 443 of ~7,000 keys shared → never paired → the comparison
+   was "1 removed, 1 added, 0 field changes", two unaligned blocks side by side, while the same
+   objects without the `[ ]` aligned key by key. A pair now scores `ID_PAIR_SIM` when it shares
+   the value of an identifier-NAMED key (`id`, `uuid`, `user_id`, `userId`, `0-UUID`…) that is
+   unique within the gap on each side (a repeated `category_id` proves nothing), and `PAIR_SIM`
+   when ≥ 3 shared keys mostly agree (`PAIR_VALUE_RATIO`, constant columns skipped). Small-array
+   (`'lcs'`) regime only; the curated examples are byte-identical before/after.
+
+### Key comparison table — `key_compare.js` + the **Keys** dialog
+With thousands of columns the question is the schema, not the text: which keys match, which
+values differ, which keys only one side has. **Keys** (next to Details, shown whenever both
+panes have content) opens a virtualized table of every key with filters All / Different values
+/ Different keys / Only in left / Only in right / Matching keys / Matching values (/ Ignored),
+grouped **By key** (one row per key path counted across every record — `2 of 2,000 differ`) or
+**Per record**, searchable, and exportable as CSV or JSON — exactly the rows shown. It compares
+PARSED values from `getDocumentPair()` (never the panes), honours ignore patterns and numeric
+tolerance, and pairs array elements with `JSONAlign.matchArray`, so the table and the editors
+cannot disagree. Clicking a row closes the dialog and walks the path down the pretty-printed
+pane (`findKeyLine`, exact indentation per level), paging a windowed collection first.
+Measured: the snapshot in 47 ms; 2,000 × 158 records (316k rows) in ~0.6 s.
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the

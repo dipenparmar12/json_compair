@@ -588,6 +588,83 @@
     return (2 * (matched + partial)) / (n + m);
   }
 
+  /* ------------------------------------------------------------------
+     IDENTITY — the same record, however much its columns drifted
+     ------------------------------------------------------------------
+     similarity() is a mean over the UNION of keys, which is right for a
+     record that was edited and wrong for one whose schema drifted. Measured
+     on a homefacts export (docs/test-cases-example/json-compare-snapshot-*):
+     one record per side, the same UUID and ParcelNumberRaw, 2,206 keys on the
+     left, 5,229 on the right, 443 shared → similarity 0.03. The pair was
+     never made, so the whole comparison rendered as "1 removed, 1 added,
+     0 field changes" — two unrelated blocks side by side, no key aligned
+     with its counterpart, no missing key reported on either side — while
+     `{...}` vs `{...}` (the same data without the brackets) aligned key by
+     key. An equal identifier is the evidence a reader uses, so it pairs.
+
+     detectIdKey() cannot help here: below ID_MIN_ITEMS every column looks
+     unique. A NAME is the only evidence a small array offers that a column
+     identifies the record rather than describes it — and the value must
+     still be unique on each side, so a shared `category_id` never pairs two
+     different rows.
+     ------------------------------------------------------------------ */
+  var ID_PAIR_SIM = 0.95;
+  var ID_NAME_PLAIN = /^_?(id|uuid|guid)$|[-_ .](id|uuid|guid)$/i;
+  var ID_NAME_CAMEL = /[a-z0-9](Id|ID|Uuid|UUID|Guid|GUID)$/;
+
+  function isIdName(k) { return ID_NAME_PLAIN.test(k) || ID_NAME_CAMEL.test(k); }
+
+  /** Identifier-named keys whose values are unique within this gap, per side. */
+  function identityKeys(a, b, dels, inss) {
+    var names = Object.create(null), out = [], i, k;
+    var note = function (rec) {
+      if (!isPlainObject(rec)) return;
+      for (k in rec) if (hasOwn(rec, k) && isIdName(k)) names[k] = true;
+    };
+    for (i = 0; i < dels.length; i++) note(a[dels[i]]);
+    for (k in names) {
+      if (uniqueIn(a, dels, k) && uniqueIn(b, inss, k)) out.push(k);
+    }
+    return out.length ? out : null;
+  }
+
+  // Values of `key` over the listed elements: none repeats (absent is fine).
+  function uniqueIn(arr, idx, key) {
+    var seen = new Set();
+    for (var i = 0; i < idx.length; i++) {
+      var v = idOf(arr[idx[i]], key);
+      if (v === null) continue;
+      if (seen.has(v)) return false;
+      seen.add(v);
+    }
+    return true;
+  }
+
+  // Schema drift without an identifier: the keys both records have mostly hold
+  // the same values. Judged on shared keys only — keys one side added or
+  // dropped say nothing about whether this is the same record. Constant
+  // columns (info) are skipped exactly as in shouldPair().
+  var DRIFT_MIN_SHARED = 3;
+  function agreesOnShared(x, y, tol, info) {
+    if (!isPlainObject(x) || !isPlainObject(y)) return false;
+    var shared = 0, agree = 0;
+    for (var k in x) {
+      if (!hasOwn(x, k) || !hasOwn(y, k) || (info && !info[k])) continue;
+      shared++;
+      if (eqKind(x[k], y[k], tol) !== 0) agree++;
+    }
+    return shared >= DRIFT_MIN_SHARED && agree / shared >= PAIR_VALUE_RATIO;
+  }
+
+  function sharesIdentity(x, y, keys) {
+    if (!isPlainObject(x) || !isPlainObject(y)) return false;
+    for (var i = 0; i < keys.length; i++) {
+      var v = idOf(x, keys[i]);
+      if (v !== null && v === idOf(y, keys[i])) return true;
+    }
+    return false;
+  }
+
   /**
    * Pair the unmatched elements of one gap by similarity, keeping order: the
    * pairing with the highest total similarity where every pair is at least
@@ -598,12 +675,15 @@
   function pairGapBySimilarity(a, b, dels, inss, tol, info) {
     var k = dels.length, l = inss.length, i, j;
     var S = new Float32Array(k * l);
+    var ids = identityKeys(a, b, dels, inss);
     for (i = 0; i < k; i++) {
       for (j = 0; j < l; j++) {
         var x = a[dels[i]], y = b[inss[j]], s;
         if (!isComposite(x) && !isComposite(y)) s = PAIR_SIM;
         else if (isComposite(x) !== isComposite(y) || Array.isArray(x) !== Array.isArray(y)) s = 0;
         else s = similarity(x, y, tol, info);
+        if (s < ID_PAIR_SIM && ids && sharesIdentity(x, y, ids)) s = ID_PAIR_SIM;
+        else if (s < PAIR_SIM && agreesOnShared(x, y, tol, info)) s = PAIR_SIM;
         S[i * l + j] = s >= PAIR_SIM ? s : -1;
       }
     }
@@ -1839,6 +1919,9 @@
     diffModel: diffModel,
     normalize: normalize,
     stripGaps: stripGaps,
+    // Record pairing, shared with key_compare.js so the key table and the
+    // editors can never disagree about which records correspond.
+    matchArray: matchArray,
     CancelledError: Cancelled,
     EXPAND_CHAR_BUDGET: EXPAND_CHAR_BUDGET
   };
