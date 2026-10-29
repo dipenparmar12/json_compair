@@ -258,6 +258,22 @@ for (const [input, expected] of CLASSIFY) {
 check('CLASSIFY', 'single line is never CSV', !Kit.csvEvidence('a,b,c,d,e,f').ok);
 check('CLASSIFY', 'inconsistent columns rejected', !Kit.csvEvidence('a,b\n1,2,3,4,5\nx').ok);
 
+// A wide export: the header row alone is longer than a fixed 64 KB sample,
+// which used to hold one partial line, so pasted CSV read as plain text.
+{
+  const cols = Array.from({ length: 4000 }, (_, i) => `"column, number ${i}"`);
+  const vals = Array.from({ length: 4000 }, (_, i) => (i % 7 ? String(i * 1.5) : `"{'a': ${i}, 'b': None}"`));
+  const wide = cols.join(',') + '\r\n' + vals.join(',') + '\r\n';
+  check('CLASSIFY', 'CSV with a header row over 64 KB is CSV', wide.split('\n')[0].length > 65536 &&
+    Kit.detectKind(wide) === 'csv', `got ${Kit.detectKind(wide)}`);
+  check('CLASSIFY', 'sniffHead reaches the end of the first lines', Kit.sniffHead(wide) === wide);
+  const oneLine = 'x,'.repeat(200000);
+  check('CLASSIFY', 'one 400 KB line is still not CSV', Kit.detectKind(oneLine) !== 'csv' &&
+    Kit.sniffHead(oneLine).length === oneLine.length);
+  const huge = 'a,b\n' + '1,2\n'.repeat(1e6);
+  check('CLASSIFY', 'sniffHead stays small on a long narrow file', Kit.sniffHead(huge).length === 65536);
+}
+
 // ---------------------------------------------------------------------------
 // E. Duplicate keys (§6.3) — legal JSON, silently lossy
 // ---------------------------------------------------------------------------

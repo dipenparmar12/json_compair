@@ -546,6 +546,13 @@ count consistent across the sampled lines. Belt and braces: a conversion that yi
 `detectKind()` replaces the binary JSON/CSV guess with
 `empty | json | jsonish | ndjson | csv | tsv | xml | yaml | text`, and drives the pane chip.
 
+**The sample reaches the end of the first lines (`sniffHead`).** Classification read a fixed
+64 KB, and a wide export's header row alone can be longer — `results_skip_steps_true.csv`
+(2,334 columns, header 148 KB) gave one partial line, read as plain text, and pasted CSV was
+never converted. Both panes then held raw 148 KB lines, which is what made the next paste
+freeze. `sniffHead()` takes ≥ 64 KB and on to the end of the 6th line, capped at 2 MB;
+`detectKind`, `cheapLooksLikeCSV` and `countColumns` all use it.
+
 ### 4. `getDocumentPair()` — the panes are NOT the document
 
 Two things make them differ:
@@ -729,7 +736,7 @@ returns a **count**, so the report says "3 zero-width characters", not "cleaned"
 ### 10. Regression suites — run these before touching any of the above
 
 ```bash
-node tests/json_repair.test.js    # 104 checks: integrity, repair, perf, classification
+node tests/json_repair.test.js    # 108 checks: integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks: record pairing, key table, filters, export
 node tests/diff_view.test.js      #  20 checks: change-block grouping, fold kinds, line coverage
@@ -1000,7 +1007,7 @@ Located in `tests/`:
 
 ### Automated suites (run these first)
 ```bash
-node tests/json_repair.test.js    # 104 checks — data integrity, repair, perf, classification
+node tests/json_repair.test.js    # 108 checks — data integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks — record pairing, key table, filters, export
 node tests/diff_view.test.js      #  20 checks — change-block grouping, fold kinds, line coverage

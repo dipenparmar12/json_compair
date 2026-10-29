@@ -7333,7 +7333,9 @@
       // JSONRepairKit.csvEvidence requires >= 2 non-empty lines, >= 2 columns,
       // and a delimiter count that is consistent across the sampled lines.
       function cheapLooksLikeCSV(text) {
-        const head = text.slice(0, 65536);
+        // Up to the end of the first few lines, not a fixed 64 KB: a wide
+        // export's header alone can be longer than that (see sniffHead).
+        const head = window.JSONRepairKit ? window.JSONRepairKit.sniffHead(text) : text.slice(0, 65536);
         if (/^\s*[{\[]/.test(head)) return false;
         if (window.JSONRepairKit) return window.JSONRepairKit.csvEvidence(head).ok;
         // Fallback if the kit failed to load: still require two lines.
@@ -7342,7 +7344,7 @@
         return /[,;\t|]/.test(lines[0]);
       }
       function countColumns(text) {
-        const head = text.slice(0, 65536);
+        const head = window.JSONRepairKit ? window.JSONRepairKit.sniffHead(text) : text.slice(0, 65536);
         const nl = head.indexOf('\n');
         const firstLine = nl === -1 ? head : head.slice(0, nl);
         let sep = ',';
