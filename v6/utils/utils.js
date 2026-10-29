@@ -272,6 +272,8 @@
       gutter: true,
       collapseUnchanged: false,
       blockDiff: true,      // Object-aware (block-level) diff for valid JSON; falls back to text diff
+      foldChangeLines: 40,  // Blocks of differences this long get a fold chevron (0 = off)
+      foldLargeChanges: false, // Collapse Unchanged also folds those blocks
       ignorePatterns: [],   // Key names / /regex/ excluded from the diff (grayed out)
       ignoreScope: "both",  // What patterns match: 'key' | 'value' | 'both'
       ignoreStyled: true,   // Show excluded matches with a subdued gray tint

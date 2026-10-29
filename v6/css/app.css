@@ -38,6 +38,8 @@
     --diff-del-line: #ffebe9;
     --diff-del-text: #ffc1ba;
     --diff-gutter: #ffd33d;
+    --diff-add-strong: #1a7f37;   /* fold chevrons and edge bars */
+    --diff-del-strong: #cf222e;
 
     /* Alignment gap (the empty .cm-mergeSpacer CM6 draws opposite an
        add/remove). Kept faint + neutral so it reads as "no content here"
@@ -88,6 +90,8 @@
     --diff-del-line: #3a1618;
     --diff-del-text: #6e2b28;
     --diff-gutter: #b9933a;
+    --diff-add-strong: #3fb950;
+    --diff-del-strong: #f85149;
 
     --diff-gap-fill: rgba(255, 255, 255, 0.045);
     --diff-changed-line: rgba(255, 255, 255, 0.045);
@@ -3627,3 +3631,33 @@ button:disabled,
         margin-top: 0;
     }
 }
+
+/* ====================================================================
+   FOLDED CHANGES
+   ==================================================================== */
+/* Folded block of differences: the same row as CM6's "⦚ N unchanged lines ⦚",
+   with an edge bar that says what was folded. */
+.cm-collapsedChange {
+    box-shadow: inset 3px 0 0 var(--diff-gutter);
+}
+.cm-collapsedChange[data-kind="removed"] { box-shadow: inset 3px 0 0 var(--diff-del-strong); }
+.cm-collapsedChange[data-kind="added"]   { box-shadow: inset 3px 0 0 var(--diff-add-strong); }
+.cm-collapsedChange:focus-visible { outline: 2px solid var(--accent, #0969da); outline-offset: -2px; }
+
+/* Fold chevron, only on blocks big enough to fold. */
+.cm-changeFoldGutter .cm-gutterElement {
+    padding: 0 1px;
+    width: 14px;
+    text-align: center;
+}
+.cm-changeFold {
+    cursor: pointer;
+    color: var(--diff-del-strong);
+    font-size: 11px;
+    line-height: inherit;
+    border-radius: 3px;
+    user-select: none;
+}
+.cm-merge-b .cm-changeFold { color: var(--diff-add-strong); }
+.cm-changeFold:hover { background: var(--diff-changed-line); filter: brightness(0.8); }
+#view-container.no-change-folds .cm-changeFoldGutter { display: none; }

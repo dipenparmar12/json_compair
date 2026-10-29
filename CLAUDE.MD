@@ -50,6 +50,7 @@ json_compair/
 │       ├── json_align.js   # Record matcher + item/field diff model + block-level aligner (window.JSONAlign)
 │       ├── diff_ignore.js  # Exclude keys/patterns from the diff (window.DiffIgnore) — key-name matcher + line-scan
 │       ├── key_compare.js  # Keys dialog: match / different / one-side-only per key + filters + CSV/JSON export (window.KeyCompare)
+│       ├── diff_view.js    # Which blocks of differences can fold, in both panes (window.DiffView)
 │       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
 ├── v5/                     # Legacy CodeMirror 5 version
@@ -180,6 +181,8 @@ const newBranch = await BranchManager.createBranch("API v3", content);
 
   // Diff Settings
   "blockDiff": true,             // Object-aware (block-level) JSON diff (see Diff Engine §6)
+  "foldChangeLines": 40,         // Change blocks this long get a fold chevron; 0 = off (Diff Engine §13)
+  "foldLargeChanges": false,     // Collapse Unchanged also folds those blocks
   "highlightChanges": true,      // Red/green highlighting
   "gutter": true,                // Diff gutter markers
   "collapseUnchanged": false,    // Auto-collapse identical blocks
@@ -280,6 +283,13 @@ window.KeyCompare
   .toCSV(items, isColumn, labels) / .toJSON(items, isColumn, meta)
   .parsePath('a.b[3]["x y"]')  // → ['a', 'b', 3, 'x y']
 
+// diff_view.js (v6) — pure presentation decisions (Diff Engine §13)
+window.DiffView
+  .changeRegions(chunks, docA, docB, {minLines}) // → [{key, a, b, linesA, linesB, chunks, kind}]
+                        //   chunks ≤ MERGE_GAP (4) unchanged lines apart form one block;
+                        //   kind: removed|added|changed; a/b: {first,last} lines or null
+  .foldLabel(region, hidden)   // "1,249 removed lines hidden"
+
 // diff_ignore.js (v6)
 window.DiffIgnore
   .parseOne()           // "/re/flags" → regex descriptor, else plain match
@@ -331,6 +341,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/json_repair.js"></script>    <!-- v6 only: repair chain + classifier -->
 <script src="./utils/text_tools.js"></script>     <!-- v6 only: text cleanup + universal sort -->
 <script src="./utils/key_compare.js"></script>    <!-- v6 only: Keys table; AFTER json_align (uses matchArray) -->
+<script src="./utils/diff_view.js"></script>      <!-- v6 only: which change blocks can fold -->
 ```
 
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
@@ -695,6 +706,7 @@ returns a **count**, so the report says "3 zero-width characters", not "cleaned"
 node tests/json_repair.test.js    # 104 checks: integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks: record pairing, key table, filters, export
+node tests/diff_view.test.js      #  15 checks: change-block grouping, fold kinds
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -963,6 +975,7 @@ Located in `tests/`:
 node tests/json_repair.test.js    # 104 checks — data integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks — record pairing, key table, filters, export
+node tests/diff_view.test.js      #  15 checks — change-block grouping, fold kinds
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1012,6 +1025,11 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     read "1 changed of 1 items · N field changes" with shared keys on the same row, NOT
     "1 removed, 1 added". **Keys** → 214 match / 229 different / 1,763 left-only / 4,786
     right-only; clicking a row puts that key under the cursor; Export = exactly the rows shown
+29. A pair with an 80-key removed block, a 1-line change and a 110-line changed block — ▾ only
+    on the two big blocks; folding one leaves its first line and "N … lines hidden" in BOTH
+    panes with the lines below still level; with Collapse on and "Collapse folds large changes
+    too" ticked, both kinds fold and the 1-line change stays open; ↓ skips changes inside a
+    folded block; a Keys/Details jump into a folded block unfolds it
 
 ## Common Tasks
 
@@ -1292,6 +1310,37 @@ tolerance, and pairs array elements with `JSONAlign.matchArray`, so the table an
 cannot disagree. Clicking a row closes the dialog and walks the path down the pretty-printed
 pane (`findKeyLine`, exact indentation per level), paging a windowed collection first.
 Measured: the snapshot in 47 ms; 2,000 × 158 records (316k rows) in ~0.6 s.
+
+### 13. Folded changes — `diff_view.js` + the change-fold block in index.html
+Changes only what is DRAWN. Chunks, counts and the diff itself are untouched, so nothing is
+re-diffed.
+
+**Folding large changes** (Settings → *Fold changes over* N lines, default 40, 0 = off)
+- **Why:** Collapse Unchanged hid the matching 30 %; the differing 70 % stayed open, so a small
+  change below a 2,000-line block meant scrolling past all of it.
+- **What:** a block of differences ≥ N lines gets a ▾ in its own gutter (`cm-changeFoldGutter`).
+  Folding keeps the block's first line and replaces the rest with one row in CM6's own
+  `.cm-collapsedLines` style — "1,249 removed lines hidden", edge bar red / green / yellow by
+  kind. Click the row (or Enter) to show it; Alt+click a ▾, or Alt+[ / Alt+], folds or shows all.
+- **One model with Collapse:** "Collapse folds large changes too" (`foldLargeChanges`) makes the
+  Collapse chip fold these blocks as well. Per-block clicks then override it (`_foldFlipped`,
+  cleared whenever that default flips). No second toolbar control.
+- **Blocks:** `DiffView.changeRegions()` merges chunks ≤ `MERGE_GAP` (4) unchanged lines apart,
+  so one region of many small edits is one block. 4 is below what Collapse Unchanged can fold
+  (3-line margins + 4), so the two kinds never claim the same line.
+- **Alignment:** both panes fold from ONE region list. Row-aligned output hides the same lines on
+  each side; otherwise MergeView's spacers absorb the difference. `realignPanes()` re-runs
+  `mergeView.measure()` one frame later, because MergeView skips its spacer pass when the
+  update that changed a height also carries its own spacer change.
+- **Wiring:** `changeFoldField` (decorations + markers per pane, set by `setChangeFolds`),
+  `changeFoldListener` → `scheduleChangeFolds()` (microtask: chunks change inside MergeView's
+  dispatch, where dispatching again is not allowed; still before paint) → `applyChangeFolds()`
+  (skips when `_foldSignature` is unchanged). Recreated views reset the signature.
+- **Navigation:** ↑ ↓ and Alt+↑/↓ use `moveToChange()`, which skips chunks inside a folded
+  block. `scrollPanesToLine()` (Details, Keys) calls `revealChangeFoldAt()` first.
+- **Limit:** a block's identity is its chunk positions, so an edit ABOVE a manually folded block
+  shifts it and the block reopens.
+- **Measured** (5,382-line pair, 30 alternating blocks): fold all 26 ms, show all 56 ms.
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the

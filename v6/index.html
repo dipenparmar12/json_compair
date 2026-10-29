@@ -62,6 +62,7 @@
     <script src="./utils/progress.js"></script>
     <script src="./utils/json_align.js"></script>
     <script src="./utils/key_compare.js"></script>
+    <script src="./utils/diff_view.js"></script>
     <script src="./utils/diff_ignore.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
@@ -308,6 +309,22 @@
                 <div class="setting-text">
                   <div class="setting-title">Collapse Unchanged</div>
                   <div class="setting-desc">Fold long sections of identical lines</div>
+                </div>
+              </label>
+
+              <label class="setting-row row-inline">
+                <span class="setting-text">
+                  <span class="setting-title">Fold changes over</span>
+                  <span class="setting-desc">A block of differences at least this many lines long gets a ▾ in the gutter that folds it in both panels; click the summary row to show it again. Alt+click a ▾ (or Alt+[ / Alt+]) folds or shows every block. 0 turns this off.</span>
+                </span>
+                <input type="number" id="setting-fold-change-lines" class="settings-input-num" value="40" min="0" max="100000" step="10" />
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" id="setting-fold-large-changes" />
+                <div class="setting-text">
+                  <div class="setting-title">Collapse folds large changes too</div>
+                  <div class="setting-desc">With Collapse on, blocks over the fold size start folded as well, so only the smaller differences stay open.</div>
                 </div>
               </label>
               
@@ -639,7 +656,7 @@
       // `diff` is the same routine MergeView runs internally. We call it on a
       // small probe page to MEASURE how expensive this particular pair is before
       // choosing how much to render — see calibrateRenderBudget().
-      import { MergeView, Change, goToNextChunk, goToPreviousChunk, diff as cmDiff } from "@codemirror/merge";
+      import { MergeView, Change, getChunks, diff as cmDiff } from "@codemirror/merge";
       
       // Import themes
       import { oneDark } from "@codemirror/theme-one-dark";
@@ -657,6 +674,9 @@
         placeholder,
         Decoration,
         ViewPlugin,
+        WidgetType,
+        GutterMarker,
+        gutter,
       } from "@codemirror/view";
       import {
         foldGutter,
@@ -685,7 +705,7 @@
       import { lintKeymap, linter, lintGutter, forceLinting } from "@codemirror/lint";
 
       // Import Compartment for dynamic configuration
-      import { Compartment, RangeSetBuilder, Transaction, StateField, StateEffect } from "@codemirror/state";
+      import { Compartment, RangeSetBuilder, RangeSet, EditorSelection, Transaction, StateField, StateEffect } from "@codemirror/state";
 
       // ---------------------------------------------------------------------
       // Transient "this is the record you asked for" highlight.
@@ -1688,6 +1708,262 @@
         document.addEventListener('scroll', () => LintPop.hideOnScroll(), true);
       }
 
+      /* ---- Folding large blocks of differences --------------------------------
+         Collapse Unchanged folds what is the same; this folds what is not. A
+         block of differences at least `foldChangeLines` long gets a chevron in
+         the gutter; folding it keeps its first line and hides the rest behind
+         one summary row ("1,249 removed lines hidden"). Both panes fold from ONE
+         block list (DiffView.changeRegions over mergeView.chunks), which is what
+         keeps them aligned — row-aligned output hides the same lines on each
+         side, and otherwise MergeView's own spacers absorb the difference.
+         Nothing is re-diffed: chunks are untouched, only decorations change.
+
+         With "Collapse folds large changes too" on, the Collapse chip folds
+         these blocks as well; a chevron click or the summary row then
+         overrides that per block (_foldFlipped). */
+      let foldChangeLines = DiffView.DEFAULT_MIN_LINES;   // 0 = off
+      let foldLargeChanges = false;
+      const _foldFlipped = new Set();   // block keys toggled away from the default
+      let _lastAutoFold = false;
+      let _changeRegions = [];
+      let _foldSignature = '';
+      let _foldScheduled = false;
+      const setChangeFolds = StateEffect.define();
+
+      function autoFoldActive() {
+        return foldLargeChanges && !!document.getElementById('setting-collapse-unchanged')?.checked;
+      }
+      function isChangeFolded(key) {
+        return autoFoldActive() !== _foldFlipped.has(key);
+      }
+
+      class ChangeFoldMarker extends GutterMarker {
+        constructor(folded, lines) { super(); this.folded = folded; this.lines = lines; }
+        eq(o) { return o.folded === this.folded && o.lines === this.lines; }
+        toDOM() {
+          const el = document.createElement('div');
+          el.className = 'cm-changeFold';
+          el.textContent = this.folded ? '▸' : '▾';
+          if (!this.lines) return el;   // the gutter's width spacer
+          el.title = (this.folded ? 'Show' : 'Fold') + ' this block of ' +
+            this.lines.toLocaleString('en-US') + ' lines of differences (Alt+click: all blocks)';
+          return el;
+        }
+      }
+
+      class ChangeFoldWidget extends WidgetType {
+        constructor(key, label, kind) { super(); this.key = key; this.label = label; this.kind = kind; }
+        eq(o) { return o.key === this.key && o.label === this.label; }
+        toDOM() {
+          const el = document.createElement('div');
+          el.className = 'cm-collapsedLines cm-collapsedChange';
+          el.dataset.kind = this.kind;
+          el.textContent = this.label;
+          el.title = 'Show these lines';
+          el.setAttribute('role', 'button');
+          el.tabIndex = 0;
+          const open = (e) => { e.preventDefault(); toggleChangeFold(this.key, e.altKey); };
+          el.addEventListener('click', open);
+          el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(e); });
+          return el;
+        }
+        ignoreEvent() { return true; }
+        get estimatedHeight() { return 27; }
+      }
+
+      // Per pane: the fold decorations, the gutter chevrons, and where each
+      // block starts (for gutter clicks). Replaced wholesale by setChangeFolds;
+      // mapped through edits until the next chunk update recomputes it.
+      const changeFoldField = StateField.define({
+        create: () => ({ deco: Decoration.none, markers: RangeSet.empty, starts: [] }),
+        update(v, tr) {
+          for (const e of tr.effects) if (e.is(setChangeFolds)) return e.value;
+          if (!tr.docChanged) return v;
+          return {
+            deco: v.deco.map(tr.changes),
+            markers: v.markers.map(tr.changes),
+            starts: v.starts.map((s) => ({ pos: tr.changes.mapPos(s.pos), key: s.key })),
+          };
+        },
+        provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
+      });
+
+      function changeFoldValue(view, side, regions) {
+        const doc = view.state.doc;
+        const deco = [], markers = [], starts = [];
+        for (const r of regions) {
+          const span = r[side];
+          if (!span || span.last > doc.lines) continue;
+          const folded = isChangeFolded(r.key);
+          const from = doc.line(span.first).from;
+          starts.push({ pos: from, key: r.key });
+          markers.push(new ChangeFoldMarker(folded, Math.max(r.linesA, r.linesB)).range(from));
+          if (folded && span.last > span.first) {
+            const hidden = span.last - span.first;
+            deco.push(Decoration.replace({
+              block: true,
+              widget: new ChangeFoldWidget(r.key, DiffView.foldLabel(r, hidden), r.kind),
+            }).range(doc.line(span.first + 1).from, doc.line(span.last).to));
+          }
+        }
+        return { deco: Decoration.set(deco), markers: RangeSet.of(markers), starts };
+      }
+
+      // Recompute the blocks from the current chunks and push them to both
+      // panes. Synchronous, so a caller can reveal a line right after it.
+      function applyChangeFolds() {
+        if (!mergeView) return;
+        const a = mergeView.a, b = mergeView.b;
+        let regions = [];
+        if (foldChangeLines > 0) {
+          try {
+            regions = DiffView.changeRegions(mergeView.chunks, a.state.doc, b.state.doc, { minLines: foldChangeLines });
+          } catch (e) { console.warn('Change folds unavailable', e); }
+        }
+        const auto = autoFoldActive();
+        if (auto !== _lastAutoFold) { _foldFlipped.clear(); _lastAutoFold = auto; }
+        const keys = new Set(regions.map((r) => r.key));
+        for (const k of [..._foldFlipped]) if (!keys.has(k)) _foldFlipped.delete(k);
+        _changeRegions = regions;
+
+        const sig = a.state.doc.length + ':' + b.state.doc.length + '|' + regions.map((r) =>
+          r.key + (r.a ? r.a.first + '-' + r.a.last : '') + '/' + (r.b ? r.b.first + '-' + r.b.last : '') +
+          (isChangeFolded(r.key) ? '+' : '-')).join(',');
+        if (sig === _foldSignature) return;
+        _foldSignature = sig;
+        a.dispatch({ effects: setChangeFolds.of(changeFoldValue(a, 'a', regions)) });
+        b.dispatch({ effects: setChangeFolds.of(changeFoldValue(b, 'b', regions)) });
+        realignPanes();
+      }
+
+      // MergeView aligns the panes with spacers, recomputed from a listener
+      // when either pane's height changes — but it skips that pass when the
+      // same update carries its own spacer change, so after both panes'
+      // heights change at once (a fold, or Collapse toggled with folds on) it
+      // can keep spacers measured with only ONE pane re-laid-out. Measured: a
+      // 96 px spacer left in the right pane, every line below it off by 5
+      // rows. Re-run the pass once both panes have measured (their own
+      // measure frames were requested first, so they run before this one).
+      let _realignFrame = 0;
+      function realignPanes() {
+        if (_realignFrame) return;
+        _realignFrame = requestAnimationFrame(() => {
+          _realignFrame = 0;
+          try { mergeView && mergeView.measure && mergeView.measure(); } catch (_) { /* view rebuilt */ }
+        });
+      }
+
+      // Chunks change inside MergeView's own dispatch, where dispatching again
+      // is not allowed; a microtask runs once that (and a two-pane write) has
+      // finished, and still before the next paint — so no flash of the
+      // unfolded block.
+      function scheduleChangeFolds() {
+        if (_foldScheduled) return;
+        _foldScheduled = true;
+        queueMicrotask(() => { _foldScheduled = false; applyChangeFolds(); });
+      }
+
+      function toggleChangeFold(key, all) {
+        if (all) { setAllChangeFolds(!isChangeFolded(key)); return; }
+        if (_foldFlipped.has(key)) _foldFlipped.delete(key); else _foldFlipped.add(key);
+        applyChangeFolds();
+      }
+
+      function setAllChangeFolds(fold) {
+        _foldFlipped.clear();
+        if (fold !== autoFoldActive()) for (const r of _changeRegions) _foldFlipped.add(r.key);
+        applyChangeFolds();
+        return true;
+      }
+
+      // Unfold the block hiding 1-based `lineNo` (in either pane), so a jump
+      // from Details / Keys never lands on a summary row.
+      function revealChangeFoldAt(lineNo) {
+        let hit = false;
+        for (const r of _changeRegions) {
+          if (!isChangeFolded(r.key)) continue;
+          const inA = r.a && lineNo > r.a.first && lineNo <= r.a.last;
+          const inB = r.b && lineNo > r.b.first && lineNo <= r.b.last;
+          if (inA || inB) { _foldFlipped.has(r.key) ? _foldFlipped.delete(r.key) : _foldFlipped.add(r.key); hit = true; }
+        }
+        if (hit) applyChangeFolds();
+      }
+
+      const changeFoldGutter = gutter({
+        class: 'cm-changeFoldGutter',
+        markers: (v) => v.state.field(changeFoldField).markers,
+        initialSpacer: () => new ChangeFoldMarker(false, 0),
+        domEventHandlers: {
+          mousedown(view, block, event) {
+            const hit = view.state.field(changeFoldField).starts.find((s) => s.pos === block.from);
+            if (!hit) return false;
+            event.preventDefault();
+            toggleChangeFold(hit.key, event.altKey);
+            return true;
+          },
+        },
+      });
+
+      const changeFoldListener = EditorView.updateListener.of((u) => {
+        const before = getChunks(u.startState), after = getChunks(u.state);
+        if ((before && before.chunks) !== (after && after.chunks)) scheduleChangeFolds();
+      });
+
+      // Previous / next change, skipping changes inside a folded block (the
+      // block's first change stays reachable — its line is the visible one).
+      // Same walk as @codemirror/merge's goToNextChunk otherwise.
+      function moveToChange(dir) {
+        return (view) => {
+          const conf = getChunks(view.state);
+          if (!conf || !conf.chunks.length) return false;
+          const isB = conf.side === 'b';
+          const hidden = view.state.field(changeFoldField, false)?.deco;
+          const chunks = conf.chunks.filter((c) => {
+            const p = isB ? c.fromB : c.fromA;
+            let inside = false;
+            if (hidden) hidden.between(p, p, (f, t) => { if (p >= f && p <= t) inside = true; });
+            return !inside;
+          });
+          if (!chunks.length) return false;
+          const head = view.state.selection.main.head;
+          let pos = 0;
+          for (let i = chunks.length - 1; i >= 0; i--) {
+            const c = chunks[i];
+            const from = isB ? c.fromB : c.fromA, to = isB ? c.toB : c.toA;
+            if (to < head) { pos = i + 1; break; }
+            if (from <= head) {
+              if (chunks.length === 1) return false;
+              pos = i + (dir < 0 ? 0 : 1);
+              break;
+            }
+          }
+          const next = chunks[(pos + (dir < 0 ? chunks.length - 1 : 0)) % chunks.length];
+          const from = isB ? next.fromB : next.fromA, to = isB ? next.toB : next.toA;
+          view.dispatch({
+            selection: { anchor: from },
+            userEvent: 'select.byChunk',
+            effects: EditorView.scrollIntoView(EditorSelection.range(to, from)),
+          });
+          return true;
+        };
+      }
+
+      // Mounted after basicSetup so the fold chevrons sit between the
+      // code-fold gutter and the text.
+      const diffViewExtensions = [changeFoldField, changeFoldGutter, changeFoldListener];
+
+      // Push the fold settings into the live view: no diff is recomputed,
+      // only decorations.
+      function syncDiffView() {
+        const n = parseInt(SettingsManager.get('foldChangeLines'), 10);
+        foldChangeLines = Number.isFinite(n) && n >= 0 ? n : DiffView.DEFAULT_MIN_LINES;
+        foldLargeChanges = SettingsManager.get('foldLargeChanges') === true;
+        const container = document.getElementById('view-container');
+        if (container) container.classList.toggle('no-change-folds', foldChangeLines === 0);
+        if (!mergeView) return;
+        applyChangeFolds();
+      }
+
       // Basic editor extensions for both sides
       const basicSetup = [
         flashLineField,
@@ -1714,8 +1990,11 @@
         highlightSelectionMatches(),
         keymap.of([
           // Jump between diffs (works inside either pane)
-          { key: "Alt-ArrowDown", run: goToNextChunk, preventDefault: true },
-          { key: "Alt-ArrowUp", run: goToPreviousChunk, preventDefault: true },
+          { key: "Alt-ArrowDown", run: moveToChange(1), preventDefault: true },
+          { key: "Alt-ArrowUp", run: moveToChange(-1), preventDefault: true },
+          // Fold / show every block of differences over the fold size.
+          { key: "Alt-[", run: () => setAllChangeFolds(true), preventDefault: true },
+          { key: "Alt-]", run: () => setAllChangeFolds(false), preventDefault: true },
           ...closeBracketsKeymap,
           ...defaultKeymap,
           ...searchKeymap,
@@ -1921,6 +2200,7 @@
             doc: initialContent.left,
             extensions: [
               basicSetup,
+              diffViewExtensions,
               json(),
               wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
               themeCompartment.of(getThemeExtension(currentTheme)),
@@ -1933,6 +2213,7 @@
             doc: initialContent.right,
             extensions: [
               basicSetup,
+              diffViewExtensions,
               json(),
               wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
               themeCompartment.of(getThemeExtension(currentTheme)),
@@ -2072,6 +2353,8 @@
           orientation: SettingsManager.get('orientation'),
           revertControls: SettingsManager.get('revertControls'),
           scanLimit: SettingsManager.get('scanLimit'),
+          foldChangeLines: SettingsManager.get('foldChangeLines'),
+          foldLargeChanges: SettingsManager.get('foldLargeChanges'),
         };
       }
 
@@ -2107,6 +2390,10 @@
         const quickHighlight = document.getElementById('quick-highlight-changes');
         if (quickCollapse) quickCollapse.checked = settings.collapseUnchanged;
         if (quickHighlight) quickHighlight.checked = settings.highlightChanges;
+        document.getElementById('setting-fold-change-lines').value =
+          settings.foldChangeLines ?? DiffView.DEFAULT_MIN_LINES;
+        document.getElementById('setting-fold-large-changes').checked = settings.foldLargeChanges === true;
+        syncDiffView();
 
         // Both snapshot-import paths call this again to re-sync the controls
         // with the imported settings. Wiring the listeners a second time made
@@ -2146,7 +2433,20 @@
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
-        
+
+        // Fold settings — nothing is re-diffed (see syncDiffView).
+        document.getElementById('setting-fold-change-lines').addEventListener('change', (e) => {
+          const n = parseInt(e.target.value, 10);
+          const v = Number.isFinite(n) && n >= 0 ? (n === 0 ? 0 : Math.max(2, n)) : DiffView.DEFAULT_MIN_LINES;
+          e.target.value = v;
+          SettingsManager.set('foldChangeLines', v);
+          syncDiffView();
+        });
+        document.getElementById('setting-fold-large-changes').addEventListener('change', (e) => {
+          SettingsManager.set('foldLargeChanges', e.target.checked);
+          syncDiffView();
+        });
+
         // Performance mode settings
         initializePerformanceSettings();
       }
@@ -2925,6 +3225,9 @@
           removeBlockAlignment();
         }
 
+        // Collapse decides whether large changes start folded.
+        syncDiffView();
+
         updateStatus('Settings applied');
         updateDiffStatus();
       }
@@ -3576,6 +3879,7 @@
             doc: leftContent,
             extensions: [
               basicSetup,
+              diffViewExtensions,
               json(),
               wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []),
               themeCompartment.of(getThemeExtension(currentTheme)),
@@ -3588,6 +3892,7 @@
             doc: rightContent,
             extensions: [
               basicSetup,
+              diffViewExtensions,
               json(),
               wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []),
               themeCompartment.of(getThemeExtension(currentTheme)),
@@ -3607,6 +3912,9 @@
         // The constructor diffs with exactly that config, so the fresh chunks and
         // the applied limit agree.
         _chunkScanLimit = _appliedScanLimit;
+        // The new panes start with no folds; rebuild them for these chunks.
+        _foldSignature = '';
+        scheduleChangeFolds();
 
         // Re-add pane controls
         addPaneControls();
@@ -7371,7 +7679,7 @@
       function goToDiff(dir) {
         if (!mergeView) return;
         const target = mergeView.a.hasFocus ? mergeView.a : mergeView.b;
-        (dir > 0 ? goToNextChunk : goToPreviousChunk)(target);
+        moveToChange(dir)(target);
         target.focus();
       }
 
@@ -7670,6 +7978,7 @@
 
       /** Scroll both panes to 1-based line `lineNo` and flash it. */
       function scrollPanesToLine(lineNo) {
+        revealChangeFoldAt(lineNo);
         const touched = [];
         for (const view of [mergeView.a, mergeView.b]) {
           if (lineNo < 1 || lineNo > view.state.doc.lines) continue;
