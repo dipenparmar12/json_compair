@@ -182,6 +182,7 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   // Diff Settings
   "blockDiff": true,             // Object-aware (block-level) JSON diff (see Diff Engine §6)
   "expandEmbedded": true,        // Show JSON / Python dicts stored in strings as nested keys (§14)
+  "expandNoticeShown": false,    // its one-time notice has been shown; never shown again
   "diffStyle": "lines",          // Highlight style: lines|values|chars|outline (Diff Engine §13)
   "foldChangeLines": 40,         // Change blocks this long get a fold chevron; 0 = off
   "foldLargeChanges": false,     // Collapse Unchanged also folds those blocks
@@ -1456,8 +1457,10 @@ re-diffs anything.
 - **Display only:** an expanding render is flagged `changed` with `expanded: n`, so
   `applyTransformResult` keeps the original pair in `_ignorePristine` — saving, Copy, Export,
   Share and branches keep the strings (same mechanism as ignore patterns, §7). A notice says
-  so once per comparison, with **Turn off**. `setExpandEmbedded()` restores the pristine pair
-  first, like `applyNumTolerance()`.
+  so **once, ever** (`expandNoticeShown`), with **Turn off** and a pointer to the setting, whose
+  ⓘ carries the same explanation from then on. It used to say it once per comparison, which
+  meant again on every reload. `setExpandEmbedded()` restores the pristine pair first, like
+  `applyNumTolerance()`.
 - **Gates:** `expandActive()` is part of `transformActive()`, `applyBlockAlignment()` and the
   align memo. With Block Diff off, `normalize(…, expand)` returns `{ok:false}` when there is
   nothing to expand, so plain JSON is never re-indented just because the setting is on.

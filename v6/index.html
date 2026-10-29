@@ -1098,7 +1098,6 @@
         if (box) box.checked = expandEmbeddedOn;
         restoreIgnorePristine();
         _lastAlignMemo = null;
-        _expandNoted = 0;
         if (transformActive()) applyBlockAlignment();
         else removeBlockAlignment();
         updateDiffStatus();
@@ -4088,16 +4087,18 @@
         return dispatched;
       }
 
-      // Say once per comparison that some values are shown as structure, and
-      // that it is display only. Re-aligning the same pair says nothing new.
-      let _expandNoted = 0;
+      // Said ONCE, ever: the first comparison that shows JSON stored as text as
+      // structure explains it, and from then on the explanation lives in
+      // Settings beside "Read JSON inside strings". Once per comparison meant
+      // once per visit — every reload of the same pair said it again.
       function noteExpanded(n) {
-        if (n === _expandNoted) return;
-        _expandNoted = n;
+        if (SettingsManager.get('expandNoticeShown')) return;
+        SettingsManager.set('expandNoticeShown', true);
         showNotice('info',
           `Showing ${n.toLocaleString('en-US')} JSON value${n === 1 ? '' : 's'} stored as text as nested ` +
-          'objects so they compare key by key. Display only — saving, Copy and Export keep the original text.',
-          { key: 'expand-embedded', timeout: 12000,
+          'objects so they compare key by key. Display only — saving, Copy and Export keep the original text. ' +
+          'Change it any time in Settings → Read JSON inside strings.',
+          { key: 'expand-embedded',
             actions: [{ label: 'Turn off', run: () => setExpandEmbedded(false) }] });
       }
 

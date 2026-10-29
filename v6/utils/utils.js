@@ -292,6 +292,7 @@
       collapseUnchanged: false,
       blockDiff: true,      // Object-aware (block-level) diff for valid JSON; falls back to text diff
       expandEmbedded: true, // Show JSON / Python dicts stored in strings as nested keys (display only)
+      expandNoticeShown: false, // its one-time explanation has been shown (never repeated)
       diffStyle: "lines",   // Highlight style: 'lines' | 'values' | 'chars' | 'outline'
       foldChangeLines: 40,  // Blocks of differences this long get a fold chevron (0 = off)
       foldLargeChanges: false, // Collapse Unchanged also folds those blocks
