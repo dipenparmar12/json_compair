@@ -996,6 +996,10 @@ Shows diff count and current mode (count = `mergeView.chunks.length`):
 - "No differences"
 - "N changed blocks"
 - "Add content to both panels to compare"
+- "Left panel is CSV — use To JSON above it to compare" (`formatMismatch`): CSV/TSV opposite
+  valid JSON, with no record model. Every line differs there, so a count says nothing; the
+  pill names the panel and the chip's **To JSON** fixes it. Uses the kinds the chips measured
+  (`paneAnalysis`); `updatePaneChips` re-runs the status when the verdict changes.
 
 ## Testing
 

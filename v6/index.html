@@ -6376,7 +6376,23 @@
       }
 
       function updatePaneChips() {
+        const before = formatMismatch();
         for (const side of ['left', 'right']) updatePaneChip(side);
+        // The status pill reads the kinds measured here (formatMismatch).
+        if (formatMismatch() !== before) updateDiffStatus();
+      }
+
+      // CSV in one panel and JSON in the other have no meaningful line diff:
+      // every line differs, and counting them only says so less clearly.
+      function formatMismatch() {
+        const a = paneAnalysis.left, b = paneAnalysis.right;
+        if (!a || !b) return null;
+        const table = (x) => x.kind === 'csv' || x.kind === 'tsv';
+        const json = (x) => x.kind === 'json' && x.valid;
+        const side = table(a) && json(b) ? 'Left' : table(b) && json(a) ? 'Right' : null;
+        if (!side) return null;
+        const kind = (side === 'Left' ? a : b).kind.toUpperCase();
+        return `${side} panel is ${kind} — use To JSON above it to compare`;
       }
 
       function updatePaneChip(side) {
@@ -8191,6 +8207,13 @@
           : (mergeView.chunks?.length || 0) === 0;
         if (same) {
           setDiffSummary('same', 'No differences');
+          updateDiffNavState();
+          return;
+        }
+
+        const mismatch = !diffModel && formatMismatch();
+        if (mismatch) {
+          setDiffSummary('warn', mismatch);
           updateDiffNavState();
           return;
         }
