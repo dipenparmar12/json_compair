@@ -782,9 +782,12 @@
           // An edit that leaves the two panes with different line counts means
           // they are no longer row-aligned; CM6's own diff takes over until the
           // debounced re-align below restores an aligned render.
+          // Nor is the pair json_align's text any more, so later full re-diffs
+          // take the raw effort cap until a re-align restores both flags.
           if (!_blockAligning && _rowAligned &&
               mergeView && mergeView.a.state.doc.lines !== mergeView.b.state.doc.lines) {
             _rowAligned = false;
+            _alignedRender = false;
           }
 
           // Skip block re-alignment while the user is actively typing/deleting so
@@ -3289,6 +3292,7 @@
       // Pass combinedLen when the content strings are already in hand.
       function buildDiffConfig(userScanLimit, combinedLen) {
         if (combinedLen == null) combinedLen = currentCombinedDocLen();
+        _userScanLimit = userScanLimit;
         _appliedScanLimit = clampScanLimit(userScanLimit, combinedLen);
         return { scanLimit: _appliedScanLimit, override: structuralDiff };
       }
@@ -3326,7 +3330,22 @@
           if (rows) { _lastDiffMode = 'rows'; return rows; }
         }
         _lastDiffMode = 'default';
-        return cmDiff(a, b, { scanLimit: _appliedScanLimit || SCAN_LIMIT_FLOOR });
+        return cmDiff(a, b, { scanLimit: fallbackScanLimit(a.length + b.length) });
+      }
+
+      // The effort for CM6's own diff, decided per call from the text actually
+      // being diffed. The raised limit is only safe on json_align's text while
+      // it still IS that text. When the rows stop lining up — a paste over part
+      // of a pane, Undo, a branch whose content does not parse — the pair is
+      // arbitrary, and the limit left over from the aligned render ran full
+      // Myers on it: replacing one pane of an aligned 250 KB pair with the same
+      // data unaligned was one 16 s blocked task. Such a pair gets the raw cap
+      // for its size, which bails out at once.
+      let _userScanLimit = SCAN_LIMIT_FLOOR;
+      function fallbackScanLimit(len) {
+        const live = _appliedScanLimit || SCAN_LIMIT_FLOOR;
+        if (_alignedRender && !_rowAligned) return live;   // normalize-only output
+        return Math.min(live, clampScanLimit(_userScanLimit, len, false, 0));
       }
 
       // null when the two texts do not have the same number of rows — then they
@@ -3384,7 +3403,8 @@
       // follow it with ensureDiffFresh() when there is no write to piggyback on.
       function syncDiffConfig(combinedLen) {
         if (!mergeView || !canReconfigure()) return;
-        const want = clampScanLimit(SettingsManager.get('scanLimit'),
+        _userScanLimit = SettingsManager.get('scanLimit');
+        const want = clampScanLimit(_userScanLimit,
                                     combinedLen == null ? currentCombinedDocLen() : combinedLen);
         if (want === _appliedScanLimit) return;
         _appliedScanLimit = want;

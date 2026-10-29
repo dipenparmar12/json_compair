@@ -742,6 +742,7 @@ node tests/key_compare.test.js    #  55 checks: record pairing, key table, filte
 node tests/diff_view.test.js      #  20 checks: change-block grouping, fold kinds, line coverage
 node tests/embedded_json.test.js  #  16 checks: JSON / Python dicts inside strings, strictness
 node tests/storage.test.js        #   8 checks: saved comparison — newest copy wins, record shape
+node tests/viewport_diff.test.js  #   4 checks: status-bar count stays line-by-line and fast
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -1013,6 +1014,7 @@ node tests/key_compare.test.js    #  55 checks — record pairing, key table, fi
 node tests/diff_view.test.js      #  20 checks — change-block grouping, fold kinds, line coverage
 node tests/embedded_json.test.js  #  16 checks — JSON / Python dicts inside strings, strictness
 node tests/storage.test.js        #   8 checks — saved comparison: newest copy wins, record shape
+node tests/viewport_diff.test.js  #   4 checks — status-bar count stays line-by-line and fast
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1251,6 +1253,13 @@ Understand the split before touching diff/perf code:
 - Cost of a raised limit on aligned 158-field records, measured: 0.6 MB combined → 0.24 s,
   1.5 MB → 1.2 s, 3 MB → 3.3 s, 6 MB → 12 s. That is why `SCAN_RAISE_MAX_BYTES` is 3 MB and
   why bounding the **text** (the record window) is the mechanism above it, not a bigger limit.
+- **The raised limit belongs to the aligned TEXT, not to the session** (`fallbackScanLimit`).
+  CM6's own diff now takes its effort per call, from the pair it is given: once the rows stop
+  lining up — a paste over part of a pane, Undo, a branch whose content does not parse — the
+  pair is arbitrary and gets the raw cap for its size. The autosave listener drops
+  `_alignedRender` with `_rowAligned` when an edit unbalances the line counts; the next
+  re-align restores both. Measured: replacing one pane of an aligned 250 KB pair with the same
+  data unaligned was one **16 s** blocked task at the leftover limit; 71 ms now.
 
 ### 4. In-place reconfigure + forced re-collapse (no more teardown on edit)
 - `canReconfigure()` gates on CM6 merge ≥ 6.7. When true, settings/edits call
@@ -1728,6 +1737,11 @@ re-diffs anything.
 ### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on
   scroll (debounced). NOTE: it currently affects only the status text, NOT what MergeView renders.
+  It diffs **line by line** (DMP line mode, `Diff_Timeout` 0.1 s). A character diff ran to DMP's
+  1 s timeout whenever a pane held one very long line (raw CSV's 148 KB header row is "in view"
+  whole), on every status update without a model: each paste opposite a raw CSV panel froze
+  the tab for ~1 s. 1,001 ms → 8 ms on that pair. `LargeFileDetector` still switches this mode on
+  permanently after one 300–500 KB paste (it persists `viewportDiff`) — not changed here.
 - `PerformanceMode` — bundles settings (auto-enables `collapseUnchanged`) for faster rendering.
 - `LargeFileDetector` — analyzes size and auto-suggests/enables perf modes
   (thresholds: 300 KB large, 500 KB warning, 2 MB critical).
