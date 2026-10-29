@@ -1744,8 +1744,10 @@ re-diffs anything.
   It diffs **line by line** (DMP line mode, `Diff_Timeout` 0.1 s). A character diff ran to DMP's
   1 s timeout whenever a pane held one very long line (raw CSV's 148 KB header row is "in view"
   whole), on every status update without a model: each paste opposite a raw CSV panel froze
-  the tab for ~1 s. 1,001 ms → 8 ms on that pair. `LargeFileDetector` still switches this mode on
-  permanently after one 300–500 KB paste (it persists `viewportDiff`) — not changed here.
+  the tab for ~1 s. 1,001 ms → 8 ms on that pair. A 300–500 KB paste (`checkContentSizeAndSuggest`)
+  turns it on for that visit only — it used to SAVE `viewportDiff`, so one large paste left every
+  later comparison on "~N differences in view". `updatePerformanceStatus` reads the live state.
+  A user who already had it saved that way keeps it until they untick it.
 - `PerformanceMode` — bundles settings (auto-enables `collapseUnchanged`) for faster rendering.
 - `LargeFileDetector` — analyzes size and auto-suggests/enables perf modes
   (thresholds: 300 KB large, 500 KB warning, 2 MB critical).

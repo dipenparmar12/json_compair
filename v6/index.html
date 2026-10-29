@@ -2934,7 +2934,8 @@
         if (!statusDiv || !statusText) return;
         
         const perfEnabled = SettingsManager.get('performanceMode');
-        const viewportEnabled = SettingsManager.get('viewportDiff');
+        // Live state, not the stored one: a large paste turns it on unsaved.
+        const viewportEnabled = !!viewportDiffManager?.enabled;
         
         if (perfEnabled || viewportEnabled) {
           const modes = [];
@@ -2977,11 +2978,18 @@
             5000
           );
         } else if (analysis.isLarge) {
-          // Auto-enable viewport diff for large files
+          // Viewport counting for this visit only. This used to go through
+          // applyViewportDiffMode(), which SAVES the setting, so one large paste
+          // left it on for good: every later comparison without a record model
+          // read "~N differences in view" instead of its block count. Same rule
+          // as Collapse Unchanged forced by size: the stored choice is the
+          // user's, and touching the checkbox makes it theirs again.
           const viewportCheckbox = document.getElementById('setting-viewport-diff');
-          if (viewportCheckbox && !viewportCheckbox.checked && !SettingsManager.get('performanceMode')) {
+          if (viewportCheckbox && !viewportCheckbox.checked && viewportDiffManager &&
+              !SettingsManager.get('performanceMode')) {
             viewportCheckbox.checked = true;
-            applyViewportDiffMode();
+            viewportDiffManager.enable();
+            updatePerformanceStatus();
           }
         }
       }
