@@ -296,6 +296,19 @@
                 </div>
               </label>
 
+              <label class="setting-row row-inline">
+                <span class="setting-text">
+                  <span class="setting-title">Highlight style</span>
+                  <span class="setting-desc">Lines: every changed line tinted, changed text darker (the original look). Values: only the changed value or key is marked; unchanged property names stay plain. Characters: only the changed characters. Outline: no fills; changed text is outlined and added/removed lines get an edge bar. Whole added or removed lines stay marked in every style.</span>
+                </span>
+                <select id="setting-diff-style" class="settings-select">
+                  <option value="lines">Lines</option>
+                  <option value="values">Values</option>
+                  <option value="chars">Characters</option>
+                  <option value="outline">Outline</option>
+                </select>
+              </label>
+
               <label class="setting-row">
                 <input type="checkbox" id="setting-gutter" checked />
                 <div class="setting-text">
@@ -1948,19 +1961,125 @@
         };
       }
 
-      // Mounted after basicSetup so the fold chevrons sit between the
-      // code-fold gutter and the text.
-      const diffViewExtensions = [changeFoldField, changeFoldGutter, changeFoldListener];
+      /* ---- Highlight styles ----------------------------------------------------
+         Settings → Highlight style. CM6 marks every line of a chunk with a
+         red/green fill, so a record with five edited values reads as one solid
+         block and the property names are painted as loudly as the values. The
+         other styles keep the same diff (same chunks, nothing recomputed) and
+         only change what is drawn: this plugin tags each changed line in the
+         viewport as 'part' (only some of it changed) or 'full' (added / removed
+         whole) and marks the whole JSON token — value or key — a change falls
+         in (every change for 'values', see buildDiffStyleDeco for the others).
+         CSS (app.css "HIGHLIGHT STYLES") does the rest. */
+      let diffStyle = 'lines';
+      const refreshDiffStyle = StateEffect.define();
+      const diffPartLine = Decoration.line({ class: 'cm-diffPart' });
+      const diffFullLine = Decoration.line({ class: 'cm-diffFull' });
+      const diffValueMark = Decoration.mark({ class: 'cm-diffValue' });
+      const VALUE_NODES = new Set(['String', 'Number', 'True', 'False', 'Null', 'PropertyName']);
 
-      // Push the fold settings into the live view: no diff is recomputed,
-      // only decorations.
+      function jsonTokenAt(tree, pos, side) {
+        for (let n = tree.resolveInner(pos, side); n; n = n.parent) {
+          if (VALUE_NODES.has(n.name)) return n;
+        }
+        return null;
+      }
+
+      function buildDiffStyleDeco(view) {
+        if (diffStyle === 'lines') return Decoration.none;
+        const conf = getChunks(view.state);
+        if (!conf || !conf.chunks.length) return Decoration.none;
+        const isA = conf.side !== 'b', chunks = conf.chunks, doc = view.state.doc;
+        // Values marks the token of every change. Characters and Outline mark
+        // only the changed characters — except where this side lost nothing
+        // and gained nothing (a zero-width change: "46" -> "1046" is an
+        // insertion on the right only), which would otherwise leave the left
+        // line with no mark at all; there the token is marked instead.
+        const allTokens = diffStyle === 'values';
+        const tree = document.getElementById('setting-highlight-changes')?.checked !== false
+          ? syntaxTree(view.state) : null;
+        const out = [];
+        for (const vr of view.visibleRanges) {
+          // First chunk that ends at or after the visible range.
+          let lo = 0, hi = chunks.length;
+          while (lo < hi) {
+            const m = (lo + hi) >> 1;
+            if ((isA ? chunks[m].toA : chunks[m].toB) < vr.from) lo = m + 1; else hi = m;
+          }
+          for (let i = lo; i < chunks.length; i++) {
+            const c = chunks[i];
+            const cFrom = isA ? c.fromA : c.fromB, cTo = isA ? c.toA : c.toB;
+            if (cFrom > vr.to) break;
+            if (cFrom === cTo) continue;   // empty on this side
+            const ranges = c.changes.map((ch) => isA
+              ? { from: cFrom + ch.fromA, to: cFrom + ch.toA }
+              : { from: cFrom + ch.fromB, to: cFrom + ch.toB });
+            const end = Math.min(isA ? c.endA : c.endB, vr.to);
+            for (let pos = doc.lineAt(Math.max(cFrom, vr.from)).from; pos <= end;) {
+              const line = doc.lineAt(pos);
+              const inLine = [];
+              for (const r of ranges) {
+                const touches = r.from === r.to
+                  ? r.from >= line.from && r.from <= line.to
+                  : r.from <= line.to && r.to > line.from;
+                if (touches) inLine.push({ from: r.from - line.from, to: r.to - line.from });
+              }
+              const cov = DiffView.lineCoverage(line.text, inLine);
+              if (cov) out.push((cov === 'full' ? diffFullLine : diffPartLine).range(line.from));
+              if (cov === 'part' && tree) {
+                for (const r of inLine) {
+                  if (!allTokens && r.to > r.from) continue;
+                  const at = line.from + Math.max(0, r.from);
+                  // A deletion (zero-width here) belongs to the token on
+                  // either side of it; real text only to the token it is in.
+                  const node = jsonTokenAt(tree, at, 1) || (r.from === r.to ? jsonTokenAt(tree, at, -1) : null);
+                  if (node && node.from >= line.from && node.to <= line.to) {
+                    out.push(diffValueMark.range(node.from, node.to));
+                  } else if (r.to > r.from) {
+                    const to = line.from + Math.min(line.length, r.to);
+                    if (to > at) out.push(diffValueMark.range(at, to));
+                  }
+                }
+              }
+              pos = line.to + 1;
+            }
+          }
+        }
+        return Decoration.set(out, true);
+      }
+
+      const diffStylePlugin = ViewPlugin.fromClass(class {
+        constructor(view) { this.decorations = buildDiffStyleDeco(view); }
+        update(u) {
+          const before = getChunks(u.startState), after = getChunks(u.state);
+          if (u.docChanged || u.viewportChanged ||
+              (before && before.chunks) !== (after && after.chunks) ||
+              u.transactions.some((tr) => tr.effects.some((e) => e.is(refreshDiffStyle))) ||
+              (diffStyle !== 'lines' && syntaxTree(u.state) !== syntaxTree(u.startState))) {
+            this.decorations = buildDiffStyleDeco(u.view);
+          }
+        }
+      }, { decorations: (v) => v.decorations });
+
+      // Both features, for each pane. Mounted after basicSetup so the fold
+      // chevrons sit between the code-fold gutter and the text.
+      const diffViewExtensions = [changeFoldField, changeFoldGutter, changeFoldListener, diffStylePlugin];
+
+      // Push the presentation settings into the live view: no diff is
+      // recomputed, only decorations and the container's style attribute.
       function syncDiffView() {
+        diffStyle = ['lines', 'values', 'chars', 'outline'].includes(SettingsManager.get('diffStyle'))
+          ? SettingsManager.get('diffStyle') : 'lines';
         const n = parseInt(SettingsManager.get('foldChangeLines'), 10);
         foldChangeLines = Number.isFinite(n) && n >= 0 ? n : DiffView.DEFAULT_MIN_LINES;
         foldLargeChanges = SettingsManager.get('foldLargeChanges') === true;
         const container = document.getElementById('view-container');
-        if (container) container.classList.toggle('no-change-folds', foldChangeLines === 0);
+        if (container) {
+          container.dataset.diffStyle = diffStyle;
+          container.classList.toggle('no-change-folds', foldChangeLines === 0);
+        }
         if (!mergeView) return;
+        for (const v of [mergeView.a, mergeView.b]) v.dispatch({ effects: refreshDiffStyle.of(null) });
         applyChangeFolds();
       }
 
@@ -2353,6 +2472,7 @@
           orientation: SettingsManager.get('orientation'),
           revertControls: SettingsManager.get('revertControls'),
           scanLimit: SettingsManager.get('scanLimit'),
+          diffStyle: SettingsManager.get('diffStyle'),
           foldChangeLines: SettingsManager.get('foldChangeLines'),
           foldLargeChanges: SettingsManager.get('foldLargeChanges'),
         };
@@ -2390,6 +2510,7 @@
         const quickHighlight = document.getElementById('quick-highlight-changes');
         if (quickCollapse) quickCollapse.checked = settings.collapseUnchanged;
         if (quickHighlight) quickHighlight.checked = settings.highlightChanges;
+        document.getElementById('setting-diff-style').value = settings.diffStyle || 'lines';
         document.getElementById('setting-fold-change-lines').value =
           settings.foldChangeLines ?? DiffView.DEFAULT_MIN_LINES;
         document.getElementById('setting-fold-large-changes').checked = settings.foldLargeChanges === true;
@@ -2434,7 +2555,11 @@
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
 
-        // Fold settings — nothing is re-diffed (see syncDiffView).
+        // Presentation only — nothing is re-diffed (see syncDiffView).
+        document.getElementById('setting-diff-style').addEventListener('change', (e) => {
+          SettingsManager.set('diffStyle', e.target.value);
+          syncDiffView();
+        });
         document.getElementById('setting-fold-change-lines').addEventListener('change', (e) => {
           const n = parseInt(e.target.value, 10);
           const v = Number.isFinite(n) && n >= 0 ? (n === 0 ? 0 : Math.max(2, n)) : DiffView.DEFAULT_MIN_LINES;
@@ -3225,7 +3350,8 @@
           removeBlockAlignment();
         }
 
-        // Collapse decides whether large changes start folded.
+        // Collapse decides whether large changes start folded, and Highlight
+        // whether the Values style has anything to mark.
         syncDiffView();
 
         updateStatus('Settings applied');

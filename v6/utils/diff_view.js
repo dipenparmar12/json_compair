@@ -6,6 +6,10 @@
  *       Groups MergeView chunks into "blocks of differences" and says which are
  *       large enough to fold. Both panes fold from the SAME list, which is what
  *       keeps them aligned.
+ *   lineCoverage(text, ranges)
+ *       'full' when the changes cover every non-blank character of a line (an
+ *       added / removed line), 'part' when only some of it changed (a modified
+ *       value), null when nothing on it changed. Drives the highlight styles.
  *
  * `doc` is anything with CodeMirror's Text shape: length, lines, lineAt(pos),
  * line(n) → {number, from, to, text}.
@@ -84,5 +88,20 @@
     return n + ' ' + what + (hidden === 1 ? ' line' : ' lines') + ' hidden';
   }
 
-  root.DiffView = { changeRegions, foldLabel, MERGE_GAP, DEFAULT_MIN_LINES };
+  // ranges: [{from, to}] offsets within the line (to exclusive).
+  function lineCoverage(text, ranges) {
+    let any = false;
+    const covered = new Uint8Array(text.length);
+    for (const r of ranges) {
+      const from = Math.max(0, r.from), to = Math.min(text.length, r.to);
+      if (to > from) { any = true; covered.fill(1, from, to); }
+    }
+    if (!any) return ranges.length ? 'part' : null;
+    for (let i = 0; i < text.length; i++) {
+      if (!covered[i] && !/\s/.test(text[i])) return 'part';
+    }
+    return 'full';
+  }
+
+  root.DiffView = { changeRegions, foldLabel, lineCoverage, MERGE_GAP, DEFAULT_MIN_LINES };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -50,7 +50,7 @@ json_compair/
 │       ├── json_align.js   # Record matcher + item/field diff model + block-level aligner (window.JSONAlign)
 │       ├── diff_ignore.js  # Exclude keys/patterns from the diff (window.DiffIgnore) — key-name matcher + line-scan
 │       ├── key_compare.js  # Keys dialog: match / different / one-side-only per key + filters + CSV/JSON export (window.KeyCompare)
-│       ├── diff_view.js    # Which blocks of differences can fold, in both panes (window.DiffView)
+│       ├── diff_view.js    # Which change blocks can fold + per-line change coverage for highlight styles (window.DiffView)
 │       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
 ├── v5/                     # Legacy CodeMirror 5 version
@@ -181,7 +181,8 @@ const newBranch = await BranchManager.createBranch("API v3", content);
 
   // Diff Settings
   "blockDiff": true,             // Object-aware (block-level) JSON diff (see Diff Engine §6)
-  "foldChangeLines": 40,         // Change blocks this long get a fold chevron; 0 = off (Diff Engine §13)
+  "diffStyle": "lines",          // Highlight style: lines|values|chars|outline (Diff Engine §13)
+  "foldChangeLines": 40,         // Change blocks this long get a fold chevron; 0 = off
   "foldLargeChanges": false,     // Collapse Unchanged also folds those blocks
   "highlightChanges": true,      // Red/green highlighting
   "gutter": true,                // Diff gutter markers
@@ -289,6 +290,7 @@ window.DiffView
                         //   chunks ≤ MERGE_GAP (4) unchanged lines apart form one block;
                         //   kind: removed|added|changed; a/b: {first,last} lines or null
   .foldLabel(region, hidden)   // "1,249 removed lines hidden"
+  .lineCoverage(text, ranges)  // 'full' | 'part' | null
 
 // diff_ignore.js (v6)
 window.DiffIgnore
@@ -341,7 +343,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/json_repair.js"></script>    <!-- v6 only: repair chain + classifier -->
 <script src="./utils/text_tools.js"></script>     <!-- v6 only: text cleanup + universal sort -->
 <script src="./utils/key_compare.js"></script>    <!-- v6 only: Keys table; AFTER json_align (uses matchArray) -->
-<script src="./utils/diff_view.js"></script>      <!-- v6 only: which change blocks can fold -->
+<script src="./utils/diff_view.js"></script>      <!-- v6 only: fold blocks + highlight-style coverage -->
 ```
 
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
@@ -706,7 +708,7 @@ returns a **count**, so the report says "3 zero-width characters", not "cleaned"
 node tests/json_repair.test.js    # 104 checks: integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks: record pairing, key table, filters, export
-node tests/diff_view.test.js      #  15 checks: change-block grouping, fold kinds
+node tests/diff_view.test.js      #  20 checks: change-block grouping, fold kinds, line coverage
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -975,7 +977,7 @@ Located in `tests/`:
 node tests/json_repair.test.js    # 104 checks — data integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks — record pairing, key table, filters, export
-node tests/diff_view.test.js      #  15 checks — change-block grouping, fold kinds
+node tests/diff_view.test.js      #  20 checks — change-block grouping, fold kinds, line coverage
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1030,6 +1032,9 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     panes with the lines below still level; with Collapse on and "Collapse folds large changes
     too" ticked, both kinds fold and the 1-line change stays open; ↓ skips changes inside a
     folded block; a Keys/Details jump into a folded block unfolds it
+30. Settings → Highlight style → Values: a record with several edited values shows only those
+    values marked, property names and line backgrounds plain; whole added/removed lines still
+    filled. Outline: no fills, dashed left / solid right outlines, edge bar on whole lines
 
 ## Common Tasks
 
@@ -1311,9 +1316,9 @@ cannot disagree. Clicking a row closes the dialog and walks the path down the pr
 pane (`findKeyLine`, exact indentation per level), paging a windowed collection first.
 Measured: the snapshot in 47 ms; 2,000 × 158 records (316k rows) in ~0.6 s.
 
-### 13. Folded changes — `diff_view.js` + the change-fold block in index.html
-Changes only what is DRAWN. Chunks, counts and the diff itself are untouched, so nothing is
-re-diffed.
+### 13. Folded changes and highlight styles — `diff_view.js` + the diffView block in index.html
+Both change only what is DRAWN. Chunks, counts and the diff itself are untouched, so neither
+re-diffs anything.
 
 **Folding large changes** (Settings → *Fold changes over* N lines, default 40, 0 = off)
 - **Why:** Collapse Unchanged hid the matching 30 %; the differing 70 % stayed open, so a small
@@ -1341,6 +1346,29 @@ re-diffed.
 - **Limit:** a block's identity is its chunk positions, so an edit ABOVE a manually folded block
   shifts it and the block reopens.
 - **Measured** (5,382-line pair, 30 alternating blocks): fold all 26 ms, show all 56 ms.
+
+**Highlight styles** (Settings → *Highlight style*, `diffStyle`, default `lines` = the old look)
+- **Why:** CM6 fills every line of a chunk, so a record with five edited values reads as one
+  solid block and unchanged property names are painted as loudly as the values.
+- **How:** `diffStylePlugin` (viewport only) tags each changed line `.cm-diffPart` (only some
+  of it changed) or `.cm-diffFull` (added / removed whole, `DiffView.lineCoverage`) and adds
+  `.cm-diffValue` over the JSON token a change falls in (Lezer `String` / `Number` / `True` /
+  `False` / `Null` / `PropertyName`). `#view-container[data-diff-style]` + CSS do the rest
+  (app.css "HIGHLIGHT STYLES"); tokens `--diff-del-strong` / `--diff-add-strong`.
+
+| Style | Modified line | Whole added/removed line |
+|---|---|---|
+| Lines | tinted, changed characters darker (unchanged) | filled |
+| Values | plain; the whole changed value or key filled | filled |
+| Characters | plain; changed characters filled | filled |
+| Outline | plain; changed text outlined (left dashed, right solid) | edge bar, no fill |
+
+- A value that only GAINED characters on the other side (`46` → `1046`) has a zero-width change
+  on this side and nothing to mark; Characters and Outline mark its token there instead.
+- Values needs Highlight Changes on (it marks from the same character diff); with it off,
+  modified lines show only the neutral line tint and the gutter bar.
+- Not built from the request: separate controls for property-name emphasis, value emphasis,
+  unchanged context and added/removed treatment — the four styles cover those choices.
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the

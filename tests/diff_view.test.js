@@ -6,6 +6,9 @@
  *              least `minLines` are offered for folding, and each block knows
  *              whether it was removed, added or changed. Both panes fold from
  *              this one list, so a wrong grouping misaligns them.
+ *   COVERAGE — a line is 'full' (whole line added / removed), 'part' (only a
+ *              value changed) or untouched. The value-focused highlight styles
+ *              rely on this to leave unchanged property names neutral.
  *
  * Run: node tests/diff_view.test.js
  */
@@ -140,6 +143,21 @@ const blank = (n) => Array.from({ length: n }, () => '');
   check('REGION', 'the same chunks give the same key (fold state survives a re-render)', k1 === k2);
   check('REGION', 'minLines is honoured', D.changeRegions(c, A, B, { minLines: 51 }).length === 0);
   check('REGION', 'no chunks, no regions', D.changeRegions([], A, B, {}).length === 0);
+}
+
+// ---------------------------------------------------------------------------
+// COVERAGE
+{
+  const line = '    "price": 12,';
+  check('COVERAGE', 'a changed value is a partial line',
+    D.lineCoverage(line, [{ from: 14, to: 15 }]) === 'part');
+  check('COVERAGE', 'a whole added line is full (indent ignored)',
+    D.lineCoverage(line, [{ from: 4, to: line.length }]) === 'full');
+  check('COVERAGE', 'several ranges that together cover the text are full',
+    D.lineCoverage(line, [{ from: 4, to: 12 }, { from: 12, to: line.length }]) === 'full');
+  check('COVERAGE', 'no ranges means untouched', D.lineCoverage(line, []) === null);
+  check('COVERAGE', 'a deletion opposite (zero-width here) is partial',
+    D.lineCoverage(line, [{ from: 15, to: 15 }]) === 'part');
 }
 
 // ---------------------------------------------------------------------------

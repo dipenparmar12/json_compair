@@ -38,7 +38,7 @@
     --diff-del-line: #ffebe9;
     --diff-del-text: #ffc1ba;
     --diff-gutter: #ffd33d;
-    --diff-add-strong: #1a7f37;   /* fold chevrons and edge bars */
+    --diff-add-strong: #1a7f37;   /* outlines, edge bars, fold chevrons */
     --diff-del-strong: #cf222e;
 
     /* Alignment gap (the empty .cm-mergeSpacer CM6 draws opposite an
@@ -3633,8 +3633,67 @@ button:disabled,
 }
 
 /* ====================================================================
-   FOLDED CHANGES
+   HIGHLIGHT STYLES + FOLDED CHANGES
+   Settings → Highlight style sets data-diff-style on #view-container.
+   'lines' is the original look and has no rules here. The others leave a
+   MODIFIED line plain (.cm-diffPart, set by diffStylePlugin) and put the
+   emphasis on what changed in it; a line added or removed whole
+   (.cm-diffFull) keeps its fill in Values and Characters.
    ==================================================================== */
+#view-container:not([data-diff-style="lines"]) .cm-diffPart .cm-deletedLine,
+#view-container:not([data-diff-style="lines"]) .cm-diffPart .cm-insertedLine {
+    background-color: transparent !important;
+}
+
+/* Values: the whole changed value (or key) is the mark, not stray characters. */
+#view-container[data-diff-style="values"] .cm-diffPart .cm-changedText {
+    background-color: transparent !important;
+    font-weight: inherit !important;
+}
+/* .cm-diffValue: the token a change falls in — every change in Values; in
+   Characters and Outline only a value that changed purely by what the OTHER
+   side gained, which leaves no changed characters on this side to mark. */
+#view-container:is([data-diff-style="values"], [data-diff-style="chars"]) .cm-merge-a .cm-diffValue {
+    background-color: var(--diff-del-text);
+    border-radius: 3px;
+}
+#view-container:is([data-diff-style="values"], [data-diff-style="chars"]) .cm-merge-b .cm-diffValue {
+    background-color: var(--diff-add-text);
+    border-radius: 3px;
+}
+
+/* Outline: no fills at all. Changed text is outlined (dashed on the left,
+   where it was removed; solid on the right); whole added / removed lines get
+   an edge bar instead of a coloured background. */
+#view-container[data-diff-style="outline"] :is(.cm-changedText, .cm-diffValue) {
+    background-color: transparent !important;
+    outline-offset: -1px;
+    border-radius: 2px;
+}
+#view-container[data-diff-style="outline"] .cm-merge-a :is(.cm-changedText, .cm-diffValue) {
+    outline: 1.5px dashed var(--diff-del-strong);
+}
+#view-container[data-diff-style="outline"] .cm-merge-b :is(.cm-changedText, .cm-diffValue) {
+    outline: 1.5px solid var(--diff-add-strong);
+}
+#view-container[data-diff-style="outline"] .cm-diffFull .cm-deletedLine,
+#view-container[data-diff-style="outline"] .cm-diffFull .cm-insertedLine {
+    background-color: transparent !important;
+}
+#view-container[data-diff-style="outline"] .cm-merge-a .cm-line.cm-diffFull {
+    background-image: linear-gradient(to right, var(--diff-del-strong) 3px, transparent 3px);
+}
+#view-container[data-diff-style="outline"] .cm-merge-b .cm-line.cm-diffFull {
+    background-image: linear-gradient(to right, var(--diff-add-strong) 3px, transparent 3px);
+}
+#view-container[data-diff-style="outline"] .cm-diffFull .cm-changedText {
+    outline: none;
+}
+
+/* Ignored keys win over every style. */
+.cm-ignoredLine .cm-diffValue { background-color: transparent !important; }
+#view-container .cm-ignoredLine .cm-changedText { outline: none !important; }
+
 /* Folded block of differences: the same row as CM6's "⦚ N unchanged lines ⦚",
    with an edge bar that says what was folded. */
 .cm-collapsedChange {
