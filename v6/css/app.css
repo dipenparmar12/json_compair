@@ -3720,3 +3720,57 @@ button:disabled,
 .cm-merge-b .cm-changeFold { color: var(--diff-add-strong); }
 .cm-changeFold:hover { background: var(--diff-changed-line); filter: brightness(0.8); }
 #view-container.no-change-folds .cm-changeFoldGutter { display: none; }
+
+/* Sticky header for the open foldable block at the top of a pane
+   (stickyBlockPlugin). Overlays the first visible row, like an editor's
+   sticky scroll, so showing it never moves the text. */
+.cm-stickyBlock {
+    position: absolute;
+    left: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 6px 0 4px;
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border);
+    box-shadow: inset 3px 0 0 var(--diff-gutter), 0 2px 6px rgba(0, 0, 0, 0.08);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+}
+.cm-stickyBlock[hidden] { display: none; }
+.cm-stickyBlock[data-kind="removed"] { box-shadow: inset 3px 0 0 var(--diff-del-strong), 0 2px 6px rgba(0, 0, 0, 0.08); }
+.cm-stickyBlock[data-kind="added"]   { box-shadow: inset 3px 0 0 var(--diff-add-strong), 0 2px 6px rgba(0, 0, 0, 0.08); }
+.cm-stickyBlock button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+}
+.cm-stickyBlock button:hover { background: var(--bg-hover); }
+.cm-stickyBlock button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cm-stickyBlock-btn { flex: 0 0 auto; min-width: 22px; height: 22px; padding: 0 4px; }
+.cm-stickyBlock-line {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 22px;
+    padding: 0 4px;
+    text-align: left;
+    white-space: pre;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cm-stickyBlock-meta {
+    flex: 0 1 auto;
+    color: var(--text-muted);
+    font-family: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#view-container.no-change-folds .cm-stickyBlock { display: none; }
+.has-sticky-block .pane-controls { top: 36px; }

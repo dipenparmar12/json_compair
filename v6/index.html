@@ -1462,7 +1462,6 @@
       }
 
       const jsonLinter = linter(jsonDiagnostics, { delay: 400 });
-
       // ---------------------------------------------------------------------
       // The red dot in the gutter - click to act, not hover-and-hope.
       //
@@ -1922,6 +1921,130 @@
         if ((before && before.chunks) !== (after && after.chunks)) scheduleChangeFolds();
       });
 
+      /* ---- Sticky header for the block you are inside ----------------------
+         The fold chevron sits on a block's FIRST line, so in the middle of a
+         2,000-line block there is nothing on screen to fold it with, and no
+         quick way back to its start. Like an editor's sticky scroll, while
+         the top of a pane is inside an open foldable block, a one-row header
+         pinned to the top of that pane repeats the block's first line with
+         Fold, ↑ start and ↓ end. Both panes get it from the same block list,
+         so it appears in both at once. An overlay, not a CM panel: a panel
+         takes layout space and would shift the text every time it appeared. */
+      function blockAtTop(view) {
+        const conf = getChunks(view.state);
+        if (!conf || !_changeRegions.length) return null;
+        const scTop = view.scrollDOM.getBoundingClientRect().top;
+        const y = scTop - view.documentTop + 1;
+        if (y <= 0) return null;
+        const n = view.state.doc.lineAt(view.lineBlockAtHeight(y).from).number;
+        for (const r of _changeRegions) {
+          const s = r[conf.side];
+          if (s && s.first < n && n <= s.last && !isChangeFolded(r.key)) return { r, s };
+        }
+        return null;
+      }
+
+      // Put 1-based line `n` at the top of this pane (the other follows via
+      // the scroll lock). Lines above that were never on screen only have
+      // estimated heights, and measuring them after the jump moves the
+      // target — measured: aimed at line 86, landed on 71. So set it again
+      // once CM6 has measured, as revealRecord() does.
+      function scrollLineToTop(view, n) {
+        const go = () => {
+          const doc = view.state.doc;
+          const line = doc.line(Math.max(1, Math.min(doc.lines, n)));
+          // lineBlockAt() is relative to the document, which starts below the
+          // content padding; without it the line above still shows 3 px.
+          view.scrollDOM.scrollTop = Math.max(0, view.lineBlockAt(line.from).top + view.documentPadding.top);
+        };
+        go();
+        setTimeout(go, 150);
+      }
+
+      const stickyBlockPlugin = ViewPlugin.fromClass(class {
+        constructor(view) {
+          this.view = view;
+          this.hit = null;
+          const el = this.dom = document.createElement('div');
+          el.className = 'cm-stickyBlock';
+          el.hidden = true;
+          el.innerHTML =
+            '<button type="button" class="cm-stickyBlock-btn" data-act="fold" title="Fold this block" aria-label="Fold this block">▾</button>' +
+            '<button type="button" class="cm-stickyBlock-line" data-act="start" title="Go to the start of this block"></button>' +
+            '<span class="cm-stickyBlock-meta"></span>' +
+            '<button type="button" class="cm-stickyBlock-btn" data-act="start" title="Go to the start of this block" aria-label="Go to the start of this block">↑</button>' +
+            '<button type="button" class="cm-stickyBlock-btn" data-act="end" title="Go past the end of this block" aria-label="Go past the end of this block">↓</button>';
+          el.addEventListener('mousedown', (e) => e.preventDefault());   // keep the editor's focus
+          el.addEventListener('click', (e) => this.act(e.target.closest('[data-act]')));
+          view.dom.appendChild(el);
+          this.onScroll = () => this.schedule();
+          view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
+          this.schedule();
+        }
+        update(u) {
+          if (u.viewportChanged || u.geometryChanged || u.docChanged ||
+              u.transactions.some((tr) => tr.effects.some((e) => e.is(setChangeFolds)))) this.schedule();
+        }
+        schedule() {
+          this.view.requestMeasure({
+            key: this,
+            read: (view) => {
+              const hit = blockAtTop(view);
+              if (!hit) return null;
+              const sc = view.scrollDOM;
+              // Opposite an added/removed block this side holds blank gap
+              // rows; name the block by the other side's first line instead.
+              let text = view.state.doc.line(hit.s.first).text;
+              const sib = mergeView && (view === mergeView.a ? mergeView.b : mergeView.a);
+              const os = sib && hit.r[view === mergeView.a ? 'b' : 'a'];
+              if (!text.trim() && os && os.first <= sib.state.doc.lines) text = sib.state.doc.line(os.first).text;
+              return {
+                hit,
+                top: sc.getBoundingClientRect().top - view.dom.getBoundingClientRect().top,
+                right: sc.offsetWidth - sc.clientWidth,
+                text,
+              };
+            },
+            write: (m) => this.render(m),
+          });
+        }
+        render(m) {
+          this.hit = m && m.hit;
+          this.dom.hidden = !m;
+          // The pane's hover Copy / Paste / Clear sit top-right too; move
+          // them below the header rather than over its ↑ ↓.
+          this.view.dom.closest('.cm-mergeViewEditor')?.classList.toggle('has-sticky-block', !!m);
+          if (!m) return;
+          const { r, s } = m.hit;
+          const n = s.last - s.first + 1;
+          this.dom.style.top = m.top + 'px';
+          this.dom.style.right = m.right + 'px';
+          this.dom.dataset.kind = r.kind;
+          this.dom.querySelector('.cm-stickyBlock-line').textContent = m.text.trim() || '(blank)';
+          this.dom.querySelector('.cm-stickyBlock-meta').textContent =
+            'lines ' + s.first.toLocaleString('en-US') + '–' + s.last.toLocaleString('en-US') +
+            ' · ' + n.toLocaleString('en-US') + ' ' + r.kind + ' lines';
+        }
+        act(btn) {
+          if (!btn || !this.hit) return;
+          const { r, s } = this.hit;
+          const act = btn.dataset.act;
+          if (act === 'fold') {
+            toggleChangeFold(r.key);
+            scrollLineToTop(this.view, s.first);
+          } else if (act === 'start') {
+            scrollLineToTop(this.view, s.first);
+          } else if (act === 'end') {
+            scrollLineToTop(this.view, s.last + 1);
+          }
+        }
+        destroy() {
+          this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
+          this.view.dom.closest('.cm-mergeViewEditor')?.classList.remove('has-sticky-block');
+          this.dom.remove();
+        }
+      });
+
       // Previous / next change, skipping changes inside a folded block (the
       // block's first change stays reachable — its line is the visible one).
       // Same walk as @codemirror/merge's goToNextChunk otherwise.
@@ -2063,7 +2186,7 @@
 
       // Both features, for each pane. Mounted after basicSetup so the fold
       // chevrons sit between the code-fold gutter and the text.
-      const diffViewExtensions = [changeFoldField, changeFoldGutter, changeFoldListener, diffStylePlugin];
+      const diffViewExtensions = [changeFoldField, changeFoldGutter, changeFoldListener, stickyBlockPlugin, diffStylePlugin];
 
       // Push the presentation settings into the live view: no diff is
       // recomputed, only decorations and the container's style attribute.

@@ -1031,7 +1031,9 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     on the two big blocks; folding one leaves its first line and "N … lines hidden" in BOTH
     panes with the lines below still level; with Collapse on and "Collapse folds large changes
     too" ticked, both kinds fold and the 1-line change stays open; ↓ skips changes inside a
-    folded block; a Keys/Details jump into a folded block unfolds it
+    folded block; a Keys/Details jump into a folded block unfolds it. Scroll into the middle
+    of the 80-key block — a header with its first line, ▾ ↑ ↓ shows in both panes; ↓ lands on
+    the line after the block, ▾ folds it with its first line at the top
 30. Settings → Highlight style → Values: a record with several edited values shows only those
     values marked, property names and line backgrounds plain; whole added/removed lines still
     filled. Outline: no fills, dashed left / solid right outlines, edge bar on whole lines
@@ -1343,6 +1345,16 @@ re-diffs anything.
   (skips when `_foldSignature` is unchanged). Recreated views reset the signature.
 - **Navigation:** ↑ ↓ and Alt+↑/↓ use `moveToChange()`, which skips chunks inside a folded
   block. `scrollPanesToLine()` (Details, Keys) calls `revealChangeFoldAt()` first.
+- **Sticky header** (`stickyBlockPlugin`): the ▾ lives on a block's first line, so in the middle
+  of a long block there was nothing to fold it with. While a pane's top row is inside an open
+  foldable block, a one-row header pinned to the top of that pane repeats the block's first
+  line (the other side's when this side is gap rows) with *lines 4–85 · 82 removed lines*,
+  ▾ Fold, ↑ start and ↓ end; clicking the line also goes to the start. An overlay, not a CM
+  panel — a panel takes layout space and would shift the text each time it appeared. Folding
+  from it puts the block's first line at the top. While it shows, the pane's hover
+  Copy / Paste / Clear move below it (`.has-sticky-block`). `scrollLineToTop()` adds
+  `documentPadding.top` (without it the previous line still showed 3 px and the header stayed)
+  and re-applies after 150 ms, since lines never on screen only have estimated heights.
 - **Limit:** a block's identity is its chunk positions, so an edit ABOVE a manually folded block
   shifts it and the block reopens.
 - **Measured** (5,382-line pair, 30 alternating blocks): fold all 26 ms, show all 56 ms.
