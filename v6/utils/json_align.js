@@ -1653,12 +1653,87 @@
     };
   }
 
-  function parsePair(leftText, rightText) {
+  /* ---- JSON inside a string -------------------------------------------------
+     Exports often carry a structure as TEXT: a stringified JSON object, or a
+     Python dict repr ("{'summer': {'on peak': 1043.889}, 'region': '9'}").
+     Compared as a string it is one long changed line; the user wants the keys.
+     With opts.expand, every string value that holds an object or array is
+     replaced by the parsed value before alignment, so it is compared and shown
+     like any nested object. Display only: the result is flagged `changed`, and
+     the caller keeps the original text for saving and export, exactly as for
+     ignore patterns.
+
+     Strict on purpose. A value is expanded only when it starts with { or [,
+     ends with the matching bracket, and parses — as JSON, or through stage 1
+     of the repair chain (Python literals, single quotes, tuples), which only
+     rewrites constructs it positively identified. Stage 2 (jsonrepair) is NOT
+     used: it turns "{not json at all}" into ["not json at all"]. */
+  var EMBED_MAX_CHARS = 2000000;
+
+  function parseEmbedded(s) {
+    var n = s.length, i = 0;
+    while (i < n && s.charCodeAt(i) <= 32) i++;
+    var open = s.charCodeAt(i);
+    if (open !== 123 && open !== 91) return undefined;          // { or [
+    var j = n - 1;
+    while (j > i && s.charCodeAt(j) <= 32) j--;
+    if (s.charCodeAt(j) !== (open === 123 ? 125 : 93)) return undefined;
+    if (j - i < 1 || j - i > EMBED_MAX_CHARS) return undefined;
+    var t = s.slice(i, j + 1), v;
+    try { v = JSON.parse(t); }
+    catch (e) {
+      var kit = typeof window !== 'undefined' && window.JSONRepairKit;
+      if (!kit) return undefined;
+      var r = kit.repair(t, { aggressive: false });
+      if (!r || !r.ok) return undefined;
+      v = r.value;
+    }
+    return (v !== null && typeof v === 'object') ? v : undefined;
+  }
+
+  // Replaces embedded structures IN PLACE (the value comes straight from
+  // JSON.parse, so nobody else holds it) and returns { value, count }.
+  function expandEmbedded(root) {
+    var count = 0;
+    function visit(x) {
+      if (typeof x === 'string') {
+        var e = parseEmbedded(x);
+        if (e === undefined) return x;
+        count++;
+        walk(e);            // a structure inside the structure
+        return e;
+      }
+      if (x !== null && typeof x === 'object') walk(x);
+      return x;
+    }
+    function walk(v) {
+      if (Array.isArray(v)) {
+        for (var i = 0; i < v.length; i++) v[i] = visit(v[i]);
+      } else {
+        for (var k in v) {
+          if (Object.prototype.hasOwnProperty.call(v, k)) v[k] = visit(v[k]);
+        }
+      }
+    }
+    var value = visit(root);
+    return { value: value, count: count };
+  }
+
+  function parsePair(leftText, rightText, opts) {
     if (typeof leftText !== 'string' || typeof rightText !== 'string') return null;
     if (!leftText.trim() || !rightText.trim()) return null;
     if (leftText.length + rightText.length > MAX_BYTES) return null;
-    try { return { a: JSON.parse(leftText), b: JSON.parse(rightText) }; }
+    var p;
+    try { p = { a: JSON.parse(leftText), b: JSON.parse(rightText), expanded: 0 }; }
     catch (e) { return null; }
+    if (opts && opts.expand) expandPair(p);
+    return p;
+  }
+
+  function expandPair(p) {
+    var ea = expandEmbedded(p.a), eb = expandEmbedded(p.b);
+    p.a = ea.value; p.b = eb.value;
+    p.expanded = ea.count + eb.count;
   }
 
   /**
@@ -1668,7 +1743,7 @@
    */
   function diffModel(leftText, rightText, opts) {
     try {
-      var p = parsePair(leftText, rightText);
+      var p = parsePair(leftText, rightText, opts);
       if (!p) return { ok: false };
       var coll = findCollection(p.a, p.b);
       if (!coll) return { ok: false, reason: 'no-collection' };
@@ -1693,7 +1768,7 @@
    */
   function prepare(leftText, rightText, opts) {
     try {
-      var p = parsePair(leftText, rightText);
+      var p = parsePair(leftText, rightText, opts);
       if (!p) return { ok: false };
       // The root pair when both are arrays, else the envelope key holding the
       // collection ({data:[...]} and friends) — see findCollection.
@@ -1704,7 +1779,7 @@
       var model = buildModel(coll.a, coll.b, baseCtx);
       model.path = coll.path;
       return makeHandle(p.a, p.b, coll, rootIsArray, model, opts,
-                        leftText.length + rightText.length);
+                        leftText.length + rightText.length, p.expanded);
     } catch (e) {
       return { ok: false, error: e && e.message };
     }
@@ -1727,15 +1802,18 @@
   // The reusable render closure shared by prepare() and prepareAsync().
   // Rendering is deliberately synchronous: a window is bounded by design, so it
   // costs ~10-20 ms whether the collection has 60 records or 2,000,000.
-  function makeHandle(rootA, rootB, coll, rootIsArray, model, opts, combined) {
+  function makeHandle(rootA, rootB, coll, rootIsArray, model, opts, combined, expanded) {
     var pageSize = pageSizeFor(coll.a, coll.b, (opts && opts.budget) || EXPAND_CHAR_BUDGET);
     return {
       ok: true,
       model: model,
+      expanded: expanded || 0,
       render: function (o) {
         o = o || {};
         // Fresh ctx per render: `changed` reports what THIS render normalized.
+        // Expanded strings are not the text the user has, on every page.
         var ctx = makeCtx(opts);
+        if (expanded) ctx.changed = true;
         var view = o.view || 'auto';
         if (view === 'auto') view = combined <= PRETTY_MAX_BYTES ? 'pretty' : 'window';
         var res, stats;
@@ -1775,7 +1853,7 @@
         stats.diffLineRatio = lineDiffRatio(res.A, res.B);
         return {
           ok: true, left: res.A.join('\n'), right: res.B.join('\n'),
-          changed: ctx.changed, model: model, stats: stats
+          changed: ctx.changed, expanded: expanded || 0, model: model, stats: stats
         };
       }
     };
@@ -1814,6 +1892,8 @@
       // call, so this is the only place the panel can paint during parsing.
       return yieldNow().then(function () {
         try { pb = JSON.parse(rightText); } catch (e) { return { ok: false }; }
+        var p = { a: pa, b: pb, expanded: 0 };
+        if (opts && opts.expand) { expandPair(p); pa = p.a; pb = p.b; }
         if (parseRep && parseRep.onProgress) parseRep.onProgress(2, 2);
         if (cancelledBy(ctl)) throw new Cancelled();
 
@@ -1825,7 +1905,7 @@
         return buildModelAsync(coll.a, coll.b, baseCtx, ctl).then(function (model) {
           model.path = coll.path;
           return makeHandle(pa, pb, coll, rootIsArray, model, opts,
-                            leftText.length + rightText.length);
+                            leftText.length + rightText.length, p.expanded);
         });
       });
     });
@@ -1847,9 +1927,10 @@
    */
   function align(leftText, rightText, opts) {
     try {
-      var p = parsePair(leftText, rightText);
+      var p = parsePair(leftText, rightText, opts);
       if (!p) return { ok: false };
       var ctx = makeCtx(opts);
+      if (p.expanded) ctx.changed = true;
       var o = opts || {};
 
       // Whenever there is a collection to work with — a root array, or an
@@ -1865,6 +1946,7 @@
       var v = alignValue(p.a, p.b, '', ctx);
       return {
         ok: true, left: v.A.join('\n'), right: v.B.join('\n'), changed: ctx.changed,
+        expanded: p.expanded,
         // No collection here (a plain object pair), so no model or window — but
         // the caller still needs to know how similar the two sides are before it
         // decides how hard to let CM6 try. See MYERS_MAX_DIFF_RATIO.
@@ -1882,21 +1964,25 @@
    * props and near-equal numbers swapped to a's value.
    * @param {function} [ignore] - (key,aVal,bVal)=>bool predicate, or null
    * @param {number}   [numTol] - numeric tolerance (>0), or null/omitted
+   * @param {boolean}  [expand] - show JSON held in strings as structure
    * @returns {{ok:true, left:string, right:string, changed:boolean} | {ok:false}}
    */
-  function normalize(leftText, rightText, ignore, numTol) {
+  function normalize(leftText, rightText, ignore, numTol, expand) {
     try {
       var hasIgnore = typeof ignore === 'function';
       var tol = coerceTol(numTol);
-      if (!hasIgnore && tol == null) return { ok: false };
-      var p = parsePair(leftText, rightText);
+      if (!hasIgnore && tol == null && !expand) return { ok: false };
+      var p = parsePair(leftText, rightText, { expand: !!expand });
       if (!p) return { ok: false };
-      var ctx = { ignore: hasIgnore ? ignore : null, changed: false, numTol: tol };
+      // Expansion alone and nothing to expand: leave the user's text exactly
+      // as it is rather than re-indenting it for no reason.
+      if (!hasIgnore && tol == null && !p.expanded) return { ok: false };
+      var ctx = { ignore: hasIgnore ? ignore : null, changed: p.expanded > 0, numTol: tol };
       var leftLines = ser(p.a, '');
       var rightLines = serWithSwap(p.b, p.a, ctx, '');
       return {
         ok: true, left: leftLines.join('\n'), right: rightLines.join('\n'),
-        changed: ctx.changed,
+        changed: ctx.changed, expanded: p.expanded,
         stats: { view: 'normalized', diffLineRatio: lineDiffRatio(leftLines, rightLines) }
       };
     } catch (e) {
@@ -1922,6 +2008,8 @@
     // Record pairing, shared with key_compare.js so the key table and the
     // editors can never disagree about which records correspond.
     matchArray: matchArray,
+    // JSON held in strings, shown as structure (same rule for the Keys table).
+    expandEmbedded: expandEmbedded,
     CancelledError: Cancelled,
     EXPAND_CHAR_BUDGET: EXPAND_CHAR_BUDGET
   };

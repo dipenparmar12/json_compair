@@ -181,6 +181,7 @@ const newBranch = await BranchManager.createBranch("API v3", content);
 
   // Diff Settings
   "blockDiff": true,             // Object-aware (block-level) JSON diff (see Diff Engine §6)
+  "expandEmbedded": true,        // Show JSON / Python dicts stored in strings as nested keys (§14)
   "diffStyle": "lines",          // Highlight style: lines|values|chars|outline (Diff Engine §13)
   "foldChangeLines": 40,         // Change blocks this long get a fold chevron; 0 = off
   "foldLargeChanges": false,     // Collapse Unchanged also folds those blocks
@@ -313,7 +314,10 @@ window.JSONAlign
                             //   → {ok, model:{items,totals,fields,idKey,strategy,path}}
                             //   `path`: collection key, or null when the root is the array.
                             //   Works for a root array AND for {data:[…]}-style envelopes.
-  .normalize(l, r, ignore, numTol) // normalize only (block-diff off)
+  .normalize(l, r, ignore, numTol, expand) // normalize only (block-diff off)
+  .expandEmbedded(value)    // JSON / Python dicts held in strings → structure, IN PLACE
+                            //   → {value, count}. opts.expand on align/prepare/prepareAsync/
+                            //   diffModel does the same; results carry `expanded` (Diff Engine §14)
   .setIndent(str)           // '  ' | '   ' | '    ' | '\t' — every later render.
                             //   The app pushes the indentWidth setting in here; without
                             //   it alignment re-rendered at 2 spaces and the Indent
@@ -709,6 +713,7 @@ node tests/json_repair.test.js    # 104 checks: integrity, repair, perf, classif
 node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks: record pairing, key table, filters, export
 node tests/diff_view.test.js      #  20 checks: change-block grouping, fold kinds, line coverage
+node tests/embedded_json.test.js  #  16 checks: JSON / Python dicts inside strings, strictness
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -978,6 +983,7 @@ node tests/json_repair.test.js    # 104 checks — data integrity, repair, perf,
 node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks — record pairing, key table, filters, export
 node tests/diff_view.test.js      #  20 checks — change-block grouping, fold kinds, line coverage
+node tests/embedded_json.test.js  #  16 checks — JSON / Python dicts inside strings, strictness
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1037,6 +1043,11 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
 30. Settings → Highlight style → Values: a record with several edited values shows only those
     values marked, property names and line backgrounds plain; whole added/removed lines still
     filled. Outline: no fills, dashed left / solid right outlines, edge bar on whole lines
+31. A record whose value is a Python dict string (`"{'summer': {'on peak': 538.911}, …}"`) on
+    both sides, one number different — the panes show nested keys and exactly that one line
+    differs; Keys lists `["…"].scen_elec_kwh.summer["on peak"]`; a reload / Export still holds
+    the original string; Settings → *Read JSON inside strings* off brings the string back.
+    `"{not json}"` stays a string
 
 ## Common Tasks
 
@@ -1381,6 +1392,31 @@ re-diffs anything.
   modified lines show only the neutral line tint and the gutter bar.
 - Not built from the request: separate controls for property-name emphasis, value emphasis,
   unchanged context and added/removed treatment — the four styles cover those choices.
+
+### 14. JSON stored as text — `expand` in json_align (Settings → *Read JSON inside strings*, default on)
+- **Why:** exports often hold a structure as a STRING — stringified JSON, or a Python dict repr
+  (`"{'base_elec_kwh': {'summer': {'on peak': 1043.889}}, 'region': '9'}"`). Compared as text it
+  is one ~900-character changed line; nobody can see which of its 40 numbers moved.
+- **What:** with `opts.expand`, `parsePair()` / `prepareAsync()` run `expandEmbedded()` on both
+  parsed values, replacing such strings with the parsed structure (recursively — a structure
+  inside a structure expands too). Alignment, the record model, the panes and the Keys table
+  (`kcCompute`) then treat it like any nested object. Measured on the reported value: 7 lines
+  with one huge changed line → 75 lines with exactly the changed number marked.
+- **Strict:** expanded only when the value starts with `{` / `[`, ends with the matching bracket
+  and parses — as JSON, or through repair **stage 1** (`aggressive: false`: Python literals,
+  single quotes, tuples). Stage 2 (jsonrepair) is never used here: it turns `{not json at all}`
+  into `["not json at all"]`. Anything else stays a string, byte for byte.
+- **Display only:** an expanding render is flagged `changed` with `expanded: n`, so
+  `applyTransformResult` keeps the original pair in `_ignorePristine` — saving, Copy, Export,
+  Share and branches keep the strings (same mechanism as ignore patterns, §7). A notice says
+  so once per comparison, with **Turn off**. `setExpandEmbedded()` restores the pristine pair
+  first, like `applyNumTolerance()`.
+- **Gates:** `expandActive()` is part of `transformActive()`, `applyBlockAlignment()` and the
+  align memo. With Block Diff off, `normalize(…, expand)` returns `{ok:false}` when there is
+  nothing to expand, so plain JSON is never re-indented just because the setting is on.
+- **Limits:** parsed numbers are shown in JSON form (`540.0` → `540`) — the original keeps its
+  text. Editing a pane while expanded makes the panes the document, as with ignore patterns.
+  The record model names top-level fields (`data`), not the path inside the expanded value.
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the

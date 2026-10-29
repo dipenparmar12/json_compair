@@ -289,6 +289,14 @@
               </label>
 
               <label class="setting-row">
+                <input type="checkbox" id="setting-expand-embedded" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Read JSON inside strings</div>
+                  <div class="setting-desc">A string value that holds a JSON object or array — stringified JSON, or a Python dict like {'a': None} — is shown and compared as nested keys. Only values that parse are expanded; anything else stays text. Display only: saving, Copy and Export keep the original strings.</div>
+                </div>
+              </label>
+
+              <label class="setting-row">
                 <input type="checkbox" id="setting-highlight-changes" checked />
                 <div class="setting-text">
                   <div class="setting-title">Highlight Changes</div>
@@ -869,9 +877,15 @@
                 isFinite(numTolValue) && numTolValue > 0) ? numTolValue : null;
       }
 
-      // True when ANY transform (block align, ignore, tolerance) should run.
+      // Show JSON stored as text (a stringified object, a Python dict repr) as
+      // structure. Display only — see json_align `expand` and
+      // applyTransformResult, which keeps the original text for saving.
+      let expandEmbeddedOn = true;
+      function expandActive() { return expandEmbeddedOn; }
+
+      // True when ANY transform (block align, ignore, tolerance, expand) should run.
       function transformActive() {
-        return blockDiffEnabled() || ignoreActive() || numToleranceActive() != null;
+        return blockDiffEnabled() || ignoreActive() || numToleranceActive() != null || expandActive();
       }
 
       // Coerce a stored value into a clean array of trimmed, de-duped, non-empty
@@ -1067,6 +1081,21 @@
       // reveals those diffs again, persist, drop the align memo (tolerance is
       // part of its key), then re-run the transform (or strip gaps if nothing is
       // left active) and refresh the count.
+      // Same shape as applyNumTolerance: the pristine pair goes back first, so
+      // turning it off shows the original strings again.
+      function setExpandEmbedded(on) {
+        expandEmbeddedOn = !!on;
+        SettingsManager.set('expandEmbedded', expandEmbeddedOn);
+        const box = document.getElementById('setting-expand-embedded');
+        if (box) box.checked = expandEmbeddedOn;
+        restoreIgnorePristine();
+        _lastAlignMemo = null;
+        _expandNoted = 0;
+        if (transformActive()) applyBlockAlignment();
+        else removeBlockAlignment();
+        updateDiffStatus();
+      }
+
       function applyNumTolerance() {
         restoreIgnorePristine();
         SettingsManager.set('numToleranceEnabled', numTolEnabled);
@@ -1095,6 +1124,7 @@
         numTolEnabled = SettingsManager.get('numToleranceEnabled') === true;
         const t = parseFloat(SettingsManager.get('numTolerance'));
         numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
+        expandEmbeddedOn = SettingsManager.get('expandEmbedded') !== false;
 
         wordWrapEnabled = SettingsManager.get('wordWrap') !== false;
         scrollLocked = SettingsManager.get('scrollLock') !== false;
@@ -2429,6 +2459,7 @@
           const t = parseFloat(SettingsManager.get('numTolerance'));
           numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
         }
+        expandEmbeddedOn = SettingsManager.get('expandEmbedded') !== false;
 
         const initialContent = urlContent || savedContent || DefaultTemplates.simple;
         const mergeSettings = loadMergeSettings();
@@ -2592,6 +2623,7 @@
           gutter: SettingsManager.get('gutter'),
           collapseUnchanged: SettingsManager.get('collapseUnchanged'),
           blockDiff: SettingsManager.get('blockDiff'),
+          expandEmbedded: SettingsManager.get('expandEmbedded'),
           orientation: SettingsManager.get('orientation'),
           revertControls: SettingsManager.get('revertControls'),
           scanLimit: SettingsManager.get('scanLimit'),
@@ -2617,6 +2649,7 @@
         document.getElementById('setting-gutter').checked = settings.gutter;
         document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
         { const bd = document.getElementById('setting-block-diff'); if (bd) bd.checked = settings.blockDiff !== false; }
+        document.getElementById('setting-expand-embedded').checked = settings.expandEmbedded !== false;
         document.getElementById('setting-orientation').value = settings.orientation;
         document.getElementById('setting-revert-controls').value = settings.revertControls;
         // Show the value honestly within the input's allowed range. Legacy
@@ -2668,6 +2701,7 @@
         document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-block-diff').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-expand-embedded').addEventListener('change', (e) => setExpandEmbedded(e.target.checked));
         // Touching the collapse control makes it the user's choice again, so the
         // size-forced override stops shadowing what gets persisted.
         document.getElementById('setting-collapse-unchanged').addEventListener('change', () => {
@@ -3471,6 +3505,9 @@
           applyBlockAlignment();
         } else if (prevBlockDiff) {
           removeBlockAlignment();
+          // Expanding embedded JSON writes only when there is something to
+          // expand, so strip the gaps first and let it run on the raw text.
+          if (expandActive()) { _lastAlignMemo = null; applyBlockAlignment(); }
         }
 
         // Collapse decides whether large changes start folded, and Highlight
@@ -3905,7 +3942,8 @@
           writeAlignedPanes(res.left, res.right);
           _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
                              block: blockDiffEnabled(), pred: ignorePredicate,
-                             tol: numToleranceActive(), page: recordPageFrom, view: recordView };
+                             tol: numToleranceActive(), exp: expandActive(),
+                             page: recordPageFrom, view: recordView };
         } else {
           const src = _ignorePristine;
           transformAndDispatch(src ? src.left : mergeView.a.state.doc.toString(),
@@ -3928,25 +3966,26 @@
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
         const tol = numToleranceActive();
+        const expand = expandActive();
         _alignedRender = false;
         _rowAligned = false;
         _alignHandle = null;
         _renderBudget = null;   // new content ⇒ re-measure the diff cost
         let res = null;
-        if (window.JSONAlign && (block || pred || tol != null)) {
+        if (window.JSONAlign && (block || pred || tol != null || expand)) {
           try {
             if (block) {
               // prepare() parses + matches + models once; the handle is kept so
               // paging only has to re-render (see gotoRecordPage).
-              const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol });
+              const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol, expand });
               if (h && h.ok) {
                 _alignHandle = h;
                 res = renderWindow(h);
               } else {
-                res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
+                res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol, expand });
               }
             } else {
-              res = window.JSONAlign.normalize(L, R, pred, tol);
+              res = window.JSONAlign.normalize(L, R, pred, tol, expand);
             }
           } catch (e) { res = null; }
         }
@@ -3976,7 +4015,7 @@
 
         let res = null;
         const h = await window.JSONAlign.prepareAsync(
-          L, R, { ignore: pred, numTol: tol }, jobControl(job));
+          L, R, { ignore: pred, numTol: tol, expand: expandActive() }, jobControl(job));
 
         if (h && h.ok) {
           _alignHandle = h;
@@ -3990,7 +4029,7 @@
           // Not an array/collection pair (a plain object, say): the whole-value
           // alignment is not divisible, but it is also not the case that scales.
           try {
-            res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
+            res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol, expand: expandActive() });
           } catch (e) { res = null; }
         }
         const out = applyTransformResult(res, L, R, block, pred, tol);
@@ -4016,9 +4055,11 @@
           // Snapshot the untransformed pair when the panes no longer hold it
           // verbatim, so autosave/export keep the user's real data:
           //  - normalization rewrote values (ignore / numeric tolerance), or
+          //    showed JSON stored as text as structure (expand), or
           //  - the render is a WINDOW over a large collection (records outside
           //    the current page are not in the pane at all).
-          const normalized = (pred || tol != null) && res.changed;
+          const normalized = res.changed && (pred || tol != null || res.expanded > 0);
+          if (res.expanded > 0) noteExpanded(res.expanded);
           if (normalized || (res.stats && res.stats.truncated)) {
             _ignorePristine = { left: L, right: R };
           } else {
@@ -4046,8 +4087,21 @@
         // Memoize against the post-dispatch docs (failures too) so the next call
         // on unchanged content returns in O(1).
         _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
-                           block, pred, tol, page: recordPageFrom, view: recordView };
+                           block, pred, tol, exp: expandActive(), page: recordPageFrom, view: recordView };
         return dispatched;
+      }
+
+      // Say once per comparison that some values are shown as structure, and
+      // that it is display only. Re-aligning the same pair says nothing new.
+      let _expandNoted = 0;
+      function noteExpanded(n) {
+        if (n === _expandNoted) return;
+        _expandNoted = n;
+        showNotice('info',
+          `Showing ${n.toLocaleString('en-US')} JSON value${n === 1 ? '' : 's'} stored as text as nested ` +
+          'objects so they compare key by key. Display only — saving, Copy and Export keep the original text.',
+          { key: 'expand-embedded', timeout: 12000,
+            actions: [{ label: 'Turn off', run: () => setExpandEmbedded(false) }] });
       }
 
       function applyBlockAlignment() {
@@ -4055,7 +4109,8 @@
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
         const tol = numToleranceActive();
-        if (!block && !pred && tol == null) return;
+        const exp = expandActive();
+        if (!block && !pred && tol == null && !exp) return;
         const docA = mergeView.a.state.doc;
         const docB = mergeView.b.state.doc;
         // Respect an explicit cancel until the content actually changes.
@@ -4063,7 +4118,8 @@
         if (_lastAlignMemo &&
             _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
             _lastAlignMemo.block === block && _lastAlignMemo.pred === pred &&
-            _lastAlignMemo.tol === tol && _lastAlignMemo.page === recordPageFrom &&
+            _lastAlignMemo.tol === tol && _lastAlignMemo.exp === exp &&
+            _lastAlignMemo.page === recordPageFrom &&
             _lastAlignMemo.view === recordView) return;
         // While a window is showing, the panes hold only the current page —
         // re-aligning from them would window a window and lose the rest of the
@@ -8390,15 +8446,22 @@
           return;
         }
         const tol = numToleranceActive();
+        const exp = expandActive();
         const k = kcState.key;
         if (kcState.result && k && k.left === pair.left && k.right === pair.right &&
-            k.gen === _ignoreGen && k.tol === tol) return;
+            k.gen === _ignoreGen && k.tol === tol && k.exp === exp) return;
 
         let L, R;
         try { L = JSON.parse(pair.left); }
         catch (e) { kcState.result = null; kcState.error = 'The left panel is not valid JSON. Use Format ▾ → Fix JSON, then reopen.'; return; }
         try { R = JSON.parse(pair.right); }
         catch (e) { kcState.result = null; kcState.error = 'The right panel is not valid JSON. Use Format ▾ → Fix JSON, then reopen.'; return; }
+        // Same rule as the panes, so a key inside JSON stored as text is a
+        // row here and clicking it finds it there.
+        if (exp) {
+          L = window.JSONAlign.expandEmbedded(L).value;
+          R = window.JSONAlign.expandEmbedded(R).value;
+        }
 
         const t0 = performance.now();
         const res = window.KeyCompare.compare(L, R, {
@@ -8411,7 +8474,7 @@
           rows: window.KeyCompare.counts(res.rows, false)
         };
         kcState.records = res.rootArray ? { left: L.length, right: R.length } : null;
-        kcState.key = { left: pair.left, right: pair.right, gen: _ignoreGen, tol };
+        kcState.key = { left: pair.left, right: pair.right, gen: _ignoreGen, tol, exp };
         kcState.ms = performance.now() - t0;
         kcState.drawn = null;
       }
