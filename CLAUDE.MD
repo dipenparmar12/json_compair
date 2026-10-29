@@ -350,6 +350,10 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/diff_view.js"></script>      <!-- v6 only: fold blocks + highlight-style coverage -->
 ```
 
+> v6 marks every `<head>` script (CDN and local) `defer`: same order, all run before the
+> module script, but the page draws without waiting for them. A new utility must be `defer`
+> too, or it runs before the ones it depends on.
+
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
 > at runtime (`new Worker('./utils/diff-worker.js')`, started in `initializeApp`) and has its
 > own inlined copies of `diff_match_patch` **and** the CSV parser so it runs standalone off
@@ -439,11 +443,27 @@ const autoSaveExtension = EditorView.updateListener.of((update) => {
 
 ## Data Persistence Flow
 
-1. **On content change** → 300ms debounce → `StorageManager.saveToStorage(left, right)`
-2. **Page load** → Check URL params (`c=...`) → Decompress & load
-3. **Fallback** → Load from `localStorage['json-compare-left/right']`
-4. **All empty** → Show default template
-5. **Large data** → Falls back to IndexedDB if localStorage quota exceeded
+1. **On content change** → 300ms debounce → `StorageManager.saveToStorage(left, right, meta)`
+   (`meta.summary` = the result pill, for the restore card). Above `AUTOSAVE_MAX_BYTES` (4 MB)
+   nothing is saved; a localStorage quota error falls back to IndexedDB.
+2. **Page load — interface first, data last** (`restoreLastSession`, index.html "Restoring the
+   last comparison"):
+   - **Why:** the editors were built WITH the saved pair, so the MergeView constructor diffed and
+     laid out the raw text, then alignment re-rendered it. Measured on a 3.5 MB session: one
+     1,457 ms blocked task; the toolbar was drawn but did not respond.
+   - The head scripts are `defer` (same order, all before the module), so the page draws
+     without waiting for CDN libraries.
+   - The editors start empty; after the first paint the session is found
+     (`findSessionToRestore`): shared link (`?c=`) → newest of localStorage / IndexedDB
+     (`StorageManager.loadLatest`; startup used to ignore the IndexedDB copy and restored an
+     OLDER pair) → a blank side or the untouched demo falls back to its branch → first visit
+     gets the demo.
+   - ≤ `RESTORE_ASK_BYTES` (1 MB): loads straight away. Above: a card over the empty panels
+     shows each side's size and kind, the last result and when it was saved, with
+     **Restore** / **Start empty** (Escape). Content that arrives while the card is up wins;
+     a notice offers **Restore it** until the page is closed.
+   - Loading goes through `restorePair()`: aligned before its first render, interruptible with
+     progress and Cancel above `PROGRESS_MIN_BYTES`. Same 3.5 MB session: longest task 155 ms.
 
 ## Ingest, Repair & Linting (v6) — IMPORTANT
 
@@ -714,6 +734,7 @@ node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks: record pairing, key table, filters, export
 node tests/diff_view.test.js      #  20 checks: change-block grouping, fold kinds, line coverage
 node tests/embedded_json.test.js  #  16 checks: JSON / Python dicts inside strings, strictness
+node tests/storage.test.js        #   8 checks: saved comparison — newest copy wins, record shape
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -984,6 +1005,7 @@ node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks — record pairing, key table, filters, export
 node tests/diff_view.test.js      #  20 checks — change-block grouping, fold kinds, line coverage
 node tests/embedded_json.test.js  #  16 checks — JSON / Python dicts inside strings, strictness
+node tests/storage.test.js        #   8 checks — saved comparison: newest copy wins, record shape
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1048,6 +1070,11 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     differs; Keys lists `["…"].scen_elec_kwh.summer["on peak"]`; a reload / Export still holds
     the original string; Settings → *Read JSON inside strings* off brings the string back.
     `"{not json}"` stays a string
+32. Leave a > 1 MB comparison and reload — the toolbar responds at once, the panels are empty
+    under a "Restore your last comparison?" card with both sizes, the last result and when;
+    Restore shows progress and lands on the same comparison. Reload again and paste into a
+    panel instead — the card goes, a notice offers **Restore it**. A small pair reloads with
+    no card
 
 ## Common Tasks
 

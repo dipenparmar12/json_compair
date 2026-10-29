@@ -3774,3 +3774,36 @@ button:disabled,
 }
 #view-container.no-change-folds .cm-stickyBlock { display: none; }
 .has-sticky-block .pane-controls { top: 36px; }
+
+/* ---------------------------------------------------------------------------
+   RESTORE CARD — a large saved comparison is offered at startup instead of
+   loaded unasked (index.html "Restoring the last comparison"). It sits over
+   the empty panels; the toolbar and the panels themselves stay usable.
+   --------------------------------------------------------------------------- */
+.restore-card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 20;
+    width: min(420px, calc(100% - 32px));
+    padding: var(--space-4) var(--space-4) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-elev);
+    box-shadow: var(--shadow);
+    font-family: var(--font-ui);
+    color: var(--text);
+}
+.restore-card-title { margin: 0; font-size: 15px; font-weight: 600; }
+.restore-card-sub { margin: 2px 0 var(--space-3); font-size: 12.5px; color: var(--text-muted); }
+.restore-card-rows {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px var(--space-3);
+    margin: 0 0 var(--space-3);
+    font-size: 13px;
+}
+.restore-card-rows dt { color: var(--text-muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.restore-card-rows dd { margin: 0; overflow-wrap: anywhere; }
+.restore-card-actions { display: flex; gap: var(--space-2); }

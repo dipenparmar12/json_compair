@@ -30,40 +30,40 @@
     <link rel="stylesheet" type="text/css" href="./css/app.css" />
 
     <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
-    <script
+    <script defer
       src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"
       crossorigin="anonymous"
     ></script>
 
     <!-- JSZip for creating ZIP snapshots - v3.10.1 (latest) -->
-    <script
+    <script defer
       src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
       crossorigin="anonymous"
     ></script>
 
     <!-- diff_match_patch for accurate diff counting -->
-    <script
+    <script defer
       src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.min.js"
       crossorigin="anonymous"
     ></script>
 
     <!-- Utility scripts -->
-    <script src="./utils/utils.js"></script>
+    <script defer src="./utils/utils.js"></script>
     <!-- jsonrepair 3.15.0 (ISC, 0 deps) — vendored, not CDN: repair is on the
          critical ingest path and must not depend on the network. -->
-    <script src="./utils/vendor/jsonrepair.umd.js"></script>
-    <script src="./utils/json_repair.js"></script>
-    <script src="./utils/json_utils.js"></script>
-    <script src="./utils/text_tools.js"></script>
-    <script src="./utils/utils_csv.js"></script>
-    <script src="./utils/utils_zip.js"></script>
-    <script src="./utils/utils_branch.js"></script>
-    <script src="./utils/viewport_diff.js"></script>
-    <script src="./utils/progress.js"></script>
-    <script src="./utils/json_align.js"></script>
-    <script src="./utils/key_compare.js"></script>
-    <script src="./utils/diff_view.js"></script>
-    <script src="./utils/diff_ignore.js"></script>
+    <script defer src="./utils/vendor/jsonrepair.umd.js"></script>
+    <script defer src="./utils/json_repair.js"></script>
+    <script defer src="./utils/json_utils.js"></script>
+    <script defer src="./utils/text_tools.js"></script>
+    <script defer src="./utils/utils_csv.js"></script>
+    <script defer src="./utils/utils_zip.js"></script>
+    <script defer src="./utils/utils_branch.js"></script>
+    <script defer src="./utils/viewport_diff.js"></script>
+    <script defer src="./utils/progress.js"></script>
+    <script defer src="./utils/json_align.js"></script>
+    <script defer src="./utils/key_compare.js"></script>
+    <script defer src="./utils/diff_view.js"></script>
+    <script defer src="./utils/diff_ignore.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -773,6 +773,11 @@
           // on the next reload. Re-alignment recaptures a fresh pair when
           // normalization applies again.
           if (!_blockAligning) _ignorePristine = null;
+
+          // Content arrived while the restore card was up (paste, drop, a
+          // file, an example). It wins; loadSession hides the card before its
+          // own write, so this is never the restore itself.
+          if (_restoreOffer) withdrawRestoreOffer();
 
           // An edit that leaves the two panes with different line counts means
           // they are no longer row-aligned; CM6's own diff takes over until the
@@ -2423,10 +2428,10 @@
         // time the user pastes/drops large content.
         initializeDiffWorker();
 
-        // Load content from URL parameters first, then from storage, then use defaults
+        // Content from a shared link. Saved content is read later, after the
+        // interface is up (see restoreLastSession).
         const urlContent = URLManager.loadFromURL();
-        const savedContent = StorageManager.loadFromStorage();
-        
+
         // Apply settings from URL if present (before other initialization)
         if (urlContent && urlContent.settings) {
           try {
@@ -2461,16 +2466,18 @@
         }
         expandEmbeddedOn = SettingsManager.get('expandEmbedded') !== false;
 
-        const initialContent = urlContent || savedContent || DefaultTemplates.simple;
         const mergeSettings = loadMergeSettings();
 
         // Create merge view container
         const container = document.getElementById("view-container");
 
-        // Create merge view with CodeMirror 6 using saved settings
+        // The editors start EMPTY. Building them with the saved documents made
+        // the constructor diff and lay out the whole pair before anything could
+        // be clicked: 1.5 s of one blocked task for a 3.5 MB session, with the
+        // toolbar painted but dead. The content follows once this is on screen.
         mergeView = new MergeView({
           a: {
-            doc: initialContent.left,
+            doc: '',
             extensions: [
               basicSetup,
               diffViewExtensions,
@@ -2483,7 +2490,7 @@
             ],
           },
           b: {
-            doc: initialContent.right,
+            doc: '',
             extensions: [
               basicSetup,
               diffViewExtensions,
@@ -2502,13 +2509,8 @@
           gutter: mergeSettings.gutter,
           revertControls: mergeSettings.revertControls === "none" ? undefined : mergeSettings.revertControls,
           collapseUnchanged: mergeSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
-          diffConfig: buildDiffConfig(
-            mergeSettings.scanLimit,
-            (initialContent.left ? initialContent.left.length : 0) + (initialContent.right ? initialContent.right.length : 0)
-          ),
+          diffConfig: buildDiffConfig(mergeSettings.scanLimit, 0),
         });
-        // The constructor diffs with exactly that config, so the initial chunks
-        // and the applied limit agree.
         _chunkScanLimit = _appliedScanLimit;
 
         // Add per-pane control buttons
@@ -2553,11 +2555,15 @@
         // the panels show titles + controls by default (details on hover/tap).
         enhanceInfoTips(document);
 
-        // Initialize branch system - load active branches if they exist
+        // Initialize branch system (which branch each panel shows)
         await initializeBranches();
+
+        // Data last: the interface is drawn and usable before any of it loads.
+        restoreLastSession(urlContent).catch((err) => console.warn('[restore] failed', err));
       }
       
-      // Initialize branch system and load saved branches
+      // Initialize branch system. Content is restored separately, after the
+      // interface is up (restoreLastSession).
       async function initializeBranches() {
         // Resolve the stored ids against branches that actually exist in each
         // panel — a stale id (the old "main" default) left no branch selected.
@@ -2567,49 +2573,12 @@
           if (id !== stored) setActiveBranch(side, id);
           else activeBranches[side] = id;
         }
-        const leftBranchId = activeBranches.left;
-        const rightBranchId = activeBranches.right;
-        
-        // Try to load content from saved branches (if not already loaded from URL/storage)
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-        
-        // If editors are empty or have default template, try loading from branches
-        const isDefaultTemplate = leftContent === DefaultTemplates.simple.left.trim() && 
-                                  rightContent === DefaultTemplates.simple.right.trim();
-        
-        if (!leftContent || isDefaultTemplate) {
-          const leftBranch = await window.BranchManager.getBranch(leftBranchId);
-          if (leftBranch && leftBranch.content) {
-            mergeView.a.dispatch({
-              changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftBranch.content }
-            });
-          }
-        }
-        
-        if (!rightContent || isDefaultTemplate) {
-          const rightBranch = await window.BranchManager.getBranch(rightBranchId);
-          if (rightBranch && rightBranch.content) {
-            mergeView.b.dispatch({
-              changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightBranch.content }
-            });
-          }
-        }
-        
         // What each active branch last saved — the reference for its tab's
         // saved / unsaved state.
         await Promise.all([loadBaseline('left'), loadBaseline('right')]);
 
         // Update branch selectors
         updateBranchSelectors();
-        // Align / normalize panes once initial content has settled (initial
-        // content arrives via the editor `doc:` config, which does not fire the
-        // change listener, so we trigger it explicitly here). When neither block
-        // diff nor ignore is active, strip any gap lines a snapshot carried.
-        if (transformActive()) applyBlockAlignment();
-        else removeBlockAlignment();
-        checkBranchModified('left');
-        checkBranchModified('right');
         updateDiffStatus();
       }
 
@@ -7481,7 +7450,10 @@
       // for rendering every line, then re-render collapsed.
       async function applyProactivePosture(incomingContent, side) {
         const otherLen = (side === 'left' ? mergeView.b : mergeView.a).state.doc.length;
-        const total = (incomingContent ? incomingContent.length : 0) + otherLen;
+        collapseForSize((incomingContent ? incomingContent.length : 0) + otherLen);
+      }
+
+      function collapseForSize(total) {
         if (total <= PROACTIVE_COLLAPSE_BYTES) return;
 
         const collapse = document.getElementById('setting-collapse-unchanged');
@@ -7809,6 +7781,7 @@
         // Stop anything still running first, or an in-flight ingest would write
         // its panes over the freshly-cleared editors a moment later.
         cancelAllProcessing();
+        hideRestoreOffer();
 
         // Drop the pre-normalization snapshot up front so nothing downstream
         // (autosave, export) can persist the old content back, and release the
@@ -7880,6 +7853,187 @@
         updateDiffStatus();
       }
 
+      /* ---- Restoring the last comparison ----------------------------------
+         Interface first, data second. The editors are built empty, the page
+         paints and responds, and only then is the saved comparison loaded —
+         the same way as a large paste: aligned BEFORE its first render, in
+         slices with progress and Cancel above PROGRESS_MIN_BYTES. It used to
+         go straight into the MergeView constructor, which diffed and laid out
+         the raw pair, then re-rendered it aligned: measured, one 1.5 s blocked
+         task on a 3.5 MB session, with the toolbar drawn but not responding.
+
+         Above RESTORE_ASK_BYTES nothing loads until the user asks: a card over
+         the empty panels says what was saved (sizes, kinds, the last result,
+         when) with Restore / Start empty. Content that arrives while the card
+         is up wins, and a notice keeps a way back to the saved comparison. */
+      const RESTORE_ASK_BYTES = 1024 * 1024;
+      let _restoreOffer = null;      // the session the card is offering
+
+      async function restoreLastSession(urlContent) {
+        await nextPaint();
+        const session = await findSessionToRestore(urlContent);
+        if (!session) { updateDiffStatus(); return; }
+        if (session.left.length + session.right.length > RESTORE_ASK_BYTES) offerRestore(session);
+        else await loadSession(session);
+      }
+
+      // A shared link, else the newest saved pair. A blank side — or the
+      // untouched demo — falls back to that panel's branch, as startup always
+      // has; the demo itself is what a first visit sees.
+      async function findSessionToRestore(urlContent) {
+        let s = urlContent
+          ? { left: urlContent.left || '', right: urlContent.right || '' }
+          : await StorageManager.loadLatest();
+        if (!s) s = { left: DefaultTemplates.simple.left, right: DefaultTemplates.simple.right };
+        const demo = s.left.trim() === DefaultTemplates.simple.left.trim() &&
+                     s.right.trim() === DefaultTemplates.simple.right.trim();
+        for (const side of ['left', 'right']) {
+          if (s[side].trim() && !demo) continue;
+          const b = await window.BranchManager.getBranch(activeBranches[side]);
+          if (b && b.content) s[side] = b.content;
+        }
+        return (s.left.trim() || s.right.trim()) ? s : null;
+      }
+
+      async function loadSession(s) {
+        hideRestoreOffer();
+        const job = s.left.length + s.right.length > PROGRESS_MIN_BYTES
+          ? startProcessingJob('Restoring last comparison') : null;
+        try {
+          await restorePair(s.left, s.right, job);
+        } catch (err) {
+          if (!isCancellation(err)) throw err;
+          updateDiffStatus();
+          showNotice('info', 'Restoring the last comparison was stopped.',
+            { key: 'restore', actions: [{ label: 'Restore', run: () => loadSession(s) }] });
+        } finally {
+          endProcessingJob(job);
+        }
+      }
+
+      // commitPair for a whole saved session: interruptible on a large pair,
+      // and collapsed before the first render rather than after it.
+      async function restorePair(L, R, job) {
+        collapseForSize(L.length + R.length);
+        recordPageFrom = 0;
+        _ignorePristine = null;
+        _lastAlignMemo = null;
+        let dispatched = false;
+        if (transformActive() && L.trim() && R.trim()) {
+          dispatched = job ? await transformAndDispatchAsync(L, R, job) : transformAndDispatch(L, R);
+        }
+        if (!dispatched) {
+          if (job) {
+            job.phase('render');
+            job.update(0, 1, `Loading ${fmtBytes(L.length + R.length)} into the editors`);
+            await window.ProcessingUI.yieldToPaint();
+            if (job.cancelled) throw new CancelledError();
+          }
+          _alignedRender = false;
+          _rowAligned = false;
+          syncDiffConfig(L.length + R.length);   // before the write: see syncDiffConfig
+          _blockAligning = true;
+          try {
+            setPaneIfChanged(mergeView.a, L);
+            setPaneIfChanged(mergeView.b, R);
+          } finally { _blockAligning = false; }
+          _lastAlignMemo = null;
+          // Gap lines an older save carried only mean something to Block Diff.
+          if (!transformActive()) removeBlockAlignment();
+          ensureDiffFresh();
+          if (job) job.update(1, 1, 'Done');
+        }
+        checkBranchModified('left');
+        checkBranchModified('right');
+        updateDiffStatus();
+        refreshMergeViewIfNeeded();
+        afterContentChanged({ checkSize: false });
+      }
+
+      function sessionKind(text) {
+        if (!text.trim()) return 'Empty';
+        if (looksLikeJSONStart(text)) return 'JSON';
+        return cheapLooksLikeCSV(text) ? 'CSV' : 'Text';
+      }
+
+      function timeAgo(ts) {
+        const s = Math.round((Date.now() - ts) / 1000);
+        const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+        if (s < 60) return 'just now';
+        if (s < 3600) return rtf.format(-Math.round(s / 60), 'minute');
+        if (s < 86400) return rtf.format(-Math.round(s / 3600), 'hour');
+        return rtf.format(-Math.round(s / 86400), 'day');
+      }
+
+      function offerRestore(s) {
+        hideRestoreOffer();
+        _restoreOffer = s;
+        const el = (tag, cls, text) => {
+          const n = document.createElement(tag);
+          if (cls) n.className = cls;
+          if (text != null) n.textContent = text;
+          return n;
+        };
+        const card = el('div', 'restore-card');
+        card.id = 'restore-card';
+        card.setAttribute('role', 'dialog');
+        card.setAttribute('aria-labelledby', 'restore-card-title');
+
+        const title = el('h2', 'restore-card-title', 'Restore your last comparison?');
+        title.id = 'restore-card-title';
+        const total = fmtBytes(s.left.length + s.right.length);
+        const sub = el('p', 'restore-card-sub',
+          s.timestamp ? `Saved ${timeAgo(s.timestamp)} · ${total}` : total);
+        card.append(title, sub);
+
+        const rows = el('dl', 'restore-card-rows');
+        const row = (label, value) => rows.append(el('dt', null, label), el('dd', null, value));
+        row(branchTitle(activeBranches.left), `${fmtBytes(s.left.length)} · ${sessionKind(s.left)}`);
+        row(branchTitle(activeBranches.right), `${fmtBytes(s.right.length)} · ${sessionKind(s.right)}`);
+        if (s.meta && s.meta.summary) row('Result', s.meta.summary);
+        card.append(rows);
+
+        const actions = el('div', 'restore-card-actions');
+        const restore = el('button', 'btn btn-primary', 'Restore');
+        restore.onclick = () => loadSession(s);
+        const fresh = el('button', 'btn', 'Start empty');
+        fresh.title = 'Keep the panels empty. The saved comparison is replaced once you add content.';
+        fresh.onclick = hideRestoreOffer;
+        actions.append(restore, fresh);
+        card.append(actions);
+        card.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideRestoreOffer(); });
+
+        document.getElementById('view-container').appendChild(card);
+        setDiffSummary('idle', 'Last comparison not loaded');
+        restore.focus();
+      }
+
+      function hideRestoreOffer() {
+        _restoreOffer = null;
+        const card = document.getElementById('restore-card');
+        if (card) card.remove();
+      }
+
+      // New content arrived while the card was up: it wins, but the saved
+      // comparison is only a click away until the page is closed.
+      function withdrawRestoreOffer() {
+        const s = _restoreOffer;
+        hideRestoreOffer();
+        showNotice('info',
+          `Your last comparison (${fmtBytes(s.left.length + s.right.length)}) was not restored, and is replaced once this content is saved.`,
+          { key: 'restore', actions: [{
+            label: 'Restore it',
+            run: () => { if (confirm('Replace both panels with your last comparison?')) loadSession(s); }
+          }] });
+      }
+
+      // What the restore card shows before anything is loaded.
+      function sessionMeta() {
+        const pill = document.getElementById('diff-summary');
+        const done = pill && (pill.dataset.state === 'same' || pill.dataset.state === 'diff');
+        return { summary: done ? pill.textContent.trim() : null };
+      }
+
       // Save content to storage (called by auto-save extension)
       function saveContent() {
         // What gets WRITTEN is the pristine pair when one exists (ignore /
@@ -7929,7 +8083,7 @@
           const leftContent = pristine ? pristine.left : mergeView.a.state.doc.toString();
           const rightContent = pristine ? pristine.right : mergeView.b.state.doc.toString();
           try {
-            StorageManager.saveToStorage(leftContent, rightContent);
+            StorageManager.saveToStorage(leftContent, rightContent, sessionMeta());
           } catch (e) {
             console.warn('saveToStorage failed during autosave', e);
             if (StorageManager.saveToIndexedDB) {

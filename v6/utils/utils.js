@@ -90,11 +90,14 @@
     STORAGE_KEY: "json_compare_data",
     EXPIRY_DAYS: 30,
 
-    saveToStorage: function (leftContent, rightContent) {
+    // `meta` is what the restore prompt shows before anything is loaded
+    // (currently the comparison's summary line); optional.
+    saveToStorage: function (leftContent, rightContent, meta) {
       const data = {
         left: leftContent,
         right: rightContent,
         timestamp: new Date().getTime(),
+        meta: meta || null,
       };
       try {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
@@ -127,22 +130,38 @@
     },
 
     loadFromStorage: function () {
-      const storedData = localStorage.getItem(this.STORAGE_KEY);
-      if (!storedData) return null;
-
-      const data = JSON.parse(storedData);
-      const now = new Date().getTime();
-      const age = now - data.timestamp;
-      const expiryTime = this.EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-
-      if (age > expiryTime) {
+      let data = null;
+      try { data = JSON.parse(localStorage.getItem(this.STORAGE_KEY)); } catch (e) { data = null; }
+      if (!data) return null;
+      if (this.isExpired(data)) {
         localStorage.removeItem(this.STORAGE_KEY);
         return null;
       }
-
       return {
-        left: data.left,
-        right: data.right,
+        left: data.left || '',
+        right: data.right || '',
+        timestamp: data.timestamp || null,
+        meta: data.meta || null,
+      };
+    },
+
+    isExpired: function (data) {
+      return !data ||
+        (!!data.timestamp && Date.now() - data.timestamp > this.EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    },
+
+    // The newer of the localStorage record and the IndexedDB one. A save that
+    // overflows localStorage lands in IndexedDB instead, and startup used to
+    // read localStorage alone — so it brought back the OLDER comparison.
+    loadLatest: async function () {
+      const local = this.loadFromStorage();
+      const idb = await loadSnapshotFromIDB(this.STORAGE_KEY);
+      if (!idb || this.isExpired(idb) || (local && (local.timestamp || 0) >= (idb.timestamp || 0))) return local;
+      return {
+        left: idb.left || '',
+        right: idb.right || '',
+        timestamp: idb.timestamp,
+        meta: idb.meta || null,
       };
     },
   };
