@@ -4,8 +4,9 @@
 
 **Document type:** Product Requirements Document, Technical
 Architecture, UX Specification and AI Coding Agent Handoff\
-**Status:** Baseline specification for implementation planning\
-**Version:** 1.0\
+**Status:** Consolidated implementation specification. Phase gates and
+acceptance criteria are normative.\
+**Version:** 1.1\
 **Date:** 6 November 2026\
 **Target application:** Standalone local desktop application\
 **Primary stack:** Tauri + Vue 3 + Python worker, with an adapter for
@@ -1511,106 +1512,106 @@ recovery tests.
 
 # 20. Initial Requirement Register
 
-  ------------------------------------------------------------------------
-  ID               Requirement                   Priority Evidence
-  ---------------- ---------------- --------------------- ----------------
-  REQ-APP-001      One standalone                      P0 Proposed
-                   desktop app for                        
-                   CSV and JSON                           
+  -----------------------------------------------------------------------
+  ID               Requirement                  Priority Evidence
+  ---------------- ---------------- -------------------- ----------------
+  REQ-APP-001      One standalone                     P0 Proposed
+                   desktop app for                       
+                   CSV and JSON                          
 
-  REQ-FILE-001     Native file                         P0 Proposed
-                   selection                              
+  REQ-FILE-001     Native file                        P0 Proposed
+                   selection                             
 
-  REQ-FILE-002     Drag/drop path                      P0 Proposed
-                   selection                              
+  REQ-FILE-002     Drag/drop path                     P0 Proposed
+                   selection                             
 
-  REQ-FILE-003     Never modify                        P0 User requirement
-                   source files                           
+  REQ-FILE-003     Never modify                       P0 User requirement
+                   source files                          
 
-  REQ-FILE-004     No permanent                        P0 User requirement
-                   source                                 
-                   duplicates                             
+  REQ-FILE-004     No permanent                       P0 User requirement
+                   source                                
+                   duplicates                            
 
-  REQ-FMT-001      Detect CSV, TSV,                 P0/P1 Existing
-                   JSON, supported                        evidence; NDJSON
-                   NDJSON                                 verify
+  REQ-FMT-001      Detect CSV, TSV,                P0/P1 Existing
+                   JSON, supported                       evidence; NDJSON
+                   NDJSON                                verify
 
-  REQ-ENG-001      Integrate                           P0 Source inspected
-                   existing Python                        
-                   CSV module                             
+  REQ-ENG-001      Integrate                          P0 Source inspected
+                   existing Python                       
+                   CSV module                            
 
-  REQ-ENG-002      Integrate                           P0 Functional
-                   existing JSON                          analysis; source
-                   comparison tool                        audit
+  REQ-ENG-002      Integrate                          P0 Functional
+                   existing JSON                         analysis; source
+                   comparison tool                       audit
 
-  REQ-ENG-003      Preserve engine                     P0 Product
-                   semantics                              direction
+  REQ-ENG-003      Preserve engine                    P0 Product
+                   semantics                             direction
 
-  REQ-JOB-001      Run processing                      P0 Proposed
-                   outside UI                             
-                   thread                                 
+  REQ-JOB-001      Run processing                     P0 Proposed
+                   outside UI                            
+                   thread                                
 
-  REQ-JOB-002      Show progress                       P0 Proposed
-                   and resource use                       
+  REQ-JOB-002      Show progress                      P0 Proposed
+                   and resource use                      
 
-  REQ-JOB-003      Safe                                P0 CSV callback
-                   cancellation                           capability;
-                                                          integration
-                                                          proposed
+  REQ-JOB-003      Safe                               P0 CSV callback
+                   cancellation                          capability;
+                                                         integration
+                                                         proposed
 
-  REQ-RES-001      Canonical result                    P0 Proposed
-                   data for UI and                        
-                   exports                                
+  REQ-RES-001      Canonical result                   P0 Proposed
+                   data for UI and                       
+                   exports                               
 
-  REQ-RES-002      Backend                             P0 Proposed
-                   pagination                             
+  REQ-RES-002      Backend                            P0 Proposed
+                   pagination                            
 
-  REQ-RES-003      Record and field                    P0 Proposed
-                   detail lookup                          
+  REQ-RES-003      Record and field                   P0 Proposed
+                   detail lookup                         
 
-  REQ-UI-001       Exact summary                       P0 Existing
-                   metrics                                summary/UX
+  REQ-UI-001       Exact summary                      P0 Existing
+                   metrics                               summary/UX
 
-  REQ-UI-002       Details and                         P1 Existing JSON UX
-                   field histogram                        
+  REQ-UI-002       Details and                        P1 Existing JSON UX
+                   field histogram                       
 
-  REQ-UI-003       By key and Per                      P0 Existing JSON UX
-                   record views                           
+  REQ-UI-003       By key and Per                     P0 Existing JSON UX
+                   record views                          
 
-  REQ-UI-004       Light and dark                      P1 Existing JSON UX
-                   themes                                 
+  REQ-UI-004       Light and dark                     P1 Existing JSON UX
+                   themes                                
 
-  REQ-EXP-001      Stream CSV                          P0 Existing CSV
-                   exports                                module
+  REQ-EXP-001      Stream CSV                         P0 Existing CSV
+                   exports                               module
 
-  REQ-EXP-002      Stream JSON                         P1 Existing JSON
-                   exports                                tool; backend
-                                                          contract
-                                                          required
+  REQ-EXP-002      Stream JSON                        P1 Existing JSON
+                   exports                               tool; backend
+                                                         contract
+                                                         required
 
-  REQ-EXP-003      Summary/schema                      P0 Existing CSV
-                   audit export                           stats; unified
-                                                          form proposed
+  REQ-EXP-003      Summary/schema                     P0 Existing CSV
+                   audit export                          stats; unified
+                                                         form proposed
 
-  REQ-SEC-001      Local-only                          P0 User requirement
-                   processing                             
+  REQ-SEC-001      Local-only                         P0 User requirement
+                   processing                            
 
-  REQ-PERF-001     Approx. 5 GB per                    P0 User target;
-                   input design                           benchmark
-                   target                                 unverified
+  REQ-PERF-001     Approx. 5 GB per                   P0 User target;
+                   input design                          benchmark
+                   target                                unverified
 
-  REQ-PERF-002     Bounded frontend                    P0 User requirement
-                   memory                                 
+  REQ-PERF-002     Bounded frontend                   P0 User requirement
+                   memory                                
 
-  REQ-OPS-001      Recover/clean                       P1 Proposed
-                   interrupted jobs                       
+  REQ-OPS-001      Recover/clean                      P1 Proposed
+                   interrupted jobs                      
 
-  REQ-OPS-002      Reopen completed                    P1 Proposed
-                   sessions                               
+  REQ-OPS-002      Reopen completed                   P1 Proposed
+                   sessions                              
 
-  REQ-PKG-001      Self-contained                      P0 Proposed
-                   installer                              
-  ------------------------------------------------------------------------
+  REQ-PKG-001      Self-contained                     P0 Proposed
+                   installer                             
+  -----------------------------------------------------------------------
 
 ------------------------------------------------------------------------
 
@@ -1844,3 +1845,1027 @@ Source audit
 **Governing principle: Unify the product experience and application
 architecture while preserving the proven comparison behavior of the
 existing engines.**
+
+------------------------------------------------------------------------
+
+# 27. Version 1.1 Consolidated Decisions and Normative Amendments
+
+This section resolves implementation gaps identified during the v1.0
+review. It is normative and takes precedence over any conflicting open
+question, provisional statement, or earlier wording in sections 1
+through 26. Requirements not changed here remain in force.
+
+## 27.1 Product delivery strategy and phase gates
+
+The product is delivered as a CSV-first vertical slice while the JSON
+source audit runs in parallel.
+
+  -----------------------------------------------------------------------
+  Phase                   Deliverable             Gate to proceed
+  ----------------------- ----------------------- -----------------------
+  Phase 0A                JSON source audit,      JSON integration
+                          capability matrix,      decision recorded and
+                          dependency map,         approved
+                          headless feasibility    
+                          report, parity fixture  
+                          plan                    
+
+  Phase 0B                Architecture contracts, Contracts reviewed and
+                          supported-machine       testable
+                          baseline, result        
+                          schema, job lifecycle   
+                          and security design     
+
+  Phase 1                 Complete CSV vertical   All Phase 1 P0
+                          slice: select, inspect, acceptance criteria
+                          configure, preflight,   pass
+                          compare, browse,        
+                          filter, export,         
+                          retain/delete session   
+
+  Phase 2                 JSON adapter and        JSON parity suite
+                          unified JSON UX, only   passes for every
+                          for capabilities proven claimed capability
+                          by Phase 0A             
+
+  Phase 3                 Large-file hardening,   Release gates in
+                          recovery, packaging,    section 27.16 pass
+                          performance and         
+                          clean-machine release   
+                          qualification           
+  -----------------------------------------------------------------------
+
+CSV development must not wait for JSON audit completion if it does not
+depend on JSON-specific contracts. Shared contracts must be stable
+before they are used by both engines.
+
+### JSON integration decision tree
+
+The Phase 0A audit must inspect the complete JSON implementation, not
+only the functional analysis or screenshots.
+
+1.  **Headless core is separable:** extract or invoke the existing
+    comparison core without CodeMirror, DOM, browser globals, or UI
+    lifecycle dependencies. Preserve its matching and status semantics.
+2.  **Core is coupled but separable with bounded work:** isolate pure
+    comparison functions, define a stable adapter result model, and
+    build parity fixtures against the current tool before integration.
+3.  **Core requires a Node runtime:** keep the existing JavaScript
+    engine in a headless Node sidecar or worker, behind the same
+    application adapter contract. Do not port it merely to make the
+    stack look uniform.
+4.  **A controlled port is necessary:** port only after a fixture corpus
+    captures current behavior and automated parity tests can compare old
+    and new outputs.
+5.  **Safe integration or parity cannot be demonstrated:** defer that
+    capability or JSON support from v1. Do not claim large-file JSON
+    support based on the CSV engine's capabilities.
+
+The JSON audit deliverable must include: - Repository inventory, entry
+points, runtime requirements, dependencies and licenses. - Separation
+map for comparison logic, parsing, alignment, rendering and UI state. -
+Data structures and result contracts for records, fields, moves, ignored
+values and errors. - Memory behavior, parsing strategy, streaming
+support, and largest tested inputs. - Features that rely on browser
+APIs, CodeMirror, DOM or in-memory whole-document objects. -
+Worker/sidecar feasibility, startup and shutdown behavior. - Capability
+matrix: existing, reusable, adaptable, unsupported, and not yet
+verified. - Versioned parity fixture corpus and known limitations. -
+Explicit decision: extract, wrap, port, defer, or exclude each
+capability.
+
+**Acceptance criteria** - `JSON-AUDIT-001`: Audit covers the complete
+source tree and runtime dependencies. - `JSON-AUDIT-002`: Every feature
+advertised in the UI has a source-backed capability status. -
+`JSON-AUDIT-003`: Every supported JSON comparison behavior has at least
+one fixture; edge cases have dedicated fixtures. - `JSON-AUDIT-004`: A
+documented architecture decision selects the integration route. -
+`JSON-AUDIT-005`: No JSON large-file claim is made without repeatable
+benchmark evidence and memory measurements. - `JSON-AUDIT-006`: If
+parity is incomplete, the unsupported feature is hidden or clearly
+marked unavailable rather than approximated silently.
+
+## 27.2 Phase 1 CSV result repository is a named deliverable
+
+The CSV result repository is a Phase 1 P0 deliverable, not a later
+optimization. The application must provide queryable, disk-backed
+results during the initial CSV vertical slice.
+
+The existing `compare_csv(...)` engine remains authoritative for
+comparison classification. Add a backward-compatible result sink or
+equivalent callback that receives classified records during the existing
+comparison pass. Existing callers must continue to work without
+providing the sink and must retain their current summary/export
+behavior.
+
+Do not build the UI result repository by parsing the engine's exported
+CSV files after comparison. That would introduce a second parser and a
+second interpretation of comparison results.
+
+### Required logical schema
+
+The physical schema may be normalized across tables, but it must support
+these fields and relationships:
+
+  -----------------------------------------------------------------------
+  Entity                              Required fields
+  ----------------------------------- -----------------------------------
+  Job                                 `job_id`, status,
+                                      created/started/completed
+                                      timestamps, engine, options
+                                      version, left/right source
+                                      metadata, source fingerprints,
+                                      error code
+
+  Result record                       `job_id`, `record_ref`, `status`,
+                                      serialized or typed key,
+                                      `duplicate_group_id`,
+                                      `match_quality`, `ambiguous`,
+                                      left/right source row references
+
+  Field difference                    `job_id`, `record_ref`,
+                                      `field_path`, field status, left
+                                      value, right value, value type
+                                      metadata
+
+  Source location                     side (`left`/`right`), source row
+                                      or record location, byte offset
+                                      where reliably available, source
+                                      identifier
+
+  Summary                             counts by status, counts by field
+                                      status, duplicate and ambiguity
+                                      counts, column statistics, warnings
+
+  Export                              export type, destination, state,
+                                      bytes written, commit state, error
+                                      code
+  -----------------------------------------------------------------------
+
+`record_ref` must be stable within a job and must not depend on the
+current UI page. It is an application identifier, not a source record
+key.
+
+The repository must preserve actual source values for detail inspection.
+Large values may be stored in a bounded or separately blob-backed
+representation, but truncation must be explicit and must not silently
+alter exported values.
+
+### Duplicate and ambiguity model
+
+Use these canonical concepts:
+
+-   `duplicate_group_id`: identifies a group of records sharing a
+    duplicate comparison key.
+-   `match_quality`: enum with `exact`, `ambiguous`, and `unmatched`.
+-   `ambiguous`: explicit boolean for convenient filtering and summary
+    counts.
+-   Optional occurrence index and content hash may be stored to support
+    diagnosis and deterministic exact matches.
+
+The CSV engine's current duplicate `match` policy first matches
+identical records within duplicate-key groups, then pairs remaining
+records in file order and marks those residual pairs ambiguous. The
+residual pairing is order-dependent. Reordering either input can change
+which residual records pair. The product must not imply reorder
+invariance for those ambiguous residual pairs.
+
+Ambiguity must be visible in: - Summary counts. - Result status/filter
+controls. - Record details and source row references. - Exported result
+metadata. - Help text explaining the matching limitation.
+
+### Repository operations
+
+The service layer must support: - Fetch summary by job. - Fetch a
+cursor/keyset page of records. - Fetch a record and its field
+differences. - Filter by record status, key, field path, ambiguity and
+match quality. - Search keys using an indexed strategy. - Sort only by
+supported indexed or bounded fields. - Stream a selected result set to
+an export writer. - Delete all artifacts for a job. - Validate
+repository integrity after recovery.
+
+Avoid large `OFFSET` pagination. Use a stable cursor based on indexed
+ordering, such as `(job_id, record_ref)` or a compound indexed key.
+
+**Acceptance criteria** - `RES-001`: The CSV adapter writes canonical
+classified results to the repository during the comparison pass. -
+`RES-002`: UI summary counts reconcile exactly with engine summary
+counts for the same classification scope. - `RES-003`: UI record pages
+and detail views are read from the repository, not reconstructed from
+export files. - `RES-004`: Pagination remains bounded for a result set
+containing millions of records. - `RES-005`: Filtering by status and
+ambiguity returns correct counts and records. - `RES-006`: Exported
+records reconcile with the canonical repository selection. - `RES-007`:
+Interrupted or cancelled jobs cannot be mistaken for completed result
+sets. - `RES-008`: Existing CSV module callers without a result sink
+retain backward-compatible behavior.
+
+## 27.3 Canonical application result contract
+
+All adapters must map engine output to a versioned application result
+contract. The contract is a storage and UI boundary, not a mandate to
+change the engines' internal algorithms.
+
+### Summary object
+
+Required logical fields: - `job_id` - `engine` and `engine_version` -
+`status` - `left_source` and `right_source` metadata - `started_at`,
+`completed_at`, and duration when available - `counts`: added, removed,
+modified, unchanged, moved where supported, duplicate groups, ambiguous
+pairs, unmatched records - `field_counts`: equal, changed, type
+mismatch, tolerance equal, left only, right only, ignored where
+supported - `warnings` - `errors` - `capabilities_used` -
+`result_repository_version`
+
+Unsupported counts must be represented as unsupported or null, not as
+zero. Zero means the engine measured the count and found none.
+
+### Record object
+
+Required logical fields: - `job_id` - `record_ref` - `status` - `key` or
+key representation, if the engine has one - `duplicate_group_id`,
+nullable - `match_quality` - `ambiguous` - `left_source_location`,
+nullable - `right_source_location`, nullable - `field_difference_count`
+
+### Field difference object
+
+Required logical fields: - `record_ref` - `field_path` - `status` -
+`left_value` and `right_value`, nullable where absent - left/right value
+types - tolerance or ignore rule applied, where relevant
+
+### Source location object
+
+A source location must identify the side and the most precise stable
+location the engine can provide. For CSV this normally includes physical
+or logical row number. Byte offset is optional and must not be
+fabricated. For JSON it may include JSON Pointer, line/column, array
+index or record path only when the parser can provide it reliably.
+
+### Versioning
+
+Persist a schema version for job metadata and result records. Migrations
+must be tested against retained sessions. An adapter must declare the
+result schema version it writes.
+
+**Acceptance criteria** - `MODEL-001`: CSV and JSON adapters produce
+valid, versioned application result objects. - `MODEL-002`: Unsupported
+semantics remain explicitly unsupported and are not mapped to misleading
+zero counts. - `MODEL-003`: Source locations are traceable to the
+original input where the engine provides reliable locations. -
+`MODEL-004`: Stored results remain readable after an application update
+through tested migrations or a documented compatibility boundary.
+
+## 27.4 Hardware baseline and workload qualification
+
+The product must publish a tested minimum machine profile. The following
+is a **proposed qualification baseline**, not a claim about current
+performance:
+
+-   Windows 10/11, 64-bit, supported release versions to be pinned in
+    packaging notes.
+-   8 GB RAM.
+-   At least 20 GB free space in the configured temporary workspace
+    before a large comparison.
+-   Local SSD recommended.
+-   No requirement for administrator privileges for normal comparison
+    operations.
+
+The engineering team must ratify or revise this baseline using benchmark
+evidence. If a workload cannot complete within the baseline, document
+the supported limit and show a clear preflight warning.
+
+Benchmarks must record: - CPU model and core count. - Physical RAM and
+available RAM. - Storage type, free space and measured read/write
+throughput. - OS build and application/engine versions. - File size,
+row/record count, column count, average and maximum record width. -
+Difference rate and duplicate-key rate. - Selected strategy and
+configured memory limit. - Peak process memory, peak temporary disk use,
+elapsed time and result repository growth.
+
+Required workload profiles include: - Small files for startup and
+interaction latency. - 1 GB and 5 GB per-side CSV inputs where generated
+fixtures can represent the format. - High-difference-rate 5 GB inputs,
+not only mostly-identical files. - Very wide CSVs. - Duplicate-heavy and
+keyless datasets. - JSON workloads only after Phase 0A proves a viable
+processing strategy. - Result-store growth under high difference rates.
+
+**Acceptance criteria** - `PERF-001`: The 8 GB RAM / 20 GB free
+workspace baseline is either ratified or replaced with a measured
+baseline before release. - `PERF-002`: Benchmark reports include the
+complete machine and workload metadata above. - `PERF-003`: A
+high-difference-rate large-file benchmark is included. - `PERF-004`:
+Result repository growth and temporary disk peak are measured. -
+`PERF-005`: No performance claim is published without a reproducible
+benchmark report.
+
+## 27.5 Mandatory preflight and disk-space policy
+
+A preflight step is mandatory before a full comparison. It must run
+after configuration and before the engine processes the complete input.
+
+Preflight must report: - File readability, format and detected
+encoding/delimiter where applicable. - File sizes, source fingerprints
+or fingerprinting status. - Header/schema compatibility. - Selected
+comparison strategy. - Required temporary workspace and currently
+available free space. - Estimated temporary disk range, including result
+repository growth where estimable. - Configured soft and hard workspace
+quotas. - Memory limit and relevant engine options. - Key candidate
+suggestion, with explicit user confirmation. - Null-key and
+duplicate-key risk where discoverable from sampling or indexing. -
+Warnings that require user acknowledgment.
+
+An estimate is a range or best-effort value and must be labeled as such.
+Never present an estimate as a guarantee. If exact duplicate/null counts
+require a scan, identify that scan and its cost rather than silently
+doing a full pass.
+
+### Quotas and safe stop
+
+-   Soft quota: warn and allow the user to continue only with an
+    explicit acknowledgment where policy permits.
+-   Hard quota: do not begin or continue work that would exceed the
+    configured hard limit.
+-   Safety margin: reserve space for database journal/WAL, rollback, and
+    clean shutdown.
+-   If free space falls below the safety margin during a job, stop
+    safely, close writers, preserve job diagnostics, remove uncommitted
+    partial artifacts, and mark the failure as `disk_space`.
+-   The quota and safety margin must be configurable within safe bounds
+    and visible in settings.
+
+CSV `null_keys` defaults to `error`. The UI must display this default
+and identify null-key risk during preflight. The user must not discover
+millions of rows into a comparison that the configured null-key policy
+will reject when that risk could have been found earlier. If exact
+detection requires a scan, provide a preflight scan option or integrate
+validation into an explicit indexing phase before the main matching
+phase.
+
+**Acceptance criteria** - `PREFLIGHT-001`: Every comparison passes
+through preflight. - `PREFLIGHT-002`: Preflight shows strategy,
+workspace estimate, available space and quota status. - `PREFLIGHT-003`:
+Suggested keys require user confirmation. - `PREFLIGHT-004`: Null-key
+default is visibly `error` for CSV. - `PREFLIGHT-005`: Disk exhaustion
+below the safety margin stops the job safely and records `disk_space`. -
+`PREFLIGHT-006`: Estimates are labeled with confidence/limitations and
+are not represented as guarantees.
+
+## 27.6 CSV adapter requirements and error mapping
+
+The CSV adapter must call the existing `compare_csv(...)` API and
+preserve its semantics. It must not silently invoke CLI defaults that
+write to the current directory.
+
+In particular: - The application must pass explicit output destinations
+for every requested export. - The application must disable or omit HTML
+output unless the user explicitly requests it and selects a
+destination. - The adapter must not rely on implicit `./report.html` or
+default `--out-dir` behavior. - The adapter must validate that output
+destinations do not collide with either input or with each other. - The
+adapter must route progress and cancellation through the engine's
+supported progress callback behavior. - The adapter must capture the
+engine's summary and error code without parsing human-readable console
+output.
+
+### Verified `CsvDiffError.code` values
+
+Inspection of the supplied `csv_diff(9).py` confirms these
+machine-readable codes:
+
+  -----------------------------------------------------------------------------------------
+  Engine code           Application code             User-facing       Handling
+                                                     category          
+  --------------------- ---------------------------- ----------------- --------------------
+  `empty_file`          `input.empty_file`           Input validation  Identify which input
+                                                                       is empty
+
+  `no_header`           `input.no_header`            Input validation  Explain that a
+                                                                       header row is
+                                                                       required
+
+  `bad_encoding`        `input.bad_encoding`         Input decoding    Show encoding issue
+                                                                       and available
+                                                                       encoding
+                                                                       configuration
+
+  `csv_parse`           `input.csv_parse`            Input parsing     Show side and
+                                                                       row/line context
+                                                                       when available
+
+  `strict_validation`   `input.strict_validation`    Data validation   Show validation
+                                                                       failure and
+                                                                       strict-mode context
+
+  `schema`              `compare.schema`             Schema mismatch   Explain missing or
+                                                                       incompatible columns
+
+  `null_key`            `compare.null_key`           Key validation    Identify
+                                                                       side/row/key context
+                                                                       and selected policy
+
+  `bad_option`          `config.invalid_option`      Configuration     Identify invalid
+                                                                       option without
+                                                                       exposing a traceback
+
+  `output_collision`    `export.output_collision`    Export            Explain input/output
+                                                     destination       or output/output
+                                                                       collision
+
+  `disk_space`          `resource.disk_space`        Resource limit    Stop safely and
+                                                                       explain
+                                                                       required/available
+                                                                       space
+
+  `storage`             `storage.failure`            Temporary storage Preserve diagnostics
+                                                                       and clean
+                                                                       uncommitted
+                                                                       artifacts
+
+  `input_changed`       `input.changed_during_run`   Source integrity  Invalidate
+                                                                       completion and
+                                                                       report which input
+                                                                       changed
+  -----------------------------------------------------------------------------------------
+
+The CLI wrapper also maps `FileNotFoundError` to `file_not_found`,
+generic `ValueError` to `invalid_input`, and otherwise to `unexpected`.
+The application adapter must independently map missing input paths to
+`input.not_found`; it must not depend on CLI text output.
+
+The application may add more granular codes for application-layer
+failures, but it must preserve the original engine code in diagnostic
+metadata. Do not map unrelated engine codes into a generic error if a
+stable mapping exists.
+
+**Acceptance criteria** - `CSV-ADAPTER-001`: Existing `compare_csv(...)`
+remains the comparison authority. - `CSV-ADAPTER-002`: Explicit
+destinations are required for all requested exports. -
+`CSV-ADAPTER-003`: No implicit current-directory report or export
+directory is created. - `CSV-ADAPTER-004`: Every verified engine error
+code maps to the application code shown above. - `CSV-ADAPTER-005`:
+Original engine code and safe diagnostic context are retained. -
+`CSV-ADAPTER-006`: Existing callers continue to work without the new
+result sink.
+
+## 27.7 Job lifecycle, worker health and sidecar contract
+
+The Python worker is a managed local process. The application service
+layer owns its lifecycle and must not treat a spawned process as healthy
+merely because it exists.
+
+### Worker protocol
+
+The worker protocol must be versioned and include: -
+`protocol_version` - `worker_version` - `request_id` - `job_id` -
+message type - timestamp or monotonic sequence - payload
+
+The worker must support `hello`, `health_check`, `start_job`,
+`cancel_job`, `job_progress`, `job_completed`, `job_failed`, and
+`shutdown` messages. Large source contents and result sets must never
+travel through IPC. Pass validated local paths and small configuration
+objects only.
+
+### Health contract
+
+-   On startup, the worker must send a protocol/version handshake within
+    a configurable startup timeout.
+-   While a job is active, it must emit a heartbeat at a documented
+    interval.
+-   The service must detect a missed-heartbeat threshold and distinguish
+    a stalled worker from a long-running comparison that is still
+    reporting progress.
+-   A health check must report worker state, active job ID, last
+    progress sequence, last heartbeat, and protocol version.
+-   On unexpected exit, record exit code/signal, last known job state,
+    and stderr diagnostics with sensitive values filtered.
+-   Restart policy must be explicit: restart the worker for a new job
+    after a cleanly handled crash; do not automatically rerun a
+    non-idempotent or partially committed job.
+-   A job interrupted by worker death is marked `interrupted`, not
+    `completed`.
+-   Recovery may inspect and clean temporary artifacts, but must not
+    publish partial results as complete.
+-   Shutdown must request graceful termination, wait for a bounded
+    interval, then force-terminate and record the event.
+
+**Acceptance criteria** - `WORKER-001`: Worker startup handshake is
+versioned and timeout-protected. - `WORKER-002`: Heartbeats and progress
+sequence detect stalls. - `WORKER-003`: Unexpected exit records exit
+code and diagnostic context. - `WORKER-004`: A crashed worker cannot
+leave a job marked completed. - `WORKER-005`: Restart does not silently
+replay an interrupted comparison. - `WORKER-006`: Graceful shutdown and
+forced termination are both tested.
+
+## 27.8 Cancellation and partial-result visibility
+
+Cancellation is cooperative and must be honored at every safe
+checkpoint: inspection, indexing, matching, result persistence,
+finalization and export writing.
+
+Default policy: - A cancelled comparison is not presented as a completed
+result. - Partial result rows are not browseable in the normal
+completed-results workspace. - Partial result stores are discarded
+during cancellation cleanup unless a future resumable-checkpoint feature
+is explicitly designed and versioned. - Partial exports remain staged
+and are never committed to the user-selected final destination. - A
+cancellation record and diagnostic summary may be retained without
+exposing partial comparison data as complete.
+
+The export writer must write to a job-scoped staging path, flush and
+close it, validate success, then atomically commit/rename where the
+filesystem supports it. If cancellation occurs during writing, abort the
+staging file and leave any pre-existing destination untouched.
+Cross-volume or network destinations may not support atomic rename; use
+a documented safe-copy/commit strategy and never delete the previous
+destination before the replacement is complete.
+
+**Acceptance criteria** - `CANCEL-001`: Cancellation is tested during
+inspection, indexing, matching, repository writes, finalization and
+export writes. - `CANCEL-002`: Cancellation during export leaves no
+published partial export. - `CANCEL-003`: Existing destination files
+remain intact if export commit fails. - `CANCEL-004`: Cancelled jobs are
+not shown as completed results. - `CANCEL-005`: Temporary artifacts are
+cleaned or marked for recovery if immediate cleanup fails.
+
+## 27.9 Security, privacy and data lifecycle
+
+All comparison processing is local. Source files, result stores and
+exports may contain sensitive business or personal information.
+
+Required controls: - Tauri v2 capabilities must be narrowly scoped to
+required filesystem and dialog operations. - Do not grant broad
+filesystem access to the frontend. - Use strict Content Security Policy.
+Avoid unsafe inline script allowances unless a documented, reviewed
+exception is unavoidable. - Set IPC payload limits and reject
+unexpectedly large messages. - Frontend receives paths, metadata,
+progress and bounded result pages, not full multi-gigabyte file
+contents. - Validate and normalize paths at the native/service boundary.
+Prevent path traversal and symlink/path confusion where relevant. -
+Store temporary artifacts in a dedicated workspace with restrictive
+permissions appropriate to the OS. - Do not log source record values,
+full keys, tokens or sensitive file paths by default. - User-defined
+regular expressions must be protected against ReDoS. Apply pattern
+length/complexity limits, execution isolation or timeouts where the
+chosen regex engine supports them, and adversarial test cases. Do not
+execute untrusted patterns on the UI thread. - Result stores and exports
+inherit the sensitivity of source data. - Provide a per-job **Delete all
+artifacts** action that removes result rows, indexes, staged exports and
+job-scoped temporary files after confirmation. - Document that exported
+files are outside application control after the user saves or moves
+them. - Redaction/masking is a future optional export feature. It must
+be explicitly configured and must never alter the canonical stored
+comparison result.
+
+**Acceptance criteria** - `SEC-001`: Tauri capabilities grant only the
+filesystem/dialog operations required by the app. - `SEC-002`: CSP and
+IPC limits are documented and tested. - `SEC-003`: Frontend cannot
+request arbitrary unrestricted filesystem reads. - `SEC-004`: Regex
+adversarial tests include catastrophic-backtracking patterns and
+oversized patterns. - `SEC-005`: Logs do not contain source values by
+default. - `SEC-006`: Delete all artifacts removes all job-owned
+artifacts and reports any file that could not be removed. - `SEC-007`:
+Result storage permissions and retention behavior are documented. -
+`SEC-008`: Redaction is not silently applied to canonical data.
+
+## 27.10 Network-mounted files
+
+Network-mounted files are supported only to the extent that the OS and
+engine can read them reliably. They may have lower throughput,
+intermittent connectivity, file locking, and weaker rename semantics.
+
+An optional **Copy to local workspace for this job** mode may be
+provided: - Show source size, estimated local disk requirement and copy
+duration only when measurable. - Show that a temporary local copy will
+be created. - Verify copied file size and fingerprint before
+comparison. - Do not modify or delete the network source. - Clean the
+local copy according to the job retention policy. - Enforce the same
+workspace quotas and safety margin.
+
+This mode is opt-in. It must not silently duplicate a multi-gigabyte
+input.
+
+**Acceptance criteria** - `NET-001`: Network source files are never
+modified. - `NET-002`: Local staging is opt-in and shows its disk
+cost. - `NET-003`: Staged copies are verified before comparison. -
+`NET-004`: Staged copies are removed under retention/deletion policy.
+
+## 27.11 Progress reporting rules
+
+Progress UI must be truthful.
+
+-   Show phase names and absolute counters whenever available: bytes
+    read, rows scanned, records matched, records written, bytes
+    exported.
+-   Show percentage only when the denominator is known and the reported
+    work is sufficiently representative.
+-   Show ETA only when the rate is stable enough to be meaningful.
+-   If percentage or ETA is unavailable, show phase and counters rather
+    than fabricated values.
+-   Distinguish input scanning from matching, repository persistence,
+    finalization and export.
+-   Do not reset progress without explaining a phase transition.
+
+**Acceptance criteria** - `PROGRESS-001`: Unknown totals are represented
+as unknown, not guessed. - `PROGRESS-002`: Percentage is omitted when
+the denominator is not reliable. - `PROGRESS-003`: UI distinguishes
+comparison completion from export completion. - `PROGRESS-004`: Progress
+updates do not overwhelm IPC or the Vue render loop.
+
+## 27.12 Sessions, source fingerprints and retention
+
+A job is one execution. A session is the retained user-facing workspace
+for that job and its results. A profile is a reusable set of comparison
+options. These terms must not be used interchangeably.
+
+Retention policy must be implemented before release: - Provide a
+configurable retention period or quota-based cleanup policy with a
+documented default. - Provide **Keep results** and **Delete after
+export** choices. - Explain whether metadata, result records and exports
+are retained separately. - Never silently delete a session the user has
+explicitly marked to keep. - When a retained session is opened, compare
+current source fingerprints if the original paths remain available. - If
+either source has changed or is unavailable, show a warning that the
+stored result reflects the original source fingerprints. Still allow the
+user to inspect the stored result. - A stored result must not be
+represented as a fresh comparison of the current source files.
+
+**Acceptance criteria** - `SESSION-001`: Retention default and quota
+behavior are explicit in settings and documentation. - `SESSION-002`:
+Keep results and Delete after export are available. - `SESSION-003`:
+Source fingerprint mismatch is surfaced without blocking stored-result
+inspection. - `SESSION-004`: User-kept sessions are not silently
+removed. - `SESSION-005`: Delete all artifacts is available per
+job/session.
+
+## 27.13 User interface requirements
+
+The application must present CSV and JSON as equally first-class formats
+at the product navigation and workflow level. The interface must not be
+JSON/CodeMirror-centric.
+
+-   Format-specific controls appear only when relevant.
+-   CSV gets a structured table-oriented comparison workspace with
+    column, row, key and source-row context.
+-   JSON gets a structured tree/record-oriented workspace only for
+    features verified by the JSON audit.
+-   Shared toolbar actions must have format-neutral names where
+    possible.
+-   Do not expose internal engine names in ordinary user-facing
+    controls.
+-   A comparison mode must clearly state whether it is keyed, keyless,
+    identity-based, or structural.
+-   Ambiguity and match quality must be visible, not buried in a
+    diagnostic panel.
+-   Preflight is a visible step or expandable section before the user
+    starts the full run.
+-   The result workspace must remain usable when there are millions of
+    results by using bounded pages and server-side filtering.
+-   The user must be able to distinguish comparison results from
+    generated exports.
+
+**Acceptance criteria** - `UX-001`: CSV and JSON have clear
+format-specific workspaces under one consistent shell. - `UX-002`: CSV
+workflows do not require code-editor concepts. - `UX-003`: Unsupported
+JSON capabilities are not displayed as working controls. - `UX-004`:
+Ambiguous results are visible in summary and filters. - `UX-005`:
+Preflight warnings are visible before the main run.
+
+## 27.14 Cross-format comparison is deferred
+
+CSV-to-JSON and JSON-to-CSV comparison are not part of the initial
+release. They require a separately specified common record model,
+field-path normalization, type conversion rules, identity/key rules,
+null semantics, array semantics and explicit lossiness reporting.
+
+The adapters must not imply that two formats can be compared simply
+because they share an application result schema.
+
+**Acceptance criteria** - `CROSS-001`: Cross-format comparison is absent
+or visibly marked as future functionality in v1. - `CROSS-002`: No
+implicit CSV-to-JSON conversion is used to claim semantic equivalence. -
+`CROSS-003`: A future cross-format feature requires its own PRD section
+and fixture corpus.
+
+## 27.15 Test strategy and fixture governance
+
+All fixture corpora must be versioned, checked into the test repository,
+and associated with the engine and application versions used to generate
+expected results.
+
+### Required CSV fixture matrix
+
+-   Identical files and the same file selected on both sides.
+-   Empty file, header-only file and single-record file.
+-   Missing or malformed headers.
+-   Different column order and differing schemas.
+-   Very wide CSV with long fields.
+-   Quoted delimiters, embedded newlines and encoding edge cases.
+-   Null keys under each supported policy.
+-   Duplicate keys with identical and conflicting records.
+-   Only duplicate keys.
+-   Keyless multiset comparisons.
+-   High add/remove/modify rates.
+-   Decimal precision and absolute/relative/per-column tolerance.
+-   Ignored, renamed and selected columns.
+-   Input modified during comparison.
+-   Output path colliding with an input or another output.
+-   Disk exhaustion and SQLite/storage failure.
+-   Cancellation during indexing, matching, result persistence and
+    export.
+
+### Required JSON fixture matrix
+
+The final matrix is set by Phase 0A. It must include the supported
+root/envelope forms, identity-key matching, no-ID alignment, moves,
+nested differences, type mismatches, tolerance, ignore rules,
+malformed/repair inputs, and large-input behavior only where the source
+implementation supports those features.
+
+### Property-based and fuzz testing
+
+Use property-based tests where the semantics guarantee the property: -
+Identical input compared with itself produces no differences. - Column
+order changes do not change name-based column matching where that mode
+is selected. - Reordering records preserves classification in modes
+whose semantics guarantee order independence. - Keyless multiset results
+are invariant to row order. - Exact duplicate matches are invariant to
+order when content matching makes that guarantee. - Residual duplicate
+pairs marked ambiguous are explicitly excluded from reorder-invariance
+assertions because current file-order pairing is order-dependent.
+
+Fuzz tests must cover corrupt/truncated CSV and JSON inputs,
+quoting/escaping boundaries, unusual Unicode, deeply nested JSON where
+supported, and malformed option/pattern inputs. Fuzz failures must not
+corrupt source files or publish partial exports.
+
+**Acceptance criteria** - `TEST-001`: Fixture corpus is versioned and
+expected outputs are reviewed. - `TEST-002`: Every P0 requirement has
+one or more automated tests. - `TEST-003`: Property tests assert only
+guaranteed semantics. - `TEST-004`: Corrupt/truncated input fuzzing is
+included. - `TEST-005`: Cancellation and disk failure tests verify
+cleanup and source safety. - `TEST-006`: JSON parity tests are a release
+gate for every JSON capability claimed.
+
+## 27.16 Packaging and release qualification
+
+Version 1 is Windows-only unless a separate resourcing decision adds
+macOS/Linux. Do not imply cross-platform support merely because Tauri
+supports those operating systems.
+
+Release qualification must include: - Clean Windows machine installation
+and first launch. - No development environment, Python installation or
+Java installation required unless the final architecture explicitly
+documents otherwise. - Sidecar discovery from packaged locations. -
+Worker protocol/version compatibility. - Worker startup, health check,
+crash, restart and shutdown. - Required runtime bundling and license
+notices. - File dialogs, drag/drop and paths containing spaces, Unicode
+and long path components. - Restricted user permissions and non-admin
+operation. - Code signing plan and SmartScreen/antivirus reputation
+considerations. - Upgrade, uninstall and retained-session behavior. -
+Temporary workspace permissions and cleanup.
+
+**Acceptance criteria** - `RELEASE-001`: Clean-machine install and run
+succeeds without developer tooling. - `RELEASE-002`: Packaged sidecar is
+discovered and its version is validated. - `RELEASE-003`: Worker health
+and recovery tests pass in the packaged build. - `RELEASE-004`: Code
+signing and SmartScreen/AV handling are documented. - `RELEASE-005`:
+Windows support versions and known limitations are published.
+
+## 27.17 Rough engineering effort sizing
+
+The following are relative sizing estimates for planning only. They are
+not schedule commitments and must be refined after repository inspection
+and technical spikes.
+
+  -----------------------------------------------------------------------
+  Workstream              Size                    Notes
+  ----------------------- ----------------------- -----------------------
+  Phase 0A JSON source    M                       Depends on repository
+  audit                                           completeness and
+                                                  buildability
+
+  Shared contracts and    M                       Includes result model,
+  architecture                                    protocol and storage
+                                                  design
+
+  CSV result sink and     XL                      Largest new backend
+  repository                                      capability; must be
+                                                  benchmarked
+
+  CSV adapter and         M                       Reuses existing
+  preflight                                       comparison engine
+
+  Job manager,            L                       Includes worker health
+  cancellation and                                and cleanup
+  recovery                                        
+
+  Tauri shell and Vue     L                       Native integration and
+  workflows                                       structured result views
+
+  Export staging and      M                       Includes cancellation
+  commit                                          and collision safety
+
+  Security and regex      M                       Depends on regex
+  hardening                                       runtime and pattern
+                                                  capabilities
+
+  JSON extraction/wrapper L to XL                 Must be re-estimated
+                                                  after Phase 0A
+
+  Packaging and release   L                       Windows-only baseline
+  qualification                                   
+  -----------------------------------------------------------------------
+
+Sizing must be updated with implementation evidence and recorded in the
+engineering plan.
+
+## 27.18 Requirement traceability and AI coding-agent workflow
+
+Every implementation task, pull request and AI coding-agent report must
+list: - Requirement IDs implemented. - Requirement IDs partially
+implemented or deferred. - Decision IDs followed or changed. - Tests
+added and test results. - Known limitations and evidence. - Any behavior
+that differs from the existing engines.
+
+No task is complete solely because code compiles. Completion requires
+the relevant acceptance criteria to pass.
+
+The project requirement register must include the IDs introduced in this
+section and map them to implementation tasks and tests. P0 requirements
+are release blockers unless a signed product decision explicitly defers
+them.
+
+## 27.19 Glossary
+
+  -----------------------------------------------------------------------
+  Term                                Definition
+  ----------------------------------- -----------------------------------
+  Adapter                             Application boundary that invokes
+                                      an existing comparison engine and
+                                      maps its output into the
+                                      application contract
+
+  Ambiguous pair                      Two records paired by a fallback
+                                      rule where the engine cannot
+                                      establish a unique identity match
+
+  Canonical result                    Versioned application
+                                      representation used by summaries,
+                                      browsing, filtering and exports
+
+  Comparison job                      One execution of a comparison with
+                                      fixed inputs and options
+
+  Keyed comparison                    Record comparison using one or more
+                                      selected identity columns
+
+  Keyless comparison                  Record comparison without an
+                                      identity key, typically as a
+                                      multiset
+
+  Match quality                       Confidence category for a record
+                                      match: exact, ambiguous or
+                                      unmatched
+
+  Profile                             Reusable comparison configuration
+
+  `record_ref`                        Stable application identifier for a
+                                      result record within one job
+
+  `field_path`                        Field/column locator within a
+                                      record, represented in a
+                                      format-appropriate path syntax
+
+  Result repository                   Disk-backed store for canonical
+                                      comparison records and field
+                                      differences
+
+  Session                             Retained user-facing workspace for
+                                      a job, its results and related
+                                      artifacts
+
+  Source fingerprint                  Fingerprint used to identify the
+                                      exact source version compared
+
+  Staging export                      Temporary export output not yet
+                                      committed to the user-selected
+                                      destination
+
+  Worker heartbeat                    Periodic signal indicating that the
+                                      managed worker is alive and
+                                      responsive
+  -----------------------------------------------------------------------
+
+## 27.20 Decision register updates
+
+  -----------------------------------------------------------------------
+  Decision ID             Decision                Status
+  ----------------------- ----------------------- -----------------------
+  `DEC-001`               Preserve the existing   Confirmed
+                          CSV comparison engine   
+                          as the comparison       
+                          authority               
+
+  `DEC-002`               CSV result repository   Confirmed
+                          and result sink are     
+                          Phase 1 deliverables    
+
+  `DEC-003`               JSON integration is     Confirmed
+                          gated by Phase 0A       
+                          source audit and parity 
+                          evidence                
+
+  `DEC-004`               CSV-first vertical      Confirmed
+                          slice proceeds while    
+                          JSON audit runs in      
+                          parallel                
+
+  `DEC-005`               Windows is the v1       Confirmed
+                          target platform unless  
+                          separately resourced    
+
+  `DEC-006`               Proposed 8 GB RAM / 20  Proposed, not yet
+                          GB free workspace       ratified
+                          baseline requires       
+                          benchmark ratification  
+
+  `DEC-007`               Cancelled jobs do not   Confirmed default
+                          expose partial results  
+                          as completed results    
+
+  `DEC-008`               Cross-format comparison Confirmed
+                          is deferred             
+
+  `DEC-009`               Residual duplicate-key  Confirmed
+                          pairing is              
+                          order-dependent and     
+                          must be marked          
+                          ambiguous               
+
+  `DEC-010`               Retention default must  Open implementation
+                          be selected and         decision
+                          implemented before      
+                          release                 
+
+  `DEC-011`               Network-file local      Confirmed
+                          staging is opt-in       
+
+  `DEC-012`               Redaction/masking is    Confirmed
+                          deferred and must not   
+                          alter canonical results 
+  -----------------------------------------------------------------------
+
+## 27.21 P0 release gate checklist
+
+The following are mandatory for the first production release:
+
+-   [ ] CSV engine integration preserves existing comparison behavior.
+-   [ ] CSV result sink writes during classification in the comparison
+    pass.
+-   [ ] Disk-backed result repository supports bounded pagination and
+    filtering.
+-   [ ] Preflight displays strategy, disk estimate, free space, quotas
+    and key/null-key warnings.
+-   [ ] CSV null-key default is `error` and is surfaced before the main
+    comparison.
+-   [ ] No implicit default export paths are used.
+-   [ ] Output staging, cancellation and commit behavior protect
+    existing destination files.
+-   [ ] Worker protocol, heartbeat, stall detection and crash handling
+    are implemented.
+-   [ ] Source files remain read-only and are never overwritten.
+-   [ ] Tauri capabilities, CSP, IPC limits and regex ReDoS safeguards
+    are tested.
+-   [ ] Delete all artifacts is implemented.
+-   [ ] Retention policy and source fingerprint mismatch warning are
+    implemented.
+-   [ ] CSV fixture, property-based, fuzz, disk-failure and cancellation
+    suites pass.
+-   [ ] High-difference-rate large-file benchmark and result-store
+    growth report exist.
+-   [ ] Minimum supported hardware baseline is ratified from benchmark
+    evidence.
+-   [ ] Windows clean-machine packaging and sidecar qualification pass.
+-   [ ] Every P0 requirement has traceable acceptance evidence.
+-   [ ] JSON capabilities are only included if Phase 0A and parity gates
+    pass.
+
+------------------------------------------------------------------------
+
+# 28. Final Implementation Direction
+
+Build the application around a durable application service layer and a
+disk-backed canonical result repository. Integrate the existing CSV
+engine first through a backward-compatible result sink. In parallel,
+audit the complete JSON source and make an evidence-based integration
+decision before promising JSON parity or large-file support.
+
+The primary implementation risk is not the comparison screen. It is
+preserving engine semantics while creating a reliable result repository,
+resource preflight, job lifecycle, cancellation, export commit and
+recovery behavior for very large inputs.
+
+The first usable release must therefore be a complete CSV workflow, not
+a superficial shell around both engines. JSON joins that workflow only
+when the existing implementation can be integrated and its supported
+behavior demonstrated through fixtures and benchmarks.
