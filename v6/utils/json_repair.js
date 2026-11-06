@@ -848,6 +848,25 @@
   // ---------------------------------------------------------------------------
 
   /**
+   * The prefix classification looks at: at least SNIFF_MIN characters, and
+   * on to the end of the SNIFF_LINES-th line (csvEvidence samples that many),
+   * up to SNIFF_MAX. A fixed 64 KB was not enough: a wide export's header row
+   * alone can be 148 KB (2,334 columns), so the sample held one partial line,
+   * the file read as plain text, and pasted CSV was never converted.
+   */
+  var SNIFF_MIN = 65536, SNIFF_MAX = 2 * 1024 * 1024, SNIFF_LINES = 6;
+  function sniffHead(text) {
+    if (text.length <= SNIFF_MIN) return text;
+    var end = 0;
+    for (var n = 0; n < SNIFF_LINES; n++) {
+      var nl = text.indexOf('\n', end);
+      if (nl === -1 || nl >= SNIFF_MAX) { end = Math.min(text.length, SNIFF_MAX); break; }
+      end = nl + 1;
+    }
+    return text.slice(0, Math.max(end, SNIFF_MIN));
+  }
+
+  /**
    * What is this text? Cheap: only inspects a prefix, never splits the whole
    * document. Returns one of:
    *   empty | json | jsonish | ndjson | csv | tsv | xml | yaml | text
@@ -855,7 +874,7 @@
    */
   function detectKind(text) {
     if (text == null) return 'empty';
-    var head = text.slice(0, 65536);
+    var head = sniffHead(text);
     if (!head.trim()) return 'empty';
 
     var t = head.replace(/^﻿/, '').trimStart();
@@ -1077,6 +1096,7 @@
     analyze: analyze,
     detectKind: detectKind,
     csvEvidence: csvEvidence,
+    sniffHead: sniffHead,
     strictError: strictError,
     locate: locate,
     findDuplicateKeys: findDuplicateKeys,

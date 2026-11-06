@@ -50,6 +50,7 @@ json_compair/
 │       ├── json_align.js   # Record matcher + item/field diff model + block-level aligner (window.JSONAlign)
 │       ├── diff_ignore.js  # Exclude keys/patterns from the diff (window.DiffIgnore) — key-name matcher + line-scan
 │       ├── key_compare.js  # Keys dialog: match / different / one-side-only per key + filters + CSV/JSON export (window.KeyCompare)
+│       ├── diff_view.js    # Which change blocks can fold + per-line change coverage for highlight styles (window.DiffView)
 │       └── diff-worker.js  # Web Worker: off-thread CSV→JSON (streaming, row-capped) + diff_match_patch helpers
 │
 ├── v5/                     # Legacy CodeMirror 5 version
@@ -180,6 +181,11 @@ const newBranch = await BranchManager.createBranch("API v3", content);
 
   // Diff Settings
   "blockDiff": true,             // Object-aware (block-level) JSON diff (see Diff Engine §6)
+  "expandEmbedded": true,        // Show JSON / Python dicts stored in strings as nested keys (§14)
+  "expandNoticeShown": false,    // its one-time notice has been shown; never shown again
+  "diffStyle": "lines",          // Highlight style: lines|values|chars|outline (Diff Engine §13)
+  "foldChangeLines": 40,         // Change blocks this long get a fold chevron; 0 = off
+  "foldLargeChanges": false,     // Collapse Unchanged also folds those blocks
   "highlightChanges": true,      // Red/green highlighting
   "gutter": true,                // Diff gutter markers
   "collapseUnchanged": false,    // Auto-collapse identical blocks
@@ -280,6 +286,14 @@ window.KeyCompare
   .toCSV(items, isColumn, labels) / .toJSON(items, isColumn, meta)
   .parsePath('a.b[3]["x y"]')  // → ['a', 'b', 3, 'x y']
 
+// diff_view.js (v6) — pure presentation decisions (Diff Engine §13)
+window.DiffView
+  .changeRegions(chunks, docA, docB, {minLines}) // → [{key, a, b, linesA, linesB, chunks, kind}]
+                        //   chunks ≤ MERGE_GAP (4) unchanged lines apart form one block;
+                        //   kind: removed|added|changed; a/b: {first,last} lines or null
+  .foldLabel(region, hidden)   // "1,249 removed lines hidden"
+  .lineCoverage(text, ranges)  // 'full' | 'part' | null
+
 // diff_ignore.js (v6)
 window.DiffIgnore
   .parseOne()           // "/re/flags" → regex descriptor, else plain match
@@ -301,7 +315,10 @@ window.JSONAlign
                             //   → {ok, model:{items,totals,fields,idKey,strategy,path}}
                             //   `path`: collection key, or null when the root is the array.
                             //   Works for a root array AND for {data:[…]}-style envelopes.
-  .normalize(l, r, ignore, numTol) // normalize only (block-diff off)
+  .normalize(l, r, ignore, numTol, expand) // normalize only (block-diff off)
+  .expandEmbedded(value)    // JSON / Python dicts held in strings → structure, IN PLACE
+                            //   → {value, count}. opts.expand on align/prepare/prepareAsync/
+                            //   diffModel does the same; results carry `expanded` (Diff Engine §14)
   .setIndent(str)           // '  ' | '   ' | '    ' | '\t' — every later render.
                             //   The app pushes the indentWidth setting in here; without
                             //   it alignment re-rendered at 2 spaces and the Indent
@@ -331,7 +348,12 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/json_repair.js"></script>    <!-- v6 only: repair chain + classifier -->
 <script src="./utils/text_tools.js"></script>     <!-- v6 only: text cleanup + universal sort -->
 <script src="./utils/key_compare.js"></script>    <!-- v6 only: Keys table; AFTER json_align (uses matchArray) -->
+<script src="./utils/diff_view.js"></script>      <!-- v6 only: fold blocks + highlight-style coverage -->
 ```
+
+> v6 marks every `<head>` script (CDN and local) `defer`: same order, all run before the
+> module script, but the page draws without waiting for them. A new utility must be `defer`
+> too, or it runs before the ones it depends on.
 
 > Note: `diff-worker.js` is NOT loaded via `<script>`. It is instantiated as a Web Worker
 > at runtime (`new Worker('./utils/diff-worker.js')`, started in `initializeApp`) and has its
@@ -422,11 +444,27 @@ const autoSaveExtension = EditorView.updateListener.of((update) => {
 
 ## Data Persistence Flow
 
-1. **On content change** → 300ms debounce → `StorageManager.saveToStorage(left, right)`
-2. **Page load** → Check URL params (`c=...`) → Decompress & load
-3. **Fallback** → Load from `localStorage['json-compare-left/right']`
-4. **All empty** → Show default template
-5. **Large data** → Falls back to IndexedDB if localStorage quota exceeded
+1. **On content change** → 300ms debounce → `StorageManager.saveToStorage(left, right, meta)`
+   (`meta.summary` = the result pill, for the restore card). Above `AUTOSAVE_MAX_BYTES` (4 MB)
+   nothing is saved; a localStorage quota error falls back to IndexedDB.
+2. **Page load — interface first, data last** (`restoreLastSession`, index.html "Restoring the
+   last comparison"):
+   - **Why:** the editors were built WITH the saved pair, so the MergeView constructor diffed and
+     laid out the raw text, then alignment re-rendered it. Measured on a 3.5 MB session: one
+     1,457 ms blocked task; the toolbar was drawn but did not respond.
+   - The head scripts are `defer` (same order, all before the module), so the page draws
+     without waiting for CDN libraries.
+   - The editors start empty; after the first paint the session is found
+     (`findSessionToRestore`): shared link (`?c=`) → newest of localStorage / IndexedDB
+     (`StorageManager.loadLatest`; startup used to ignore the IndexedDB copy and restored an
+     OLDER pair) → a blank side or the untouched demo falls back to its branch → first visit
+     gets the demo.
+   - ≤ `RESTORE_ASK_BYTES` (1 MB): loads straight away. Above: a card over the empty panels
+     shows each side's size and kind, the last result and when it was saved, with
+     **Restore** / **Start empty** (Escape). Content that arrives while the card is up wins;
+     a notice offers **Restore it** until the page is closed.
+   - Loading goes through `restorePair()`: aligned before its first render, interruptible with
+     progress and Cancel above `PROGRESS_MIN_BYTES`. Same 3.5 MB session: longest task 155 ms.
 
 ## Ingest, Repair & Linting (v6) — IMPORTANT
 
@@ -508,6 +546,13 @@ count consistent across the sampled lines. Belt and braces: a conversion that yi
 
 `detectKind()` replaces the binary JSON/CSV guess with
 `empty | json | jsonish | ndjson | csv | tsv | xml | yaml | text`, and drives the pane chip.
+
+**The sample reaches the end of the first lines (`sniffHead`).** Classification read a fixed
+64 KB, and a wide export's header row alone can be longer — `results_skip_steps_true.csv`
+(2,334 columns, header 148 KB) gave one partial line, read as plain text, and pasted CSV was
+never converted. Both panes then held raw 148 KB lines, which is what made the next paste
+freeze. `sniffHead()` takes ≥ 64 KB and on to the end of the 6th line, capped at 2 MB;
+`detectKind`, `cheapLooksLikeCSV` and `countColumns` all use it.
 
 ### 4. `getDocumentPair()` — the panes are NOT the document
 
@@ -692,9 +737,13 @@ returns a **count**, so the report says "3 zero-width characters", not "cleaned"
 ### 10. Regression suites — run these before touching any of the above
 
 ```bash
-node tests/json_repair.test.js    # 104 checks: integrity, repair, perf, classification
+node tests/json_repair.test.js    # 108 checks: integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks: record pairing, key table, filters, export
+node tests/diff_view.test.js      #  20 checks: change-block grouping, fold kinds, line coverage
+node tests/embedded_json.test.js  #  16 checks: JSON / Python dicts inside strings, strictness
+node tests/storage.test.js        #   8 checks: saved comparison — newest copy wins, record shape
+node tests/viewport_diff.test.js  #   4 checks: status-bar count stays line-by-line and fast
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -948,6 +997,10 @@ Shows diff count and current mode (count = `mergeView.chunks.length`):
 - "No differences"
 - "N changed blocks"
 - "Add content to both panels to compare"
+- "Left panel is CSV — use To JSON above it to compare" (`formatMismatch`): CSV/TSV opposite
+  valid JSON, with no record model. Every line differs there, so a count says nothing; the
+  pill names the panel and the chip's **To JSON** fixes it. Uses the kinds the chips measured
+  (`paneAnalysis`); `updatePaneChips` re-runs the status when the verdict changes.
 
 ## Testing
 
@@ -960,9 +1013,13 @@ Located in `tests/`:
 
 ### Automated suites (run these first)
 ```bash
-node tests/json_repair.test.js    # 104 checks — data integrity, repair, perf, classification
+node tests/json_repair.test.js    # 108 checks — data integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
 node tests/key_compare.test.js    #  55 checks — record pairing, key table, filters, export
+node tests/diff_view.test.js      #  20 checks — change-block grouping, fold kinds, line coverage
+node tests/embedded_json.test.js  #  16 checks — JSON / Python dicts inside strings, strictness
+node tests/storage.test.js        #   8 checks — saved comparison: newest copy wins, record shape
+node tests/viewport_diff.test.js  #   4 checks — status-bar count stays line-by-line and fast
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1012,6 +1069,26 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     read "1 changed of 1 items · N field changes" with shared keys on the same row, NOT
     "1 removed, 1 added". **Keys** → 214 match / 229 different / 1,763 left-only / 4,786
     right-only; clicking a row puts that key under the cursor; Export = exactly the rows shown
+29. A pair with an 80-key removed block, a 1-line change and a 110-line changed block — ▾ only
+    on the two big blocks; folding one leaves its first line and "N … lines hidden" in BOTH
+    panes with the lines below still level; with Collapse on and "Collapse folds large changes
+    too" ticked, both kinds fold and the 1-line change stays open; ↓ skips changes inside a
+    folded block; a Keys/Details jump into a folded block unfolds it. Scroll into the middle
+    of the 80-key block — a header with its first line, ▾ ↑ ↓ shows in both panes; ↓ lands on
+    the line after the block, ▾ folds it with its first line at the top
+30. Settings → Highlight style → Values: a record with several edited values shows only those
+    values marked, property names and line backgrounds plain; whole added/removed lines still
+    filled. Outline: no fills, dashed left / solid right outlines, edge bar on whole lines
+31. A record whose value is a Python dict string (`"{'summer': {'on peak': 538.911}, …}"`) on
+    both sides, one number different — the panes show nested keys and exactly that one line
+    differs; Keys lists `["…"].scen_elec_kwh.summer["on peak"]`; a reload / Export still holds
+    the original string; Settings → *Read JSON inside strings* off brings the string back.
+    `"{not json}"` stays a string
+32. Leave a > 1 MB comparison and reload — the toolbar responds at once, the panels are empty
+    under a "Restore your last comparison?" card with both sizes, the last result and when;
+    Restore shows progress and lands on the same comparison. Reload again and paste into a
+    panel instead — the card goes, a notice offers **Restore it**. A small pair reloads with
+    no card
 
 ## Common Tasks
 
@@ -1181,6 +1258,13 @@ Understand the split before touching diff/perf code:
 - Cost of a raised limit on aligned 158-field records, measured: 0.6 MB combined → 0.24 s,
   1.5 MB → 1.2 s, 3 MB → 3.3 s, 6 MB → 12 s. That is why `SCAN_RAISE_MAX_BYTES` is 3 MB and
   why bounding the **text** (the record window) is the mechanism above it, not a bigger limit.
+- **The raised limit belongs to the aligned TEXT, not to the session** (`fallbackScanLimit`).
+  CM6's own diff now takes its effort per call, from the pair it is given: once the rows stop
+  lining up — a paste over part of a pane, Undo, a branch whose content does not parse — the
+  pair is arbitrary and gets the raw cap for its size. The autosave listener drops
+  `_alignedRender` with `_rowAligned` when an edit unbalances the line counts; the next
+  re-align restores both. Measured: replacing one pane of an aligned 250 KB pair with the same
+  data unaligned was one **16 s** blocked task at the leftover limit; 71 ms now.
 
 ### 4. In-place reconfigure + forced re-collapse (no more teardown on edit)
 - `canReconfigure()` gates on CM6 merge ≥ 6.7. When true, settings/edits call
@@ -1292,6 +1376,97 @@ tolerance, and pairs array elements with `JSONAlign.matchArray`, so the table an
 cannot disagree. Clicking a row closes the dialog and walks the path down the pretty-printed
 pane (`findKeyLine`, exact indentation per level), paging a windowed collection first.
 Measured: the snapshot in 47 ms; 2,000 × 158 records (316k rows) in ~0.6 s.
+
+### 13. Folded changes and highlight styles — `diff_view.js` + the diffView block in index.html
+Both change only what is DRAWN. Chunks, counts and the diff itself are untouched, so neither
+re-diffs anything.
+
+**Folding large changes** (Settings → *Fold changes over* N lines, default 40, 0 = off)
+- **Why:** Collapse Unchanged hid the matching 30 %; the differing 70 % stayed open, so a small
+  change below a 2,000-line block meant scrolling past all of it.
+- **What:** a block of differences ≥ N lines gets a ▾ in its own gutter (`cm-changeFoldGutter`).
+  Folding keeps the block's first line and replaces the rest with one row in CM6's own
+  `.cm-collapsedLines` style — "1,249 removed lines hidden", edge bar red / green / yellow by
+  kind. Click the row (or Enter) to show it; Alt+click a ▾, or Alt+[ / Alt+], folds or shows all.
+- **One model with Collapse:** "Collapse folds large changes too" (`foldLargeChanges`) makes the
+  Collapse chip fold these blocks as well. Per-block clicks then override it (`_foldFlipped`,
+  cleared whenever that default flips). No second toolbar control.
+- **Blocks:** `DiffView.changeRegions()` merges chunks ≤ `MERGE_GAP` (4) unchanged lines apart,
+  so one region of many small edits is one block. 4 is below what Collapse Unchanged can fold
+  (3-line margins + 4), so the two kinds never claim the same line.
+- **Alignment:** both panes fold from ONE region list. Row-aligned output hides the same lines on
+  each side; otherwise MergeView's spacers absorb the difference. `realignPanes()` re-runs
+  `mergeView.measure()` one frame later, because MergeView skips its spacer pass when the
+  update that changed a height also carries its own spacer change.
+- **Wiring:** `changeFoldField` (decorations + markers per pane, set by `setChangeFolds`),
+  `changeFoldListener` → `scheduleChangeFolds()` (microtask: chunks change inside MergeView's
+  dispatch, where dispatching again is not allowed; still before paint) → `applyChangeFolds()`
+  (skips when `_foldSignature` is unchanged). Recreated views reset the signature.
+- **Navigation:** ↑ ↓ and Alt+↑/↓ use `moveToChange()`, which skips chunks inside a folded
+  block. `scrollPanesToLine()` (Details, Keys) calls `revealChangeFoldAt()` first.
+- **Sticky header** (`stickyBlockPlugin`): the ▾ lives on a block's first line, so in the middle
+  of a long block there was nothing to fold it with. While a pane's top row is inside an open
+  foldable block, a one-row header pinned to the top of that pane repeats the block's first
+  line (the other side's when this side is gap rows) with *lines 4–85 · 82 removed lines*,
+  ▾ Fold, ↑ start and ↓ end; clicking the line also goes to the start. An overlay, not a CM
+  panel — a panel takes layout space and would shift the text each time it appeared. Folding
+  from it puts the block's first line at the top. While it shows, the pane's hover
+  Copy / Paste / Clear move below it (`.has-sticky-block`). `scrollLineToTop()` adds
+  `documentPadding.top` (without it the previous line still showed 3 px and the header stayed)
+  and re-applies after 150 ms, since lines never on screen only have estimated heights.
+- **Limit:** a block's identity is its chunk positions, so an edit ABOVE a manually folded block
+  shifts it and the block reopens.
+- **Measured** (5,382-line pair, 30 alternating blocks): fold all 26 ms, show all 56 ms.
+
+**Highlight styles** (Settings → *Highlight style*, `diffStyle`, default `lines` = the old look)
+- **Why:** CM6 fills every line of a chunk, so a record with five edited values reads as one
+  solid block and unchanged property names are painted as loudly as the values.
+- **How:** `diffStylePlugin` (viewport only) tags each changed line `.cm-diffPart` (only some
+  of it changed) or `.cm-diffFull` (added / removed whole, `DiffView.lineCoverage`) and adds
+  `.cm-diffValue` over the JSON token a change falls in (Lezer `String` / `Number` / `True` /
+  `False` / `Null` / `PropertyName`). `#view-container[data-diff-style]` + CSS do the rest
+  (app.css "HIGHLIGHT STYLES"); tokens `--diff-del-strong` / `--diff-add-strong`.
+
+| Style | Modified line | Whole added/removed line |
+|---|---|---|
+| Lines | tinted, changed characters darker (unchanged) | filled |
+| Values | plain; the whole changed value or key filled | filled |
+| Characters | plain; changed characters filled | filled |
+| Outline | plain; changed text outlined (left dashed, right solid) | edge bar, no fill |
+
+- A value that only GAINED characters on the other side (`46` → `1046`) has a zero-width change
+  on this side and nothing to mark; Characters and Outline mark its token there instead.
+- Values needs Highlight Changes on (it marks from the same character diff); with it off,
+  modified lines show only the neutral line tint and the gutter bar.
+- Not built from the request: separate controls for property-name emphasis, value emphasis,
+  unchanged context and added/removed treatment — the four styles cover those choices.
+
+### 14. JSON stored as text — `expand` in json_align (Settings → *Read JSON inside strings*, default on)
+- **Why:** exports often hold a structure as a STRING — stringified JSON, or a Python dict repr
+  (`"{'base_elec_kwh': {'summer': {'on peak': 1043.889}}, 'region': '9'}"`). Compared as text it
+  is one ~900-character changed line; nobody can see which of its 40 numbers moved.
+- **What:** with `opts.expand`, `parsePair()` / `prepareAsync()` run `expandEmbedded()` on both
+  parsed values, replacing such strings with the parsed structure (recursively — a structure
+  inside a structure expands too). Alignment, the record model, the panes and the Keys table
+  (`kcCompute`) then treat it like any nested object. Measured on the reported value: 7 lines
+  with one huge changed line → 75 lines with exactly the changed number marked.
+- **Strict:** expanded only when the value starts with `{` / `[`, ends with the matching bracket
+  and parses — as JSON, or through repair **stage 1** (`aggressive: false`: Python literals,
+  single quotes, tuples). Stage 2 (jsonrepair) is never used here: it turns `{not json at all}`
+  into `["not json at all"]`. Anything else stays a string, byte for byte.
+- **Display only:** an expanding render is flagged `changed` with `expanded: n`, so
+  `applyTransformResult` keeps the original pair in `_ignorePristine` — saving, Copy, Export,
+  Share and branches keep the strings (same mechanism as ignore patterns, §7). A notice says
+  so **once, ever** (`expandNoticeShown`), with **Turn off** and a pointer to the setting, whose
+  ⓘ carries the same explanation from then on. It used to say it once per comparison, which
+  meant again on every reload. `setExpandEmbedded()` restores the pristine pair first, like
+  `applyNumTolerance()`.
+- **Gates:** `expandActive()` is part of `transformActive()`, `applyBlockAlignment()` and the
+  align memo. With Block Diff off, `normalize(…, expand)` returns `{ok:false}` when there is
+  nothing to expand, so plain JSON is never re-indented just because the setting is on.
+- **Limits:** parsed numbers are shown in JSON form (`540.0` → `540`) — the original keeps its
+  text. Editing a pane while expanded makes the panes the document, as with ignore patterns.
+  The record model names top-level fields (`data`), not the path inside the expanded value.
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the
@@ -1569,6 +1744,13 @@ Measured: the snapshot in 47 ms; 2,000 × 158 records (316k rows) in ~0.6 s.
 ### 5. Performance managers (`viewport_diff.js`)
 - `ViewportDiffManager` — recomputes the **count** for the scrolled viewport ± buffer on
   scroll (debounced). NOTE: it currently affects only the status text, NOT what MergeView renders.
+  It diffs **line by line** (DMP line mode, `Diff_Timeout` 0.1 s). A character diff ran to DMP's
+  1 s timeout whenever a pane held one very long line (raw CSV's 148 KB header row is "in view"
+  whole), on every status update without a model: each paste opposite a raw CSV panel froze
+  the tab for ~1 s. 1,001 ms → 8 ms on that pair. A 300–500 KB paste (`checkContentSizeAndSuggest`)
+  turns it on for that visit only — it used to SAVE `viewportDiff`, so one large paste left every
+  later comparison on "~N differences in view". `updatePerformanceStatus` reads the live state.
+  A user who already had it saved that way keeps it until they untick it.
 - `PerformanceMode` — bundles settings (auto-enables `collapseUnchanged`) for faster rendering.
 - `LargeFileDetector` — analyzes size and auto-suggests/enables perf modes
   (thresholds: 300 KB large, 500 KB warning, 2 MB critical).

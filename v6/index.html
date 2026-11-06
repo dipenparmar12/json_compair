@@ -30,39 +30,40 @@
     <link rel="stylesheet" type="text/css" href="./css/app.css" />
 
     <!-- pako for client-side gzip compression/decompression - v2.1.0 (latest) -->
-    <script
+    <script defer
       src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"
       crossorigin="anonymous"
     ></script>
 
     <!-- JSZip for creating ZIP snapshots - v3.10.1 (latest) -->
-    <script
+    <script defer
       src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
       crossorigin="anonymous"
     ></script>
 
     <!-- diff_match_patch for accurate diff counting -->
-    <script
+    <script defer
       src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.min.js"
       crossorigin="anonymous"
     ></script>
 
     <!-- Utility scripts -->
-    <script src="./utils/utils.js"></script>
+    <script defer src="./utils/utils.js"></script>
     <!-- jsonrepair 3.15.0 (ISC, 0 deps) — vendored, not CDN: repair is on the
          critical ingest path and must not depend on the network. -->
-    <script src="./utils/vendor/jsonrepair.umd.js"></script>
-    <script src="./utils/json_repair.js"></script>
-    <script src="./utils/json_utils.js"></script>
-    <script src="./utils/text_tools.js"></script>
-    <script src="./utils/utils_csv.js"></script>
-    <script src="./utils/utils_zip.js"></script>
-    <script src="./utils/utils_branch.js"></script>
-    <script src="./utils/viewport_diff.js"></script>
-    <script src="./utils/progress.js"></script>
-    <script src="./utils/json_align.js"></script>
-    <script src="./utils/key_compare.js"></script>
-    <script src="./utils/diff_ignore.js"></script>
+    <script defer src="./utils/vendor/jsonrepair.umd.js"></script>
+    <script defer src="./utils/json_repair.js"></script>
+    <script defer src="./utils/json_utils.js"></script>
+    <script defer src="./utils/text_tools.js"></script>
+    <script defer src="./utils/utils_csv.js"></script>
+    <script defer src="./utils/utils_zip.js"></script>
+    <script defer src="./utils/utils_branch.js"></script>
+    <script defer src="./utils/viewport_diff.js"></script>
+    <script defer src="./utils/progress.js"></script>
+    <script defer src="./utils/json_align.js"></script>
+    <script defer src="./utils/key_compare.js"></script>
+    <script defer src="./utils/diff_view.js"></script>
+    <script defer src="./utils/diff_ignore.js"></script>
 
     <!-- ES Module Import Map for CodeMirror 6 - Using unpkg with exact versions -->
     <script type="importmap">
@@ -288,11 +289,32 @@
               </label>
 
               <label class="setting-row">
+                <input type="checkbox" id="setting-expand-embedded" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Read JSON inside strings</div>
+                  <div class="setting-desc">A string value that holds a JSON object or array — stringified JSON, or a Python dict like {'a': None} — is shown and compared as nested keys. Only values that parse are expanded; anything else stays text. Display only: saving, Copy and Export keep the original strings.</div>
+                </div>
+              </label>
+
+              <label class="setting-row">
                 <input type="checkbox" id="setting-highlight-changes" checked />
                 <div class="setting-text">
                   <div class="setting-title">Highlight Changes</div>
                   <div class="setting-desc">Show character-level diffs in chunks</div>
                 </div>
+              </label>
+
+              <label class="setting-row row-inline">
+                <span class="setting-text">
+                  <span class="setting-title">Highlight style</span>
+                  <span class="setting-desc">Lines: every changed line tinted, changed text darker (the original look). Values: only the changed value or key is marked; unchanged property names stay plain. Characters: only the changed characters. Outline: no fills; changed text is outlined and added/removed lines get an edge bar. Whole added or removed lines stay marked in every style.</span>
+                </span>
+                <select id="setting-diff-style" class="settings-select">
+                  <option value="lines">Lines</option>
+                  <option value="values">Values</option>
+                  <option value="chars">Characters</option>
+                  <option value="outline">Outline</option>
+                </select>
               </label>
 
               <label class="setting-row">
@@ -308,6 +330,22 @@
                 <div class="setting-text">
                   <div class="setting-title">Collapse Unchanged</div>
                   <div class="setting-desc">Fold long sections of identical lines</div>
+                </div>
+              </label>
+
+              <label class="setting-row row-inline">
+                <span class="setting-text">
+                  <span class="setting-title">Fold changes over</span>
+                  <span class="setting-desc">A block of differences at least this many lines long gets a ▾ in the gutter that folds it in both panels; click the summary row to show it again. Alt+click a ▾ (or Alt+[ / Alt+]) folds or shows every block. 0 turns this off.</span>
+                </span>
+                <input type="number" id="setting-fold-change-lines" class="settings-input-num" value="40" min="0" max="100000" step="10" />
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" id="setting-fold-large-changes" />
+                <div class="setting-text">
+                  <div class="setting-title">Collapse folds large changes too</div>
+                  <div class="setting-desc">With Collapse on, blocks over the fold size start folded as well, so only the smaller differences stay open.</div>
                 </div>
               </label>
               
@@ -639,7 +677,7 @@
       // `diff` is the same routine MergeView runs internally. We call it on a
       // small probe page to MEASURE how expensive this particular pair is before
       // choosing how much to render — see calibrateRenderBudget().
-      import { MergeView, Change, goToNextChunk, goToPreviousChunk, diff as cmDiff } from "@codemirror/merge";
+      import { MergeView, Change, getChunks, diff as cmDiff } from "@codemirror/merge";
       
       // Import themes
       import { oneDark } from "@codemirror/theme-one-dark";
@@ -657,6 +695,9 @@
         placeholder,
         Decoration,
         ViewPlugin,
+        WidgetType,
+        GutterMarker,
+        gutter,
       } from "@codemirror/view";
       import {
         foldGutter,
@@ -685,7 +726,7 @@
       import { lintKeymap, linter, lintGutter, forceLinting } from "@codemirror/lint";
 
       // Import Compartment for dynamic configuration
-      import { Compartment, RangeSetBuilder, Transaction, StateField, StateEffect } from "@codemirror/state";
+      import { Compartment, RangeSetBuilder, RangeSet, EditorSelection, Transaction, StateField, StateEffect } from "@codemirror/state";
 
       // ---------------------------------------------------------------------
       // Transient "this is the record you asked for" highlight.
@@ -733,12 +774,20 @@
           // normalization applies again.
           if (!_blockAligning) _ignorePristine = null;
 
+          // Content arrived while the restore card was up (paste, drop, a
+          // file, an example). It wins; loadSession hides the card before its
+          // own write, so this is never the restore itself.
+          if (_restoreOffer) withdrawRestoreOffer();
+
           // An edit that leaves the two panes with different line counts means
           // they are no longer row-aligned; CM6's own diff takes over until the
           // debounced re-align below restores an aligned render.
+          // Nor is the pair json_align's text any more, so later full re-diffs
+          // take the raw effort cap until a re-align restores both flags.
           if (!_blockAligning && _rowAligned &&
               mergeView && mergeView.a.state.doc.lines !== mergeView.b.state.doc.lines) {
             _rowAligned = false;
+            _alignedRender = false;
           }
 
           // Skip block re-alignment while the user is actively typing/deleting so
@@ -836,9 +885,15 @@
                 isFinite(numTolValue) && numTolValue > 0) ? numTolValue : null;
       }
 
-      // True when ANY transform (block align, ignore, tolerance) should run.
+      // Show JSON stored as text (a stringified object, a Python dict repr) as
+      // structure. Display only — see json_align `expand` and
+      // applyTransformResult, which keeps the original text for saving.
+      let expandEmbeddedOn = true;
+      function expandActive() { return expandEmbeddedOn; }
+
+      // True when ANY transform (block align, ignore, tolerance, expand) should run.
       function transformActive() {
-        return blockDiffEnabled() || ignoreActive() || numToleranceActive() != null;
+        return blockDiffEnabled() || ignoreActive() || numToleranceActive() != null || expandActive();
       }
 
       // Coerce a stored value into a clean array of trimmed, de-duped, non-empty
@@ -1034,6 +1089,20 @@
       // reveals those diffs again, persist, drop the align memo (tolerance is
       // part of its key), then re-run the transform (or strip gaps if nothing is
       // left active) and refresh the count.
+      // Same shape as applyNumTolerance: the pristine pair goes back first, so
+      // turning it off shows the original strings again.
+      function setExpandEmbedded(on) {
+        expandEmbeddedOn = !!on;
+        SettingsManager.set('expandEmbedded', expandEmbeddedOn);
+        const box = document.getElementById('setting-expand-embedded');
+        if (box) box.checked = expandEmbeddedOn;
+        restoreIgnorePristine();
+        _lastAlignMemo = null;
+        if (transformActive()) applyBlockAlignment();
+        else removeBlockAlignment();
+        updateDiffStatus();
+      }
+
       function applyNumTolerance() {
         restoreIgnorePristine();
         SettingsManager.set('numToleranceEnabled', numTolEnabled);
@@ -1062,6 +1131,7 @@
         numTolEnabled = SettingsManager.get('numToleranceEnabled') === true;
         const t = parseFloat(SettingsManager.get('numTolerance'));
         numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
+        expandEmbeddedOn = SettingsManager.get('expandEmbedded') !== false;
 
         wordWrapEnabled = SettingsManager.get('wordWrap') !== false;
         scrollLocked = SettingsManager.get('scrollLock') !== false;
@@ -1429,7 +1499,6 @@
       }
 
       const jsonLinter = linter(jsonDiagnostics, { delay: 400 });
-
       // ---------------------------------------------------------------------
       // The red dot in the gutter - click to act, not hover-and-hope.
       //
@@ -1688,6 +1757,492 @@
         document.addEventListener('scroll', () => LintPop.hideOnScroll(), true);
       }
 
+      /* ---- Folding large blocks of differences --------------------------------
+         Collapse Unchanged folds what is the same; this folds what is not. A
+         block of differences at least `foldChangeLines` long gets a chevron in
+         the gutter; folding it keeps its first line and hides the rest behind
+         one summary row ("1,249 removed lines hidden"). Both panes fold from ONE
+         block list (DiffView.changeRegions over mergeView.chunks), which is what
+         keeps them aligned — row-aligned output hides the same lines on each
+         side, and otherwise MergeView's own spacers absorb the difference.
+         Nothing is re-diffed: chunks are untouched, only decorations change.
+
+         With "Collapse folds large changes too" on, the Collapse chip folds
+         these blocks as well; a chevron click or the summary row then
+         overrides that per block (_foldFlipped). */
+      let foldChangeLines = DiffView.DEFAULT_MIN_LINES;   // 0 = off
+      let foldLargeChanges = false;
+      const _foldFlipped = new Set();   // block keys toggled away from the default
+      let _lastAutoFold = false;
+      let _changeRegions = [];
+      let _foldSignature = '';
+      let _foldScheduled = false;
+      const setChangeFolds = StateEffect.define();
+
+      function autoFoldActive() {
+        return foldLargeChanges && !!document.getElementById('setting-collapse-unchanged')?.checked;
+      }
+      function isChangeFolded(key) {
+        return autoFoldActive() !== _foldFlipped.has(key);
+      }
+
+      class ChangeFoldMarker extends GutterMarker {
+        constructor(folded, lines) { super(); this.folded = folded; this.lines = lines; }
+        eq(o) { return o.folded === this.folded && o.lines === this.lines; }
+        toDOM() {
+          const el = document.createElement('div');
+          el.className = 'cm-changeFold';
+          el.textContent = this.folded ? '▸' : '▾';
+          if (!this.lines) return el;   // the gutter's width spacer
+          el.title = (this.folded ? 'Show' : 'Fold') + ' this block of ' +
+            this.lines.toLocaleString('en-US') + ' lines of differences (Alt+click: all blocks)';
+          return el;
+        }
+      }
+
+      class ChangeFoldWidget extends WidgetType {
+        constructor(key, label, kind) { super(); this.key = key; this.label = label; this.kind = kind; }
+        eq(o) { return o.key === this.key && o.label === this.label; }
+        toDOM() {
+          const el = document.createElement('div');
+          el.className = 'cm-collapsedLines cm-collapsedChange';
+          el.dataset.kind = this.kind;
+          el.textContent = this.label;
+          el.title = 'Show these lines';
+          el.setAttribute('role', 'button');
+          el.tabIndex = 0;
+          const open = (e) => { e.preventDefault(); toggleChangeFold(this.key, e.altKey); };
+          el.addEventListener('click', open);
+          el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(e); });
+          return el;
+        }
+        ignoreEvent() { return true; }
+        get estimatedHeight() { return 27; }
+      }
+
+      // Per pane: the fold decorations, the gutter chevrons, and where each
+      // block starts (for gutter clicks). Replaced wholesale by setChangeFolds;
+      // mapped through edits until the next chunk update recomputes it.
+      const changeFoldField = StateField.define({
+        create: () => ({ deco: Decoration.none, markers: RangeSet.empty, starts: [] }),
+        update(v, tr) {
+          for (const e of tr.effects) if (e.is(setChangeFolds)) return e.value;
+          if (!tr.docChanged) return v;
+          return {
+            deco: v.deco.map(tr.changes),
+            markers: v.markers.map(tr.changes),
+            starts: v.starts.map((s) => ({ pos: tr.changes.mapPos(s.pos), key: s.key })),
+          };
+        },
+        provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
+      });
+
+      function changeFoldValue(view, side, regions) {
+        const doc = view.state.doc;
+        const deco = [], markers = [], starts = [];
+        for (const r of regions) {
+          const span = r[side];
+          if (!span || span.last > doc.lines) continue;
+          const folded = isChangeFolded(r.key);
+          const from = doc.line(span.first).from;
+          starts.push({ pos: from, key: r.key });
+          markers.push(new ChangeFoldMarker(folded, Math.max(r.linesA, r.linesB)).range(from));
+          if (folded && span.last > span.first) {
+            const hidden = span.last - span.first;
+            deco.push(Decoration.replace({
+              block: true,
+              widget: new ChangeFoldWidget(r.key, DiffView.foldLabel(r, hidden), r.kind),
+            }).range(doc.line(span.first + 1).from, doc.line(span.last).to));
+          }
+        }
+        return { deco: Decoration.set(deco), markers: RangeSet.of(markers), starts };
+      }
+
+      // Recompute the blocks from the current chunks and push them to both
+      // panes. Synchronous, so a caller can reveal a line right after it.
+      function applyChangeFolds() {
+        if (!mergeView) return;
+        const a = mergeView.a, b = mergeView.b;
+        let regions = [];
+        if (foldChangeLines > 0) {
+          try {
+            regions = DiffView.changeRegions(mergeView.chunks, a.state.doc, b.state.doc, { minLines: foldChangeLines });
+          } catch (e) { console.warn('Change folds unavailable', e); }
+        }
+        const auto = autoFoldActive();
+        if (auto !== _lastAutoFold) { _foldFlipped.clear(); _lastAutoFold = auto; }
+        const keys = new Set(regions.map((r) => r.key));
+        for (const k of [..._foldFlipped]) if (!keys.has(k)) _foldFlipped.delete(k);
+        _changeRegions = regions;
+
+        const sig = a.state.doc.length + ':' + b.state.doc.length + '|' + regions.map((r) =>
+          r.key + (r.a ? r.a.first + '-' + r.a.last : '') + '/' + (r.b ? r.b.first + '-' + r.b.last : '') +
+          (isChangeFolded(r.key) ? '+' : '-')).join(',');
+        if (sig === _foldSignature) return;
+        _foldSignature = sig;
+        a.dispatch({ effects: setChangeFolds.of(changeFoldValue(a, 'a', regions)) });
+        b.dispatch({ effects: setChangeFolds.of(changeFoldValue(b, 'b', regions)) });
+        realignPanes();
+      }
+
+      // MergeView aligns the panes with spacers, recomputed from a listener
+      // when either pane's height changes — but it skips that pass when the
+      // same update carries its own spacer change, so after both panes'
+      // heights change at once (a fold, or Collapse toggled with folds on) it
+      // can keep spacers measured with only ONE pane re-laid-out. Measured: a
+      // 96 px spacer left in the right pane, every line below it off by 5
+      // rows. Re-run the pass once both panes have measured (their own
+      // measure frames were requested first, so they run before this one).
+      let _realignFrame = 0;
+      function realignPanes() {
+        if (_realignFrame) return;
+        _realignFrame = requestAnimationFrame(() => {
+          _realignFrame = 0;
+          try { mergeView && mergeView.measure && mergeView.measure(); } catch (_) { /* view rebuilt */ }
+        });
+      }
+
+      // Chunks change inside MergeView's own dispatch, where dispatching again
+      // is not allowed; a microtask runs once that (and a two-pane write) has
+      // finished, and still before the next paint — so no flash of the
+      // unfolded block.
+      function scheduleChangeFolds() {
+        if (_foldScheduled) return;
+        _foldScheduled = true;
+        queueMicrotask(() => { _foldScheduled = false; applyChangeFolds(); });
+      }
+
+      function toggleChangeFold(key, all) {
+        if (all) { setAllChangeFolds(!isChangeFolded(key)); return; }
+        if (_foldFlipped.has(key)) _foldFlipped.delete(key); else _foldFlipped.add(key);
+        applyChangeFolds();
+      }
+
+      function setAllChangeFolds(fold) {
+        _foldFlipped.clear();
+        if (fold !== autoFoldActive()) for (const r of _changeRegions) _foldFlipped.add(r.key);
+        applyChangeFolds();
+        return true;
+      }
+
+      // Unfold the block hiding 1-based `lineNo` (in either pane), so a jump
+      // from Details / Keys never lands on a summary row.
+      function revealChangeFoldAt(lineNo) {
+        let hit = false;
+        for (const r of _changeRegions) {
+          if (!isChangeFolded(r.key)) continue;
+          const inA = r.a && lineNo > r.a.first && lineNo <= r.a.last;
+          const inB = r.b && lineNo > r.b.first && lineNo <= r.b.last;
+          if (inA || inB) { _foldFlipped.has(r.key) ? _foldFlipped.delete(r.key) : _foldFlipped.add(r.key); hit = true; }
+        }
+        if (hit) applyChangeFolds();
+      }
+
+      const changeFoldGutter = gutter({
+        class: 'cm-changeFoldGutter',
+        markers: (v) => v.state.field(changeFoldField).markers,
+        initialSpacer: () => new ChangeFoldMarker(false, 0),
+        domEventHandlers: {
+          mousedown(view, block, event) {
+            const hit = view.state.field(changeFoldField).starts.find((s) => s.pos === block.from);
+            if (!hit) return false;
+            event.preventDefault();
+            toggleChangeFold(hit.key, event.altKey);
+            return true;
+          },
+        },
+      });
+
+      const changeFoldListener = EditorView.updateListener.of((u) => {
+        const before = getChunks(u.startState), after = getChunks(u.state);
+        if ((before && before.chunks) !== (after && after.chunks)) scheduleChangeFolds();
+      });
+
+      /* ---- Sticky header for the block you are inside ----------------------
+         The fold chevron sits on a block's FIRST line, so in the middle of a
+         2,000-line block there is nothing on screen to fold it with, and no
+         quick way back to its start. Like an editor's sticky scroll, while
+         the top of a pane is inside an open foldable block, a one-row header
+         pinned to the top of that pane repeats the block's first line with
+         Fold, ↑ start and ↓ end. Both panes get it from the same block list,
+         so it appears in both at once. An overlay, not a CM panel: a panel
+         takes layout space and would shift the text every time it appeared. */
+      function blockAtTop(view) {
+        const conf = getChunks(view.state);
+        if (!conf || !_changeRegions.length) return null;
+        const scTop = view.scrollDOM.getBoundingClientRect().top;
+        const y = scTop - view.documentTop + 1;
+        if (y <= 0) return null;
+        const n = view.state.doc.lineAt(view.lineBlockAtHeight(y).from).number;
+        for (const r of _changeRegions) {
+          const s = r[conf.side];
+          if (s && s.first < n && n <= s.last && !isChangeFolded(r.key)) return { r, s };
+        }
+        return null;
+      }
+
+      // Put 1-based line `n` at the top of this pane (the other follows via
+      // the scroll lock). Lines above that were never on screen only have
+      // estimated heights, and measuring them after the jump moves the
+      // target — measured: aimed at line 86, landed on 71. So set it again
+      // once CM6 has measured, as revealRecord() does.
+      function scrollLineToTop(view, n) {
+        const go = () => {
+          const doc = view.state.doc;
+          const line = doc.line(Math.max(1, Math.min(doc.lines, n)));
+          // lineBlockAt() is relative to the document, which starts below the
+          // content padding; without it the line above still shows 3 px.
+          view.scrollDOM.scrollTop = Math.max(0, view.lineBlockAt(line.from).top + view.documentPadding.top);
+        };
+        go();
+        setTimeout(go, 150);
+      }
+
+      const stickyBlockPlugin = ViewPlugin.fromClass(class {
+        constructor(view) {
+          this.view = view;
+          this.hit = null;
+          const el = this.dom = document.createElement('div');
+          el.className = 'cm-stickyBlock';
+          el.hidden = true;
+          el.innerHTML =
+            '<button type="button" class="cm-stickyBlock-btn" data-act="fold" title="Fold this block" aria-label="Fold this block">▾</button>' +
+            '<button type="button" class="cm-stickyBlock-line" data-act="start" title="Go to the start of this block"></button>' +
+            '<span class="cm-stickyBlock-meta"></span>' +
+            '<button type="button" class="cm-stickyBlock-btn" data-act="start" title="Go to the start of this block" aria-label="Go to the start of this block">↑</button>' +
+            '<button type="button" class="cm-stickyBlock-btn" data-act="end" title="Go past the end of this block" aria-label="Go past the end of this block">↓</button>';
+          el.addEventListener('mousedown', (e) => e.preventDefault());   // keep the editor's focus
+          el.addEventListener('click', (e) => this.act(e.target.closest('[data-act]')));
+          view.dom.appendChild(el);
+          this.onScroll = () => this.schedule();
+          view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
+          this.schedule();
+        }
+        update(u) {
+          if (u.viewportChanged || u.geometryChanged || u.docChanged ||
+              u.transactions.some((tr) => tr.effects.some((e) => e.is(setChangeFolds)))) this.schedule();
+        }
+        schedule() {
+          this.view.requestMeasure({
+            key: this,
+            read: (view) => {
+              const hit = blockAtTop(view);
+              if (!hit) return null;
+              const sc = view.scrollDOM;
+              // Opposite an added/removed block this side holds blank gap
+              // rows; name the block by the other side's first line instead.
+              let text = view.state.doc.line(hit.s.first).text;
+              const sib = mergeView && (view === mergeView.a ? mergeView.b : mergeView.a);
+              const os = sib && hit.r[view === mergeView.a ? 'b' : 'a'];
+              if (!text.trim() && os && os.first <= sib.state.doc.lines) text = sib.state.doc.line(os.first).text;
+              return {
+                hit,
+                top: sc.getBoundingClientRect().top - view.dom.getBoundingClientRect().top,
+                right: sc.offsetWidth - sc.clientWidth,
+                text,
+              };
+            },
+            write: (m) => this.render(m),
+          });
+        }
+        render(m) {
+          this.hit = m && m.hit;
+          this.dom.hidden = !m;
+          // The pane's hover Copy / Paste / Clear sit top-right too; move
+          // them below the header rather than over its ↑ ↓.
+          this.view.dom.closest('.cm-mergeViewEditor')?.classList.toggle('has-sticky-block', !!m);
+          if (!m) return;
+          const { r, s } = m.hit;
+          const n = s.last - s.first + 1;
+          this.dom.style.top = m.top + 'px';
+          this.dom.style.right = m.right + 'px';
+          this.dom.dataset.kind = r.kind;
+          this.dom.querySelector('.cm-stickyBlock-line').textContent = m.text.trim() || '(blank)';
+          this.dom.querySelector('.cm-stickyBlock-meta').textContent =
+            'lines ' + s.first.toLocaleString('en-US') + '–' + s.last.toLocaleString('en-US') +
+            ' · ' + n.toLocaleString('en-US') + ' ' + r.kind + ' lines';
+        }
+        act(btn) {
+          if (!btn || !this.hit) return;
+          const { r, s } = this.hit;
+          const act = btn.dataset.act;
+          if (act === 'fold') {
+            toggleChangeFold(r.key);
+            scrollLineToTop(this.view, s.first);
+          } else if (act === 'start') {
+            scrollLineToTop(this.view, s.first);
+          } else if (act === 'end') {
+            scrollLineToTop(this.view, s.last + 1);
+          }
+        }
+        destroy() {
+          this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
+          this.view.dom.closest('.cm-mergeViewEditor')?.classList.remove('has-sticky-block');
+          this.dom.remove();
+        }
+      });
+
+      // Previous / next change, skipping changes inside a folded block (the
+      // block's first change stays reachable — its line is the visible one).
+      // Same walk as @codemirror/merge's goToNextChunk otherwise.
+      function moveToChange(dir) {
+        return (view) => {
+          const conf = getChunks(view.state);
+          if (!conf || !conf.chunks.length) return false;
+          const isB = conf.side === 'b';
+          const hidden = view.state.field(changeFoldField, false)?.deco;
+          const chunks = conf.chunks.filter((c) => {
+            const p = isB ? c.fromB : c.fromA;
+            let inside = false;
+            if (hidden) hidden.between(p, p, (f, t) => { if (p >= f && p <= t) inside = true; });
+            return !inside;
+          });
+          if (!chunks.length) return false;
+          const head = view.state.selection.main.head;
+          let pos = 0;
+          for (let i = chunks.length - 1; i >= 0; i--) {
+            const c = chunks[i];
+            const from = isB ? c.fromB : c.fromA, to = isB ? c.toB : c.toA;
+            if (to < head) { pos = i + 1; break; }
+            if (from <= head) {
+              if (chunks.length === 1) return false;
+              pos = i + (dir < 0 ? 0 : 1);
+              break;
+            }
+          }
+          const next = chunks[(pos + (dir < 0 ? chunks.length - 1 : 0)) % chunks.length];
+          const from = isB ? next.fromB : next.fromA, to = isB ? next.toB : next.toA;
+          view.dispatch({
+            selection: { anchor: from },
+            userEvent: 'select.byChunk',
+            effects: EditorView.scrollIntoView(EditorSelection.range(to, from)),
+          });
+          return true;
+        };
+      }
+
+      /* ---- Highlight styles ----------------------------------------------------
+         Settings → Highlight style. CM6 marks every line of a chunk with a
+         red/green fill, so a record with five edited values reads as one solid
+         block and the property names are painted as loudly as the values. The
+         other styles keep the same diff (same chunks, nothing recomputed) and
+         only change what is drawn: this plugin tags each changed line in the
+         viewport as 'part' (only some of it changed) or 'full' (added / removed
+         whole) and marks the whole JSON token — value or key — a change falls
+         in (every change for 'values', see buildDiffStyleDeco for the others).
+         CSS (app.css "HIGHLIGHT STYLES") does the rest. */
+      let diffStyle = 'lines';
+      const refreshDiffStyle = StateEffect.define();
+      const diffPartLine = Decoration.line({ class: 'cm-diffPart' });
+      const diffFullLine = Decoration.line({ class: 'cm-diffFull' });
+      const diffValueMark = Decoration.mark({ class: 'cm-diffValue' });
+      const VALUE_NODES = new Set(['String', 'Number', 'True', 'False', 'Null', 'PropertyName']);
+
+      function jsonTokenAt(tree, pos, side) {
+        for (let n = tree.resolveInner(pos, side); n; n = n.parent) {
+          if (VALUE_NODES.has(n.name)) return n;
+        }
+        return null;
+      }
+
+      function buildDiffStyleDeco(view) {
+        if (diffStyle === 'lines') return Decoration.none;
+        const conf = getChunks(view.state);
+        if (!conf || !conf.chunks.length) return Decoration.none;
+        const isA = conf.side !== 'b', chunks = conf.chunks, doc = view.state.doc;
+        // Values marks the token of every change. Characters and Outline mark
+        // only the changed characters — except where this side lost nothing
+        // and gained nothing (a zero-width change: "46" -> "1046" is an
+        // insertion on the right only), which would otherwise leave the left
+        // line with no mark at all; there the token is marked instead.
+        const allTokens = diffStyle === 'values';
+        const tree = document.getElementById('setting-highlight-changes')?.checked !== false
+          ? syntaxTree(view.state) : null;
+        const out = [];
+        for (const vr of view.visibleRanges) {
+          // First chunk that ends at or after the visible range.
+          let lo = 0, hi = chunks.length;
+          while (lo < hi) {
+            const m = (lo + hi) >> 1;
+            if ((isA ? chunks[m].toA : chunks[m].toB) < vr.from) lo = m + 1; else hi = m;
+          }
+          for (let i = lo; i < chunks.length; i++) {
+            const c = chunks[i];
+            const cFrom = isA ? c.fromA : c.fromB, cTo = isA ? c.toA : c.toB;
+            if (cFrom > vr.to) break;
+            if (cFrom === cTo) continue;   // empty on this side
+            const ranges = c.changes.map((ch) => isA
+              ? { from: cFrom + ch.fromA, to: cFrom + ch.toA }
+              : { from: cFrom + ch.fromB, to: cFrom + ch.toB });
+            const end = Math.min(isA ? c.endA : c.endB, vr.to);
+            for (let pos = doc.lineAt(Math.max(cFrom, vr.from)).from; pos <= end;) {
+              const line = doc.lineAt(pos);
+              const inLine = [];
+              for (const r of ranges) {
+                const touches = r.from === r.to
+                  ? r.from >= line.from && r.from <= line.to
+                  : r.from <= line.to && r.to > line.from;
+                if (touches) inLine.push({ from: r.from - line.from, to: r.to - line.from });
+              }
+              const cov = DiffView.lineCoverage(line.text, inLine);
+              if (cov) out.push((cov === 'full' ? diffFullLine : diffPartLine).range(line.from));
+              if (cov === 'part' && tree) {
+                for (const r of inLine) {
+                  if (!allTokens && r.to > r.from) continue;
+                  const at = line.from + Math.max(0, r.from);
+                  // A deletion (zero-width here) belongs to the token on
+                  // either side of it; real text only to the token it is in.
+                  const node = jsonTokenAt(tree, at, 1) || (r.from === r.to ? jsonTokenAt(tree, at, -1) : null);
+                  if (node && node.from >= line.from && node.to <= line.to) {
+                    out.push(diffValueMark.range(node.from, node.to));
+                  } else if (r.to > r.from) {
+                    const to = line.from + Math.min(line.length, r.to);
+                    if (to > at) out.push(diffValueMark.range(at, to));
+                  }
+                }
+              }
+              pos = line.to + 1;
+            }
+          }
+        }
+        return Decoration.set(out, true);
+      }
+
+      const diffStylePlugin = ViewPlugin.fromClass(class {
+        constructor(view) { this.decorations = buildDiffStyleDeco(view); }
+        update(u) {
+          const before = getChunks(u.startState), after = getChunks(u.state);
+          if (u.docChanged || u.viewportChanged ||
+              (before && before.chunks) !== (after && after.chunks) ||
+              u.transactions.some((tr) => tr.effects.some((e) => e.is(refreshDiffStyle))) ||
+              (diffStyle !== 'lines' && syntaxTree(u.state) !== syntaxTree(u.startState))) {
+            this.decorations = buildDiffStyleDeco(u.view);
+          }
+        }
+      }, { decorations: (v) => v.decorations });
+
+      // Both features, for each pane. Mounted after basicSetup so the fold
+      // chevrons sit between the code-fold gutter and the text.
+      const diffViewExtensions = [changeFoldField, changeFoldGutter, changeFoldListener, stickyBlockPlugin, diffStylePlugin];
+
+      // Push the presentation settings into the live view: no diff is
+      // recomputed, only decorations and the container's style attribute.
+      function syncDiffView() {
+        diffStyle = ['lines', 'values', 'chars', 'outline'].includes(SettingsManager.get('diffStyle'))
+          ? SettingsManager.get('diffStyle') : 'lines';
+        const n = parseInt(SettingsManager.get('foldChangeLines'), 10);
+        foldChangeLines = Number.isFinite(n) && n >= 0 ? n : DiffView.DEFAULT_MIN_LINES;
+        foldLargeChanges = SettingsManager.get('foldLargeChanges') === true;
+        const container = document.getElementById('view-container');
+        if (container) {
+          container.dataset.diffStyle = diffStyle;
+          container.classList.toggle('no-change-folds', foldChangeLines === 0);
+        }
+        if (!mergeView) return;
+        for (const v of [mergeView.a, mergeView.b]) v.dispatch({ effects: refreshDiffStyle.of(null) });
+        applyChangeFolds();
+      }
+
       // Basic editor extensions for both sides
       const basicSetup = [
         flashLineField,
@@ -1714,8 +2269,11 @@
         highlightSelectionMatches(),
         keymap.of([
           // Jump between diffs (works inside either pane)
-          { key: "Alt-ArrowDown", run: goToNextChunk, preventDefault: true },
-          { key: "Alt-ArrowUp", run: goToPreviousChunk, preventDefault: true },
+          { key: "Alt-ArrowDown", run: moveToChange(1), preventDefault: true },
+          { key: "Alt-ArrowUp", run: moveToChange(-1), preventDefault: true },
+          // Fold / show every block of differences over the fold size.
+          { key: "Alt-[", run: () => setAllChangeFolds(true), preventDefault: true },
+          { key: "Alt-]", run: () => setAllChangeFolds(false), preventDefault: true },
           ...closeBracketsKeymap,
           ...defaultKeymap,
           ...searchKeymap,
@@ -1872,10 +2430,10 @@
         // time the user pastes/drops large content.
         initializeDiffWorker();
 
-        // Load content from URL parameters first, then from storage, then use defaults
+        // Content from a shared link. Saved content is read later, after the
+        // interface is up (see restoreLastSession).
         const urlContent = URLManager.loadFromURL();
-        const savedContent = StorageManager.loadFromStorage();
-        
+
         // Apply settings from URL if present (before other initialization)
         if (urlContent && urlContent.settings) {
           try {
@@ -1908,19 +2466,23 @@
           const t = parseFloat(SettingsManager.get('numTolerance'));
           numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
         }
+        expandEmbeddedOn = SettingsManager.get('expandEmbedded') !== false;
 
-        const initialContent = urlContent || savedContent || DefaultTemplates.simple;
         const mergeSettings = loadMergeSettings();
 
         // Create merge view container
         const container = document.getElementById("view-container");
 
-        // Create merge view with CodeMirror 6 using saved settings
+        // The editors start EMPTY. Building them with the saved documents made
+        // the constructor diff and lay out the whole pair before anything could
+        // be clicked: 1.5 s of one blocked task for a 3.5 MB session, with the
+        // toolbar painted but dead. The content follows once this is on screen.
         mergeView = new MergeView({
           a: {
-            doc: initialContent.left,
+            doc: '',
             extensions: [
               basicSetup,
+              diffViewExtensions,
               json(),
               wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
               themeCompartment.of(getThemeExtension(currentTheme)),
@@ -1930,9 +2492,10 @@
             ],
           },
           b: {
-            doc: initialContent.right,
+            doc: '',
             extensions: [
               basicSetup,
+              diffViewExtensions,
               json(),
               wordWrapCompartment.of(wordWrapEnabled ? EditorView.lineWrapping : []),
               themeCompartment.of(getThemeExtension(currentTheme)),
@@ -1948,13 +2511,8 @@
           gutter: mergeSettings.gutter,
           revertControls: mergeSettings.revertControls === "none" ? undefined : mergeSettings.revertControls,
           collapseUnchanged: mergeSettings.collapseUnchanged ? { margin: 3, minSize: 4 } : undefined,
-          diffConfig: buildDiffConfig(
-            mergeSettings.scanLimit,
-            (initialContent.left ? initialContent.left.length : 0) + (initialContent.right ? initialContent.right.length : 0)
-          ),
+          diffConfig: buildDiffConfig(mergeSettings.scanLimit, 0),
         });
-        // The constructor diffs with exactly that config, so the initial chunks
-        // and the applied limit agree.
         _chunkScanLimit = _appliedScanLimit;
 
         // Add per-pane control buttons
@@ -1999,11 +2557,15 @@
         // the panels show titles + controls by default (details on hover/tap).
         enhanceInfoTips(document);
 
-        // Initialize branch system - load active branches if they exist
+        // Initialize branch system (which branch each panel shows)
         await initializeBranches();
+
+        // Data last: the interface is drawn and usable before any of it loads.
+        restoreLastSession(urlContent).catch((err) => console.warn('[restore] failed', err));
       }
       
-      // Initialize branch system and load saved branches
+      // Initialize branch system. Content is restored separately, after the
+      // interface is up (restoreLastSession).
       async function initializeBranches() {
         // Resolve the stored ids against branches that actually exist in each
         // panel — a stale id (the old "main" default) left no branch selected.
@@ -2013,49 +2575,12 @@
           if (id !== stored) setActiveBranch(side, id);
           else activeBranches[side] = id;
         }
-        const leftBranchId = activeBranches.left;
-        const rightBranchId = activeBranches.right;
-        
-        // Try to load content from saved branches (if not already loaded from URL/storage)
-        const leftContent = mergeView.a.state.doc.toString().trim();
-        const rightContent = mergeView.b.state.doc.toString().trim();
-        
-        // If editors are empty or have default template, try loading from branches
-        const isDefaultTemplate = leftContent === DefaultTemplates.simple.left.trim() && 
-                                  rightContent === DefaultTemplates.simple.right.trim();
-        
-        if (!leftContent || isDefaultTemplate) {
-          const leftBranch = await window.BranchManager.getBranch(leftBranchId);
-          if (leftBranch && leftBranch.content) {
-            mergeView.a.dispatch({
-              changes: { from: 0, to: mergeView.a.state.doc.length, insert: leftBranch.content }
-            });
-          }
-        }
-        
-        if (!rightContent || isDefaultTemplate) {
-          const rightBranch = await window.BranchManager.getBranch(rightBranchId);
-          if (rightBranch && rightBranch.content) {
-            mergeView.b.dispatch({
-              changes: { from: 0, to: mergeView.b.state.doc.length, insert: rightBranch.content }
-            });
-          }
-        }
-        
         // What each active branch last saved — the reference for its tab's
         // saved / unsaved state.
         await Promise.all([loadBaseline('left'), loadBaseline('right')]);
 
         // Update branch selectors
         updateBranchSelectors();
-        // Align / normalize panes once initial content has settled (initial
-        // content arrives via the editor `doc:` config, which does not fire the
-        // change listener, so we trigger it explicitly here). When neither block
-        // diff nor ignore is active, strip any gap lines a snapshot carried.
-        if (transformActive()) applyBlockAlignment();
-        else removeBlockAlignment();
-        checkBranchModified('left');
-        checkBranchModified('right');
         updateDiffStatus();
       }
 
@@ -2069,9 +2594,13 @@
           gutter: SettingsManager.get('gutter'),
           collapseUnchanged: SettingsManager.get('collapseUnchanged'),
           blockDiff: SettingsManager.get('blockDiff'),
+          expandEmbedded: SettingsManager.get('expandEmbedded'),
           orientation: SettingsManager.get('orientation'),
           revertControls: SettingsManager.get('revertControls'),
           scanLimit: SettingsManager.get('scanLimit'),
+          diffStyle: SettingsManager.get('diffStyle'),
+          foldChangeLines: SettingsManager.get('foldChangeLines'),
+          foldLargeChanges: SettingsManager.get('foldLargeChanges'),
         };
       }
 
@@ -2091,6 +2620,7 @@
         document.getElementById('setting-gutter').checked = settings.gutter;
         document.getElementById('setting-collapse-unchanged').checked = settings.collapseUnchanged;
         { const bd = document.getElementById('setting-block-diff'); if (bd) bd.checked = settings.blockDiff !== false; }
+        document.getElementById('setting-expand-embedded').checked = settings.expandEmbedded !== false;
         document.getElementById('setting-orientation').value = settings.orientation;
         document.getElementById('setting-revert-controls').value = settings.revertControls;
         // Show the value honestly within the input's allowed range. Legacy
@@ -2107,6 +2637,11 @@
         const quickHighlight = document.getElementById('quick-highlight-changes');
         if (quickCollapse) quickCollapse.checked = settings.collapseUnchanged;
         if (quickHighlight) quickHighlight.checked = settings.highlightChanges;
+        document.getElementById('setting-diff-style').value = settings.diffStyle || 'lines';
+        document.getElementById('setting-fold-change-lines').value =
+          settings.foldChangeLines ?? DiffView.DEFAULT_MIN_LINES;
+        document.getElementById('setting-fold-large-changes').checked = settings.foldLargeChanges === true;
+        syncDiffView();
 
         // Both snapshot-import paths call this again to re-sync the controls
         // with the imported settings. Wiring the listeners a second time made
@@ -2137,6 +2672,7 @@
         document.getElementById('setting-highlight-changes').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-gutter').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-block-diff').addEventListener('change', applyMergeSettings);
+        document.getElementById('setting-expand-embedded').addEventListener('change', (e) => setExpandEmbedded(e.target.checked));
         // Touching the collapse control makes it the user's choice again, so the
         // size-forced override stops shadowing what gets persisted.
         document.getElementById('setting-collapse-unchanged').addEventListener('change', () => {
@@ -2146,7 +2682,24 @@
         document.getElementById('setting-orientation').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-revert-controls').addEventListener('change', applyMergeSettings);
         document.getElementById('setting-scan-limit').addEventListener('change', applyMergeSettings);
-        
+
+        // Presentation only — nothing is re-diffed (see syncDiffView).
+        document.getElementById('setting-diff-style').addEventListener('change', (e) => {
+          SettingsManager.set('diffStyle', e.target.value);
+          syncDiffView();
+        });
+        document.getElementById('setting-fold-change-lines').addEventListener('change', (e) => {
+          const n = parseInt(e.target.value, 10);
+          const v = Number.isFinite(n) && n >= 0 ? (n === 0 ? 0 : Math.max(2, n)) : DiffView.DEFAULT_MIN_LINES;
+          e.target.value = v;
+          SettingsManager.set('foldChangeLines', v);
+          syncDiffView();
+        });
+        document.getElementById('setting-fold-large-changes').addEventListener('change', (e) => {
+          SettingsManager.set('foldLargeChanges', e.target.checked);
+          syncDiffView();
+        });
+
         // Performance mode settings
         initializePerformanceSettings();
       }
@@ -2380,7 +2933,8 @@
         if (!statusDiv || !statusText) return;
         
         const perfEnabled = SettingsManager.get('performanceMode');
-        const viewportEnabled = SettingsManager.get('viewportDiff');
+        // Live state, not the stored one: a large paste turns it on unsaved.
+        const viewportEnabled = !!viewportDiffManager?.enabled;
         
         if (perfEnabled || viewportEnabled) {
           const modes = [];
@@ -2423,11 +2977,18 @@
             5000
           );
         } else if (analysis.isLarge) {
-          // Auto-enable viewport diff for large files
+          // Viewport counting for this visit only. This used to go through
+          // applyViewportDiffMode(), which SAVES the setting, so one large paste
+          // left it on for good: every later comparison without a record model
+          // read "~N differences in view" instead of its block count. Same rule
+          // as Collapse Unchanged forced by size: the stored choice is the
+          // user's, and touching the checkbox makes it theirs again.
           const viewportCheckbox = document.getElementById('setting-viewport-diff');
-          if (viewportCheckbox && !viewportCheckbox.checked && !SettingsManager.get('performanceMode')) {
+          if (viewportCheckbox && !viewportCheckbox.checked && viewportDiffManager &&
+              !SettingsManager.get('performanceMode')) {
             viewportCheckbox.checked = true;
-            applyViewportDiffMode();
+            viewportDiffManager.enable();
+            updatePerformanceStatus();
           }
         }
       }
@@ -2738,6 +3299,7 @@
       // Pass combinedLen when the content strings are already in hand.
       function buildDiffConfig(userScanLimit, combinedLen) {
         if (combinedLen == null) combinedLen = currentCombinedDocLen();
+        _userScanLimit = userScanLimit;
         _appliedScanLimit = clampScanLimit(userScanLimit, combinedLen);
         return { scanLimit: _appliedScanLimit, override: structuralDiff };
       }
@@ -2775,7 +3337,22 @@
           if (rows) { _lastDiffMode = 'rows'; return rows; }
         }
         _lastDiffMode = 'default';
-        return cmDiff(a, b, { scanLimit: _appliedScanLimit || SCAN_LIMIT_FLOOR });
+        return cmDiff(a, b, { scanLimit: fallbackScanLimit(a.length + b.length) });
+      }
+
+      // The effort for CM6's own diff, decided per call from the text actually
+      // being diffed. The raised limit is only safe on json_align's text while
+      // it still IS that text. When the rows stop lining up — a paste over part
+      // of a pane, Undo, a branch whose content does not parse — the pair is
+      // arbitrary, and the limit left over from the aligned render ran full
+      // Myers on it: replacing one pane of an aligned 250 KB pair with the same
+      // data unaligned was one 16 s blocked task. Such a pair gets the raw cap
+      // for its size, which bails out at once.
+      let _userScanLimit = SCAN_LIMIT_FLOOR;
+      function fallbackScanLimit(len) {
+        const live = _appliedScanLimit || SCAN_LIMIT_FLOOR;
+        if (_alignedRender && !_rowAligned) return live;   // normalize-only output
+        return Math.min(live, clampScanLimit(_userScanLimit, len, false, 0));
       }
 
       // null when the two texts do not have the same number of rows — then they
@@ -2833,7 +3410,8 @@
       // follow it with ensureDiffFresh() when there is no write to piggyback on.
       function syncDiffConfig(combinedLen) {
         if (!mergeView || !canReconfigure()) return;
-        const want = clampScanLimit(SettingsManager.get('scanLimit'),
+        _userScanLimit = SettingsManager.get('scanLimit');
+        const want = clampScanLimit(_userScanLimit,
                                     combinedLen == null ? currentCombinedDocLen() : combinedLen);
         if (want === _appliedScanLimit) return;
         _appliedScanLimit = want;
@@ -2923,7 +3501,14 @@
           applyBlockAlignment();
         } else if (prevBlockDiff) {
           removeBlockAlignment();
+          // Expanding embedded JSON writes only when there is something to
+          // expand, so strip the gaps first and let it run on the raw text.
+          if (expandActive()) { _lastAlignMemo = null; applyBlockAlignment(); }
         }
+
+        // Collapse decides whether large changes start folded, and Highlight
+        // whether the Values style has anything to mark.
+        syncDiffView();
 
         updateStatus('Settings applied');
         updateDiffStatus();
@@ -3353,7 +3938,8 @@
           writeAlignedPanes(res.left, res.right);
           _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
                              block: blockDiffEnabled(), pred: ignorePredicate,
-                             tol: numToleranceActive(), page: recordPageFrom, view: recordView };
+                             tol: numToleranceActive(), exp: expandActive(),
+                             page: recordPageFrom, view: recordView };
         } else {
           const src = _ignorePristine;
           transformAndDispatch(src ? src.left : mergeView.a.state.doc.toString(),
@@ -3376,25 +3962,26 @@
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
         const tol = numToleranceActive();
+        const expand = expandActive();
         _alignedRender = false;
         _rowAligned = false;
         _alignHandle = null;
         _renderBudget = null;   // new content ⇒ re-measure the diff cost
         let res = null;
-        if (window.JSONAlign && (block || pred || tol != null)) {
+        if (window.JSONAlign && (block || pred || tol != null || expand)) {
           try {
             if (block) {
               // prepare() parses + matches + models once; the handle is kept so
               // paging only has to re-render (see gotoRecordPage).
-              const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol });
+              const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol, expand });
               if (h && h.ok) {
                 _alignHandle = h;
                 res = renderWindow(h);
               } else {
-                res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
+                res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol, expand });
               }
             } else {
-              res = window.JSONAlign.normalize(L, R, pred, tol);
+              res = window.JSONAlign.normalize(L, R, pred, tol, expand);
             }
           } catch (e) { res = null; }
         }
@@ -3424,7 +4011,7 @@
 
         let res = null;
         const h = await window.JSONAlign.prepareAsync(
-          L, R, { ignore: pred, numTol: tol }, jobControl(job));
+          L, R, { ignore: pred, numTol: tol, expand: expandActive() }, jobControl(job));
 
         if (h && h.ok) {
           _alignHandle = h;
@@ -3438,7 +4025,7 @@
           // Not an array/collection pair (a plain object, say): the whole-value
           // alignment is not divisible, but it is also not the case that scales.
           try {
-            res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol });
+            res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol, expand: expandActive() });
           } catch (e) { res = null; }
         }
         const out = applyTransformResult(res, L, R, block, pred, tol);
@@ -3464,9 +4051,11 @@
           // Snapshot the untransformed pair when the panes no longer hold it
           // verbatim, so autosave/export keep the user's real data:
           //  - normalization rewrote values (ignore / numeric tolerance), or
+          //    showed JSON stored as text as structure (expand), or
           //  - the render is a WINDOW over a large collection (records outside
           //    the current page are not in the pane at all).
-          const normalized = (pred || tol != null) && res.changed;
+          const normalized = res.changed && (pred || tol != null || res.expanded > 0);
+          if (res.expanded > 0) noteExpanded(res.expanded);
           if (normalized || (res.stats && res.stats.truncated)) {
             _ignorePristine = { left: L, right: R };
           } else {
@@ -3494,8 +4083,23 @@
         // Memoize against the post-dispatch docs (failures too) so the next call
         // on unchanged content returns in O(1).
         _lastAlignMemo = { docA: mergeView.a.state.doc, docB: mergeView.b.state.doc,
-                           block, pred, tol, page: recordPageFrom, view: recordView };
+                           block, pred, tol, exp: expandActive(), page: recordPageFrom, view: recordView };
         return dispatched;
+      }
+
+      // Said ONCE, ever: the first comparison that shows JSON stored as text as
+      // structure explains it, and from then on the explanation lives in
+      // Settings beside "Read JSON inside strings". Once per comparison meant
+      // once per visit — every reload of the same pair said it again.
+      function noteExpanded(n) {
+        if (SettingsManager.get('expandNoticeShown')) return;
+        SettingsManager.set('expandNoticeShown', true);
+        showNotice('info',
+          `Showing ${n.toLocaleString('en-US')} JSON value${n === 1 ? '' : 's'} stored as text as nested ` +
+          'objects so they compare key by key. Display only — saving, Copy and Export keep the original text. ' +
+          'Change it any time in Settings → Read JSON inside strings.',
+          { key: 'expand-embedded',
+            actions: [{ label: 'Turn off', run: () => setExpandEmbedded(false) }] });
       }
 
       function applyBlockAlignment() {
@@ -3503,7 +4107,8 @@
         const block = blockDiffEnabled();
         const pred = ignorePredicate;
         const tol = numToleranceActive();
-        if (!block && !pred && tol == null) return;
+        const exp = expandActive();
+        if (!block && !pred && tol == null && !exp) return;
         const docA = mergeView.a.state.doc;
         const docB = mergeView.b.state.doc;
         // Respect an explicit cancel until the content actually changes.
@@ -3511,7 +4116,8 @@
         if (_lastAlignMemo &&
             _lastAlignMemo.docA === docA && _lastAlignMemo.docB === docB &&
             _lastAlignMemo.block === block && _lastAlignMemo.pred === pred &&
-            _lastAlignMemo.tol === tol && _lastAlignMemo.page === recordPageFrom &&
+            _lastAlignMemo.tol === tol && _lastAlignMemo.exp === exp &&
+            _lastAlignMemo.page === recordPageFrom &&
             _lastAlignMemo.view === recordView) return;
         // While a window is showing, the panes hold only the current page —
         // re-aligning from them would window a window and lose the rest of the
@@ -3576,6 +4182,7 @@
             doc: leftContent,
             extensions: [
               basicSetup,
+              diffViewExtensions,
               json(),
               wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []),
               themeCompartment.of(getThemeExtension(currentTheme)),
@@ -3588,6 +4195,7 @@
             doc: rightContent,
             extensions: [
               basicSetup,
+              diffViewExtensions,
               json(),
               wordWrapCompartment.of(newWordWrap ? EditorView.lineWrapping : []),
               themeCompartment.of(getThemeExtension(currentTheme)),
@@ -3607,6 +4215,9 @@
         // The constructor diffs with exactly that config, so the fresh chunks and
         // the applied limit agree.
         _chunkScanLimit = _appliedScanLimit;
+        // The new panes start with no folds; rebuild them for these chunks.
+        _foldSignature = '';
+        scheduleChangeFolds();
 
         // Re-add pane controls
         addPaneControls();
@@ -5774,7 +6385,23 @@
       }
 
       function updatePaneChips() {
+        const before = formatMismatch();
         for (const side of ['left', 'right']) updatePaneChip(side);
+        // The status pill reads the kinds measured here (formatMismatch).
+        if (formatMismatch() !== before) updateDiffStatus();
+      }
+
+      // CSV in one panel and JSON in the other have no meaningful line diff:
+      // every line differs, and counting them only says so less clearly.
+      function formatMismatch() {
+        const a = paneAnalysis.left, b = paneAnalysis.right;
+        if (!a || !b) return null;
+        const table = (x) => x.kind === 'csv' || x.kind === 'tsv';
+        const json = (x) => x.kind === 'json' && x.valid;
+        const side = table(a) && json(b) ? 'Left' : table(b) && json(a) ? 'Right' : null;
+        if (!side) return null;
+        const kind = (side === 'Left' ? a : b).kind.toUpperCase();
+        return `${side} panel is ${kind} — use To JSON above it to compare`;
       }
 
       function updatePaneChip(side) {
@@ -6751,7 +7378,9 @@
       // JSONRepairKit.csvEvidence requires >= 2 non-empty lines, >= 2 columns,
       // and a delimiter count that is consistent across the sampled lines.
       function cheapLooksLikeCSV(text) {
-        const head = text.slice(0, 65536);
+        // Up to the end of the first few lines, not a fixed 64 KB: a wide
+        // export's header alone can be longer than that (see sniffHead).
+        const head = window.JSONRepairKit ? window.JSONRepairKit.sniffHead(text) : text.slice(0, 65536);
         if (/^\s*[{\[]/.test(head)) return false;
         if (window.JSONRepairKit) return window.JSONRepairKit.csvEvidence(head).ok;
         // Fallback if the kit failed to load: still require two lines.
@@ -6760,7 +7389,7 @@
         return /[,;\t|]/.test(lines[0]);
       }
       function countColumns(text) {
-        const head = text.slice(0, 65536);
+        const head = window.JSONRepairKit ? window.JSONRepairKit.sniffHead(text) : text.slice(0, 65536);
         const nl = head.indexOf('\n');
         const firstLine = nl === -1 ? head : head.slice(0, nl);
         let sep = ',';
@@ -6868,7 +7497,10 @@
       // for rendering every line, then re-render collapsed.
       async function applyProactivePosture(incomingContent, side) {
         const otherLen = (side === 'left' ? mergeView.b : mergeView.a).state.doc.length;
-        const total = (incomingContent ? incomingContent.length : 0) + otherLen;
+        collapseForSize((incomingContent ? incomingContent.length : 0) + otherLen);
+      }
+
+      function collapseForSize(total) {
         if (total <= PROACTIVE_COLLAPSE_BYTES) return;
 
         const collapse = document.getElementById('setting-collapse-unchanged');
@@ -7196,6 +7828,7 @@
         // Stop anything still running first, or an in-flight ingest would write
         // its panes over the freshly-cleared editors a moment later.
         cancelAllProcessing();
+        hideRestoreOffer();
 
         // Drop the pre-normalization snapshot up front so nothing downstream
         // (autosave, export) can persist the old content back, and release the
@@ -7267,6 +7900,187 @@
         updateDiffStatus();
       }
 
+      /* ---- Restoring the last comparison ----------------------------------
+         Interface first, data second. The editors are built empty, the page
+         paints and responds, and only then is the saved comparison loaded —
+         the same way as a large paste: aligned BEFORE its first render, in
+         slices with progress and Cancel above PROGRESS_MIN_BYTES. It used to
+         go straight into the MergeView constructor, which diffed and laid out
+         the raw pair, then re-rendered it aligned: measured, one 1.5 s blocked
+         task on a 3.5 MB session, with the toolbar drawn but not responding.
+
+         Above RESTORE_ASK_BYTES nothing loads until the user asks: a card over
+         the empty panels says what was saved (sizes, kinds, the last result,
+         when) with Restore / Start empty. Content that arrives while the card
+         is up wins, and a notice keeps a way back to the saved comparison. */
+      const RESTORE_ASK_BYTES = 1024 * 1024;
+      let _restoreOffer = null;      // the session the card is offering
+
+      async function restoreLastSession(urlContent) {
+        await nextPaint();
+        const session = await findSessionToRestore(urlContent);
+        if (!session) { updateDiffStatus(); return; }
+        if (session.left.length + session.right.length > RESTORE_ASK_BYTES) offerRestore(session);
+        else await loadSession(session);
+      }
+
+      // A shared link, else the newest saved pair. A blank side — or the
+      // untouched demo — falls back to that panel's branch, as startup always
+      // has; the demo itself is what a first visit sees.
+      async function findSessionToRestore(urlContent) {
+        let s = urlContent
+          ? { left: urlContent.left || '', right: urlContent.right || '' }
+          : await StorageManager.loadLatest();
+        if (!s) s = { left: DefaultTemplates.simple.left, right: DefaultTemplates.simple.right };
+        const demo = s.left.trim() === DefaultTemplates.simple.left.trim() &&
+                     s.right.trim() === DefaultTemplates.simple.right.trim();
+        for (const side of ['left', 'right']) {
+          if (s[side].trim() && !demo) continue;
+          const b = await window.BranchManager.getBranch(activeBranches[side]);
+          if (b && b.content) s[side] = b.content;
+        }
+        return (s.left.trim() || s.right.trim()) ? s : null;
+      }
+
+      async function loadSession(s) {
+        hideRestoreOffer();
+        const job = s.left.length + s.right.length > PROGRESS_MIN_BYTES
+          ? startProcessingJob('Restoring last comparison') : null;
+        try {
+          await restorePair(s.left, s.right, job);
+        } catch (err) {
+          if (!isCancellation(err)) throw err;
+          updateDiffStatus();
+          showNotice('info', 'Restoring the last comparison was stopped.',
+            { key: 'restore', actions: [{ label: 'Restore', run: () => loadSession(s) }] });
+        } finally {
+          endProcessingJob(job);
+        }
+      }
+
+      // commitPair for a whole saved session: interruptible on a large pair,
+      // and collapsed before the first render rather than after it.
+      async function restorePair(L, R, job) {
+        collapseForSize(L.length + R.length);
+        recordPageFrom = 0;
+        _ignorePristine = null;
+        _lastAlignMemo = null;
+        let dispatched = false;
+        if (transformActive() && L.trim() && R.trim()) {
+          dispatched = job ? await transformAndDispatchAsync(L, R, job) : transformAndDispatch(L, R);
+        }
+        if (!dispatched) {
+          if (job) {
+            job.phase('render');
+            job.update(0, 1, `Loading ${fmtBytes(L.length + R.length)} into the editors`);
+            await window.ProcessingUI.yieldToPaint();
+            if (job.cancelled) throw new CancelledError();
+          }
+          _alignedRender = false;
+          _rowAligned = false;
+          syncDiffConfig(L.length + R.length);   // before the write: see syncDiffConfig
+          _blockAligning = true;
+          try {
+            setPaneIfChanged(mergeView.a, L);
+            setPaneIfChanged(mergeView.b, R);
+          } finally { _blockAligning = false; }
+          _lastAlignMemo = null;
+          // Gap lines an older save carried only mean something to Block Diff.
+          if (!transformActive()) removeBlockAlignment();
+          ensureDiffFresh();
+          if (job) job.update(1, 1, 'Done');
+        }
+        checkBranchModified('left');
+        checkBranchModified('right');
+        updateDiffStatus();
+        refreshMergeViewIfNeeded();
+        afterContentChanged({ checkSize: false });
+      }
+
+      function sessionKind(text) {
+        if (!text.trim()) return 'Empty';
+        if (looksLikeJSONStart(text)) return 'JSON';
+        return cheapLooksLikeCSV(text) ? 'CSV' : 'Text';
+      }
+
+      function timeAgo(ts) {
+        const s = Math.round((Date.now() - ts) / 1000);
+        const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+        if (s < 60) return 'just now';
+        if (s < 3600) return rtf.format(-Math.round(s / 60), 'minute');
+        if (s < 86400) return rtf.format(-Math.round(s / 3600), 'hour');
+        return rtf.format(-Math.round(s / 86400), 'day');
+      }
+
+      function offerRestore(s) {
+        hideRestoreOffer();
+        _restoreOffer = s;
+        const el = (tag, cls, text) => {
+          const n = document.createElement(tag);
+          if (cls) n.className = cls;
+          if (text != null) n.textContent = text;
+          return n;
+        };
+        const card = el('div', 'restore-card');
+        card.id = 'restore-card';
+        card.setAttribute('role', 'dialog');
+        card.setAttribute('aria-labelledby', 'restore-card-title');
+
+        const title = el('h2', 'restore-card-title', 'Restore your last comparison?');
+        title.id = 'restore-card-title';
+        const total = fmtBytes(s.left.length + s.right.length);
+        const sub = el('p', 'restore-card-sub',
+          s.timestamp ? `Saved ${timeAgo(s.timestamp)} · ${total}` : total);
+        card.append(title, sub);
+
+        const rows = el('dl', 'restore-card-rows');
+        const row = (label, value) => rows.append(el('dt', null, label), el('dd', null, value));
+        row(branchTitle(activeBranches.left), `${fmtBytes(s.left.length)} · ${sessionKind(s.left)}`);
+        row(branchTitle(activeBranches.right), `${fmtBytes(s.right.length)} · ${sessionKind(s.right)}`);
+        if (s.meta && s.meta.summary) row('Result', s.meta.summary);
+        card.append(rows);
+
+        const actions = el('div', 'restore-card-actions');
+        const restore = el('button', 'btn btn-primary', 'Restore');
+        restore.onclick = () => loadSession(s);
+        const fresh = el('button', 'btn', 'Start empty');
+        fresh.title = 'Keep the panels empty. The saved comparison is replaced once you add content.';
+        fresh.onclick = hideRestoreOffer;
+        actions.append(restore, fresh);
+        card.append(actions);
+        card.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideRestoreOffer(); });
+
+        document.getElementById('view-container').appendChild(card);
+        setDiffSummary('idle', 'Last comparison not loaded');
+        restore.focus();
+      }
+
+      function hideRestoreOffer() {
+        _restoreOffer = null;
+        const card = document.getElementById('restore-card');
+        if (card) card.remove();
+      }
+
+      // New content arrived while the card was up: it wins, but the saved
+      // comparison is only a click away until the page is closed.
+      function withdrawRestoreOffer() {
+        const s = _restoreOffer;
+        hideRestoreOffer();
+        showNotice('info',
+          `Your last comparison (${fmtBytes(s.left.length + s.right.length)}) was not restored, and is replaced once this content is saved.`,
+          { key: 'restore', actions: [{
+            label: 'Restore it',
+            run: () => { if (confirm('Replace both panels with your last comparison?')) loadSession(s); }
+          }] });
+      }
+
+      // What the restore card shows before anything is loaded.
+      function sessionMeta() {
+        const pill = document.getElementById('diff-summary');
+        const done = pill && (pill.dataset.state === 'same' || pill.dataset.state === 'diff');
+        return { summary: done ? pill.textContent.trim() : null };
+      }
+
       // Save content to storage (called by auto-save extension)
       function saveContent() {
         // What gets WRITTEN is the pristine pair when one exists (ignore /
@@ -7316,7 +8130,7 @@
           const leftContent = pristine ? pristine.left : mergeView.a.state.doc.toString();
           const rightContent = pristine ? pristine.right : mergeView.b.state.doc.toString();
           try {
-            StorageManager.saveToStorage(leftContent, rightContent);
+            StorageManager.saveToStorage(leftContent, rightContent, sessionMeta());
           } catch (e) {
             console.warn('saveToStorage failed during autosave', e);
             if (StorageManager.saveToIndexedDB) {
@@ -7371,7 +8185,7 @@
       function goToDiff(dir) {
         if (!mergeView) return;
         const target = mergeView.a.hasFocus ? mergeView.a : mergeView.b;
-        (dir > 0 ? goToNextChunk : goToPreviousChunk)(target);
+        moveToChange(dir)(target);
         target.focus();
       }
 
@@ -7402,6 +8216,13 @@
           : (mergeView.chunks?.length || 0) === 0;
         if (same) {
           setDiffSummary('same', 'No differences');
+          updateDiffNavState();
+          return;
+        }
+
+        const mismatch = !diffModel && formatMismatch();
+        if (mismatch) {
+          setDiffSummary('warn', mismatch);
           updateDiffNavState();
           return;
         }
@@ -7670,6 +8491,7 @@
 
       /** Scroll both panes to 1-based line `lineNo` and flash it. */
       function scrollPanesToLine(lineNo) {
+        revealChangeFoldAt(lineNo);
         const touched = [];
         for (const view of [mergeView.a, mergeView.b]) {
           if (lineNo < 1 || lineNo > view.state.doc.lines) continue;
@@ -7832,15 +8654,22 @@
           return;
         }
         const tol = numToleranceActive();
+        const exp = expandActive();
         const k = kcState.key;
         if (kcState.result && k && k.left === pair.left && k.right === pair.right &&
-            k.gen === _ignoreGen && k.tol === tol) return;
+            k.gen === _ignoreGen && k.tol === tol && k.exp === exp) return;
 
         let L, R;
         try { L = JSON.parse(pair.left); }
         catch (e) { kcState.result = null; kcState.error = 'The left panel is not valid JSON. Use Format ▾ → Fix JSON, then reopen.'; return; }
         try { R = JSON.parse(pair.right); }
         catch (e) { kcState.result = null; kcState.error = 'The right panel is not valid JSON. Use Format ▾ → Fix JSON, then reopen.'; return; }
+        // Same rule as the panes, so a key inside JSON stored as text is a
+        // row here and clicking it finds it there.
+        if (exp) {
+          L = window.JSONAlign.expandEmbedded(L).value;
+          R = window.JSONAlign.expandEmbedded(R).value;
+        }
 
         const t0 = performance.now();
         const res = window.KeyCompare.compare(L, R, {
@@ -7853,7 +8682,7 @@
           rows: window.KeyCompare.counts(res.rows, false)
         };
         kcState.records = res.rootArray ? { left: L.length, right: R.length } : null;
-        kcState.key = { left: pair.left, right: pair.right, gen: _ignoreGen, tol };
+        kcState.key = { left: pair.left, right: pair.right, gen: _ignoreGen, tol, exp };
         kcState.ms = performance.now() - t0;
         kcState.drawn = null;
       }

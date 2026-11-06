@@ -145,10 +145,16 @@
       const leftText = this.getViewportText(leftEditor, leftRange);
       const rightText = this.getViewportText(rightEditor, rightRange);
 
-      // Calculate diff for viewport only
+      // Line by line: this is only a count for the status bar. A character diff
+      // ran to DMP's 1 s timeout whenever a pane held one very long line — raw
+      // CSV's 148 KB header row is "in view" whole — and it ran on every status
+      // update, so each paste opposite such a pane froze the tab for a second.
+      // Line mode measured 8 ms on that pair, against 1,001 ms.
       const dmp = new diff_match_patch();
-      const diffs = dmp.diff_main(leftText, rightText);
-      dmp.diff_cleanupSemantic(diffs);
+      dmp.Diff_Timeout = 0.1;
+      const lines = dmp.diff_linesToChars_(leftText, rightText);
+      const diffs = dmp.diff_main(lines.chars1, lines.chars2, false);
+      dmp.diff_charsToLines_(diffs, lines.lineArray);
 
       // Count diff chunks
       let diffCount = 0;
