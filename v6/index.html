@@ -7421,15 +7421,9 @@
       // by rule, ignore the key, copy, find the row. It only ADDS to the rules
       // that Ignore ▾ already holds (ignorePatterns, equivCfg) — no second rule
       // store, no second comparison. utils/json_context.js reads the line.
-      // Shift+right-click, a text selection, the gutters and a line that holds
-      // no key or value keep the browser's own menu.
+      // Inside a panel it always replaces the browser's menu (Shift+right-click
+      // still gives that one).
       let _ctxMenu = null;
-      function closeContextMenu() {
-        if (!_ctxMenu) return;
-        _ctxMenu.remove();
-        _ctxMenu = null;
-      }
-
       /** What is on `lineNo` of one panel, and the matching row of the other. */
       function resolveLineContext(side, lineNo) {
         const J = window.JSONContext;
@@ -7462,26 +7456,45 @@
           () => showNotice('error', 'Could not copy to the clipboard.', { key: 'ctx-copy' }));
       }
 
-      /** Put two values in one equivalence group (an existing one when either is in it). */
-      function treatAsEqual(a, b) {
-        const J = window.JSONContext, ta = J.token(a), tb = J.token(b);
+      /**
+       * Put values in one equivalence group and switch the rules on.
+       * `into`: a group to add to; 'new' for a fresh one; omitted = the enabled
+       * group that already holds one of them, else a fresh one.
+       */
+      function treatAsEqual(values, into) {
+        const tokens = values.map(window.JSONContext.token);
         const before = JSON.parse(JSON.stringify(equivCfg));
-        let group = equivCfg.groups.find((g) => g.on && (g.values.indexOf(ta) !== -1 || g.values.indexOf(tb) !== -1));
+        let group = into && into !== 'new' ? into
+          : into === 'new' ? null
+          : equivCfg.groups.find((g) => g.on && tokens.some((t) => g.values.indexOf(t) !== -1));
         const joined = !!group;
         if (!group) {
-          group = { name: ta + ' = ' + tb, values: [], on: true };
+          group = { name: tokens.join(' = '), values: [], on: true };
           equivCfg.groups.push(group);
         }
-        for (const t of [ta, tb]) if (group.values.indexOf(t) === -1) group.values.push(t);
+        for (const t of tokens) if (group.values.indexOf(t) === -1) group.values.push(t);
+        group.on = true;
         equivCfg.enabled = true;
         applyValueEquiv();
-        showNotice('ok', joined ? `Added to the group “${group.name}”: ${ta} = ${tb}.` : `New rule: ${ta} = ${tb}, everywhere in this comparison.`, {
+        const what = tokens.join(' = ');
+        showNotice('ok', joined ? `Added ${tokens.join(' and ')} to the group “${group.name}”.` : `New rule: ${what}, everywhere in this comparison.`, {
           key: 'ctx-rule',
           actions: [
             { label: 'Undo', run: () => { equivCfg = before; applyValueEquiv(); } },
             { label: 'Edit rules', run: openEquivModal }
           ]
         });
+      }
+
+      /** Overwrite the clicked side's value with the other panel's. An edit: Ctrl+Z undoes it. */
+      function useOtherValue(ctx) {
+        const view = ctx.side === 'left' ? mergeView.a : mergeView.b;
+        const line = view.state.doc.line(ctx.line);
+        const m = /^(\s*(?:"(?:[^"\\]|\\.)*"\s*:\s*)?)([\s\S]*?)(,?\s*)$/.exec(line.text);
+        if (!m) return;
+        const from = line.from + m[1].length;
+        view.dispatch({ changes: { from, to: from + m[2].length, insert: JSON.stringify(ctx.other.value) } });
+        showNotice('ok', `The ${ctx.side} value now matches the other panel. Ctrl+Z in that panel undoes it.`, { key: 'ctx-rule' });
       }
 
       function ignoreKeyFromMenu(key) {
@@ -7493,166 +7506,306 @@
         });
       }
 
-      /** The menu for one resolved line: [{label, run, disabled, hint} | '-']. */
-      function contextActions(ctx) {
+      /**
+       * The menu for a right-click: [{label, icon, run, hint, disabled, items} | '-'].
+       * `ctx` is null on a line with no key or value (blank, closing bracket).
+       * Only what applies is listed; less common choices sit in submenus.
+       */
+      function contextActions(ctx, view, lineText) {
         const J = window.JSONContext;
         const short = (v) => {
           const s = typeof v === 'string' ? JSON.stringify(v) : J.token(v);
-          return s.length > 26 ? s.slice(0, 25) + '…' : s;
+          return s.length > 22 ? s.slice(0, 21) + '…' : s;
         };
         const prim = (c) => !!c && c.hasValue && (c.value === null || typeof c.value !== 'object');
-        const o = ctx.other;
-        const left = ctx.side === 'left' ? ctx : o, right = ctx.side === 'left' ? o : ctx;
         const asText = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, currentIndent()));
         const items = [];
+        const sep = () => { if (items.length && items[items.length - 1] !== '-') items.push('-'); };
+        const sel = view.state.selection.main;
+        const selected = sel.empty ? '' : view.state.sliceDoc(sel.from, sel.to);
 
-        if (prim(ctx) && prim(o) && ctx.value !== o.value) {
+        if (ctx) {
+          const o = ctx.other;
+          const left = ctx.side === 'left' ? ctx : o, right = ctx.side === 'left' ? o : ctx;
+          const differs = prim(ctx) && prim(o) && ctx.value !== o.value;
           const canon = equivActive();
-          if (canon && canon(ctx.value) === canon(o.value)) {
-            items.push({ label: 'Equal by a rule already', disabled: true });
-          } else {
-            items.push({
-              label: `Treat ${short(left.value)} and ${short(right.value)} as equal`,
-              hint: 'Adds an equivalence rule. It applies to these two values wherever they appear.',
-              run: () => treatAsEqual(left.value, right.value)
-            });
-          }
-        }
-        if (ctx.key !== undefined && ctx.key && ctx.key[0] !== '/') {
-          if (ignorePatterns.indexOf(ctx.key) !== -1) {
-            items.push({ label: `Stop ignoring “${ctx.key}”`, run: () => removeIgnorePattern(ctx.key) });
-          } else {
-            items.push({
-              label: `Ignore the key “${ctx.key}” everywhere`,
-              hint: 'Every property with this name is left out of the comparison, at any depth.',
-              run: () => ignoreKeyFromMenu(ctx.key)
-            });
-          }
-        }
-        if (items.length) items.push('-');
+          const already = differs && canon && canon(ctx.value) === canon(o.value);
 
-        if (ctx.hasValue) items.push({ label: 'Copy value', run: () => copyFromMenu(asText(ctx.value), 'Value') });
-        if (o && o.hasValue && ctx.hasValue && ctx.text !== undefined && JSON.stringify(left.value) !== JSON.stringify(right.value)) {
-          items.push({
-            label: 'Copy both values',
-            run: () => copyFromMenu('Left:  ' + asText(left.value) + '\nRight: ' + asText(right.value), 'Both values')
-          });
+          // -- rules ---------------------------------------------------------
+          if (already) {
+            items.push({ label: 'These values are equal by a rule', icon: 'equal', disabled: true });
+          } else if (differs) {
+            items.push({
+              label: `Treat ${short(left.value)} and ${short(right.value)} as equal`, icon: 'equal',
+              hint: 'Adds an equivalence rule. It applies to these two values wherever they appear.',
+              run: () => treatAsEqual([left.value, right.value])
+            });
+          }
+          if (prim(ctx) && ctx.paired && !already) {
+            const vals = differs ? [left.value, right.value] : [ctx.value];
+            items.push({
+              label: differs ? 'Add both to a group' : `Add ${short(ctx.value)} to a group`,
+              hint: 'Values in the same group count as equal.',
+              items: equivCfg.groups.map((g) => ({
+                label: g.name + (g.on ? '' : ' (off — turns on)'),
+                hint: g.values.join(', '),
+                run: () => treatAsEqual(vals, g)
+              })).concat(differs ? ['-', { label: 'New group', run: () => treatAsEqual(vals, 'new') }] : [])
+            });
+          }
+          if (ctx.key !== undefined && ctx.key && ctx.key[0] !== '/') {
+            if (ignorePatterns.indexOf(ctx.key) !== -1) {
+              items.push({ label: `Stop ignoring “${ctx.key}”`, icon: 'eye-off', run: () => removeIgnorePattern(ctx.key) });
+            } else {
+              items.push({
+                label: `Ignore the key “${ctx.key}” everywhere`, icon: 'eye-off',
+                hint: 'Every property with this name is left out of the comparison, at any depth.',
+                run: () => ignoreKeyFromMenu(ctx.key)
+              });
+            }
+          }
+          // An edit, so only where the panes ARE the document (not a page of
+          // it, not a normalized view).
+          if (differs && !_ignorePristine && !(diffStats && diffStats.truncated)) {
+            sep();
+            items.push({
+              label: `Use the ${ctx.side === 'left' ? 'right' : 'left'} value here (${short(o.value)})`,
+              hint: 'Changes this panel’s text. Ctrl+Z undoes it.',
+              run: () => useOtherValue(ctx)
+            });
+          }
+
+          // -- copy ----------------------------------------------------------
+          sep();
+          if (selected) items.push({ label: 'Copy selection', icon: 'copy', run: () => copyFromMenu(selected, 'Selection') });
+          else if (ctx.hasValue) items.push({ label: 'Copy value', icon: 'copy', run: () => copyFromMenu(asText(ctx.value), 'Value') });
+          const more = [];
+          if (selected && ctx.hasValue) more.push({ label: 'Value', run: () => copyFromMenu(asText(ctx.value), 'Value') });
+          if (o && o.hasValue && ctx.hasValue && JSON.stringify(left.value) !== JSON.stringify(right.value)) {
+            more.push({
+              label: 'Both values',
+              run: () => copyFromMenu('Left:  ' + asText(left.value) + '\nRight: ' + asText(right.value), 'Both values')
+            });
+          }
+          if (ctx.key !== undefined && ctx.hasValue) more.push({ label: 'Property', hint: ctx.text, run: () => copyFromMenu(ctx.text, 'Property') });
+          if (ctx.key !== undefined) more.push({ label: 'Key name', run: () => copyFromMenu(ctx.key, 'Key') });
+          if (ctx.path) more.push({ label: 'Path', hint: ctx.path, run: () => copyFromMenu(ctx.path, 'Path') });
+          if (more.length) items.push({ label: selected || ctx.hasValue ? 'Copy other' : 'Copy', icon: selected || ctx.hasValue ? '' : 'copy', items: more });
+
+          // -- find ----------------------------------------------------------
+          sep();
+          if (ctx.key !== undefined && !docIsBlank(mergeView.a.state.doc) && !docIsBlank(mergeView.b.state.doc)) {
+            items.push({
+              label: `Find “${short(ctx.key).replace(/^"|"$/g, '')}” in the Keys table`, icon: 'table',
+              hint: 'Every place this key appears, with both sides’ values.',
+              run: () => {
+                openKeyCompare();
+                const box = document.getElementById('kc-search');
+                if (box) { box.value = ctx.key; box.dispatchEvent(new Event('input', { bubbles: true })); }
+              }
+            });
+          }
+          if (ctx.paired) items.push({ label: 'Show this row in both panels', icon: 'arrow-down', run: () => scrollPanesToLine(ctx.line) });
+        } else {
+          if (selected) items.push({ label: 'Copy selection', icon: 'copy', run: () => copyFromMenu(selected, 'Selection') });
+          else if (lineText.trim()) items.push({ label: 'Copy line', icon: 'copy', run: () => copyFromMenu(lineText.trim(), 'Line') });
         }
-        if (ctx.key !== undefined && ctx.hasValue) items.push({ label: 'Copy property', run: () => copyFromMenu(ctx.text, 'Property') });
-        if (ctx.path) items.push({ label: 'Copy path', run: () => copyFromMenu(ctx.path, 'Path') });
-        items.push('-');
-        if (ctx.paired) items.push({ label: 'Show this row in both panels', run: () => scrollPanesToLine(ctx.line) });
-        items.push({ label: 'Equivalent values…', run: openEquivModal });
-        items.push({ label: 'Ignore rules…', run: () => document.getElementById('btn-ignore').click() });
+
+        sep();
+        items.push({ label: 'Equivalent values…', icon: 'sliders', run: openEquivModal });
+        items.push({ label: 'Ignore rules…', icon: 'sliders', run: () => document.getElementById('btn-ignore').click() });
         return items;
       }
 
-      function openContextMenu(ctx, x, y) {
-        closeContextMenu();
-        closeMenus(null);
-        const view = ctx.side === 'left' ? mergeView.a : mergeView.b;
+      const CTX_ICONS = {
+        equal: '<span aria-hidden="true">≈</span>',
+        copy: '<svg class="i" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>'
+      };
+      function ctxIcon(name) {
+        return CTX_ICONS[name] || (name ? `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>` : '');
+      }
+
+      /** One menu level. Items with `items` open a submenu to the side. */
+      function buildContextMenu(items, label, onBack) {
         const menu = document.createElement('div');
         menu.className = 'ctx-menu';
         menu.setAttribute('role', 'menu');
-        menu.setAttribute('aria-label', 'Actions for this line');
+        menu.setAttribute('aria-label', label);
+        let sub = null, subTimer = 0;
+        const closeSub = () => {
+          clearTimeout(subTimer);
+          if (!sub) return;
+          sub.btn.setAttribute('aria-expanded', 'false');
+          sub.el.remove();
+          sub = null;
+        };
+        const openSub = (btn, it, focus) => {
+          if (sub && sub.btn === btn) { if (focus) sub.el.querySelector('.ctx-menu-item').focus(); return; }
+          closeSub();
+          const el = buildContextMenu(it.items, it.label, () => { closeSub(); btn.focus(); });
+          document.body.appendChild(el);
+          const r = btn.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+          let left = r.right - 2;
+          if (left + w > window.innerWidth - 8) left = r.left - w + 2;       // no room: open to the left
+          if (left < 8) left = Math.max(8, window.innerWidth - w - 8);       // nor there: over the menu
+          el.style.left = left + 'px';
+          el.style.top = Math.max(8, Math.min(r.top - 5, window.innerHeight - h - 8)) + 'px';
+          btn.setAttribute('aria-expanded', 'true');
+          sub = { btn, el };
+          if (focus) el.querySelector('.ctx-menu-item').focus();
+        };
+        menu._closeSub = closeSub;
 
-        // What the actions are about: where it is, and the pair when there is one.
-        const head = document.createElement('div');
-        head.className = 'ctx-menu-head';
-        const where = document.createElement('div');
-        where.className = 'ctx-menu-path';
-        where.textContent = ctx.path || '(root)';
-        where.title = ctx.path;
-        head.appendChild(where);
-        const o = ctx.other;
-        const show = (c) => (c.hasValue ? (typeof c.value === 'object' && c.value !== null
-          ? JSON.stringify(c.value) : JSON.stringify(c.value)) : c.opens + ' …');
-        const pair = document.createElement('div');
-        pair.className = 'ctx-menu-pair';
-        if (o) {
-          const l = ctx.side === 'left' ? ctx : o, r = ctx.side === 'left' ? o : ctx;
-          pair.textContent = 'Left ' + show(l) + '   Right ' + show(r);
-        } else if (ctx.paired) {
-          pair.textContent = 'Only in the ' + ctx.side + ' panel';
-        } else {
-          pair.textContent = 'Turn on Block Diff to pair it with the other panel';
-        }
-        head.appendChild(pair);
-        menu.appendChild(head);
-
-        const done = (fn) => () => { closeContextMenu(); fn(); };
-        for (const it of contextActions(ctx)) {
+        for (const it of items) {
           if (it === '-') {
-            const sep = document.createElement('div');
-            sep.className = 'ctx-menu-sep';
-            sep.setAttribute('role', 'separator');
-            menu.appendChild(sep);
+            const sepEl = document.createElement('div');
+            sepEl.className = 'ctx-menu-sep';
+            sepEl.setAttribute('role', 'separator');
+            menu.appendChild(sepEl);
             continue;
           }
           const b = document.createElement('button');
           b.type = 'button';
           b.className = 'ctx-menu-item';
           b.setAttribute('role', 'menuitem');
-          b.textContent = it.label;
+          b.innerHTML = `<span class="ctx-menu-icon">${ctxIcon(it.icon)}</span><span class="ctx-menu-label"></span>`;
+          b.querySelector('.ctx-menu-label').textContent = it.label;
           if (it.hint) b.title = it.hint;
-          if (it.disabled) b.disabled = true; else b.onclick = done(it.run);
+          if (it.disabled) {
+            b.setAttribute('aria-disabled', 'true');
+          } else if (it.items) {
+            b.setAttribute('aria-haspopup', 'menu');
+            b.setAttribute('aria-expanded', 'false');
+            b.insertAdjacentHTML('beforeend', '<svg class="i ctx-menu-caret" aria-hidden="true"><use href="#i-chevron-right"/></svg>');
+            b.onclick = () => openSub(b, it, true);
+            b.onmouseenter = () => { clearTimeout(subTimer); subTimer = setTimeout(() => openSub(b, it, false), 160); };
+            b._open = () => openSub(b, it, true);
+          } else {
+            b.onclick = () => { closeContextMenu(); it.run(); };
+          }
+          if (!it.items) b.onmouseenter = () => { clearTimeout(subTimer); subTimer = setTimeout(closeSub, 220); };
           menu.appendChild(b);
         }
 
         menu.addEventListener('keydown', (e) => {
-          const btns = [...menu.querySelectorAll('.ctx-menu-item:not(:disabled)')];
+          const btns = [...menu.querySelectorAll('.ctx-menu-item')];
           const at = btns.indexOf(document.activeElement);
+          const cur = btns[at];
           let to = -1;
           if (e.key === 'ArrowDown') to = (at + 1) % btns.length;
           else if (e.key === 'ArrowUp') to = (at - 1 + btns.length) % btns.length;
           else if (e.key === 'Home') to = 0;
           else if (e.key === 'End') to = btns.length - 1;
-          else if (e.key === 'Escape' || e.key === 'Tab') { closeContextMenu(); view.focus(); }
-          else return;
+          else if (e.key === 'ArrowRight' && cur && cur._open) cur._open();
+          else if ((e.key === 'ArrowLeft' || e.key === 'Escape') && onBack) onBack();
+          else if (e.key === 'Escape' || e.key === 'Tab') closeContextMenu(true);
+          else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // Type a letter to jump to the next item starting with it.
+            const k = e.key.toLowerCase();
+            for (let i = 1; i <= btns.length && to === -1; i++) {
+              const c = btns[(at + i) % btns.length];
+              if (c.textContent.trim().toLowerCase().startsWith(k)) to = (at + i) % btns.length;
+            }
+            if (to === -1) return;
+          } else return;
           e.preventDefault();
           e.stopPropagation();
-          if (to !== -1) btns[to].focus();
+          if (to !== -1) { closeSub(); btns[to].focus(); }
         });
         menu.addEventListener('contextmenu', (e) => e.preventDefault());
+        return menu;
+      }
+
+      function closeContextMenu(refocus) {
+        if (!_ctxMenu) return;
+        const view = _ctxMenu.view;
+        document.querySelectorAll('.ctx-menu').forEach((m) => { if (m._closeSub) m._closeSub(); m.remove(); });
+        _ctxMenu = null;
+        if (refocus === true && view) view.focus();
+      }
+
+      function openContextMenu(ctx, view, lineText, x, y) {
+        closeContextMenu();
+        closeMenus(null);
+        const menu = buildContextMenu(contextActions(ctx, view, lineText), 'Actions for this line');
+
+        // What the actions are about: where it is, and each side's value.
+        if (ctx) {
+          const head = document.createElement('div');
+          head.className = 'ctx-menu-head';
+          const where = document.createElement('div');
+          where.className = 'ctx-menu-path';
+          where.textContent = ctx.path || '(root)';
+          where.title = ctx.path || '';
+          head.appendChild(where);
+          const show = (c) => (c.hasValue ? JSON.stringify(c.value) : c.opens + ' …');
+          const row = (side, text) => {
+            const d = document.createElement('div');
+            d.className = 'ctx-menu-side';
+            d.dataset.side = side;
+            const tag = document.createElement('span');
+            tag.className = 'ctx-menu-tag';
+            tag.textContent = side === 'left' ? 'Left' : 'Right';
+            const val = document.createElement('span');
+            val.className = 'ctx-menu-val';
+            val.textContent = text;
+            val.title = text;
+            d.append(tag, val);
+            head.appendChild(d);
+          };
+          const o = ctx.other, otherSide = ctx.side === 'left' ? 'right' : 'left';
+          const mine = [ctx.side, show(ctx)];
+          const theirs = [otherSide, o ? show(o) : ctx.paired ? 'not present' : 'not paired — turn on Block Diff'];
+          for (const r of (ctx.side === 'left' ? [mine, theirs] : [theirs, mine])) row(r[0], r[1]);
+          menu.prepend(head);
+        }
 
         document.body.appendChild(menu);
         const w = menu.offsetWidth, h = menu.offsetHeight;
         menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
-        menu.style.top = Math.max(8, y + h > window.innerHeight - 8 ? y - h : y) + 'px';
+        menu.style.top = Math.max(8, y + h > window.innerHeight - 8 ? Math.min(y - h, window.innerHeight - h - 8) : y) + 'px';
+        menu.view = view;
         _ctxMenu = menu;
-        const first = menu.querySelector('.ctx-menu-item:not(:disabled)');
+        const first = menu.querySelector('.ctx-menu-item:not([aria-disabled])') || menu.querySelector('.ctx-menu-item');
         if (first) first.focus({ preventScroll: true });
       }
 
       function initializeContextMenu() {
+        // Capture phase, and always ours inside a panel: the browser's menu has
+        // nothing useful for a comparison and used to appear instead of this
+        // one on blank lines, selections and the gutters. Shift+right-click
+        // still gives the browser's.
         document.addEventListener('contextmenu', (e) => {
-          if (_ctxMenu && _ctxMenu.contains(e.target)) return;
+          if (e.target.closest && e.target.closest('.ctx-menu')) { e.preventDefault(); return; }
           closeContextMenu();
           if (e.shiftKey || !mergeView) return;
           const side = mergeView.a.dom.contains(e.target) ? 'left' : mergeView.b.dom.contains(e.target) ? 'right' : null;
           if (!side) return;
+          e.preventDefault();
           const view = side === 'left' ? mergeView.a : mergeView.b;
-          if (!view.contentDOM.contains(e.target) || !view.state.selection.main.empty) return;
-          // From the keyboard (Menu key, Shift+F10 is the browser's) it is about the caret's line.
-          let x = e.clientX, y = e.clientY;
-          let pos = e.button === 2 ? view.posAtCoords({ x, y }) : null;
+          // From the keyboard (Menu key) it is about the caret's line. A click
+          // in the gutter is about that row.
+          let x = e.clientX, y = e.clientY, pos = null;
+          if (e.button === 2) {
+            const c = view.contentDOM.getBoundingClientRect();
+            pos = view.posAtCoords({ x: Math.max(x, c.left + 2), y }, false);
+          }
           if (pos == null) {
             pos = view.state.selection.main.head;
             const c = view.coordsAtPos(pos);
-            if (!c) return;
-            x = c.left; y = c.bottom;
+            if (c) { x = c.left; y = c.bottom; }
           }
-          const ctx = resolveLineContext(side, view.state.doc.lineAt(pos).number);
-          if (!ctx) return;
-          e.preventDefault();
-          openContextMenu(ctx, x, y);
-        });
-        document.addEventListener('mousedown', (e) => {
-          if (_ctxMenu && !_ctxMenu.contains(e.target)) closeContextMenu();
+          const line = view.state.doc.lineAt(pos);
+          openContextMenu(resolveLineContext(side, line.number), view, line.text, x, y);
         }, true);
-        window.addEventListener('scroll', closeContextMenu, true);
-        window.addEventListener('resize', closeContextMenu);
-        window.addEventListener('blur', closeContextMenu);
+        document.addEventListener('mousedown', (e) => {
+          if (_ctxMenu && !(e.target.closest && e.target.closest('.ctx-menu'))) closeContextMenu();
+        }, true);
+        window.addEventListener('scroll', (e) => {
+          if (_ctxMenu && !(e.target.closest && e.target.closest('.ctx-menu'))) closeContextMenu();
+        }, true);
+        window.addEventListener('resize', () => closeContextMenu());
+        window.addEventListener('blur', () => closeContextMenu());
       }
 
       // ---- Import: Replace or Merge ---------------------------------------
