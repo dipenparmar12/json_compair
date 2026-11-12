@@ -3910,3 +3910,6 @@ button:disabled,
     .equiv-verdict { justify-self: start; }
     .equiv-modal .repair-hint { display: none; }
 }
+
+/* More ▾ → Reset everything: destructive, so it reads differently on hover. */
+.dropdown-item-danger:hover { color: var(--diff-del-strong); border-color: currentColor; }

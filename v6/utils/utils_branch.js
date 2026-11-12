@@ -623,6 +623,19 @@
     },
 
     /**
+     * Remove every branch and its content, then recreate the two empty
+     * per-panel defaults — the state of a first visit.
+     * @returns {Promise<void>}
+     */
+    async resetAll() {
+      for (const id of Object.keys(loadBranchIndex())) await deleteBranchFromIDB(id);
+      // Content can outlive its index entry; clear whatever is still stored.
+      for (const b of await getAllBranchesFromIDB()) await deleteBranchFromIDB(b.id);
+      saveBranchIndex({});
+      await this.init();
+    },
+
+    /**
      * Get branch count
      * @returns {number}
      */

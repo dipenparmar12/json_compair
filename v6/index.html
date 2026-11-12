@@ -481,7 +481,7 @@
         </div>
 
         <div class="intro-right">
-          <button id="btn-clear-all" class="btn btn-ghost btn-quiet-danger" style="display: none" title="Empty both panels">
+          <button id="btn-clear-all" class="btn btn-ghost btn-quiet-danger" style="display: none" title="Empty both panels. Branches, tabs and titles are kept.">
             <svg class="i"><use href="#i-trash"/></svg><span class="btn-label">Clear all</span>
           </button>
           <!-- More: files, sharing, examples, theme and help — everything that
@@ -498,6 +498,7 @@
               <button id="btn-open-file" class="dropdown-item"><svg class="i"><use href="#i-folder"/></svg>Open file(s)… <span class="dropdown-hint">1 or 2</span></button>
               <button id="btn-import" class="dropdown-item"><svg class="i"><use href="#i-import"/></svg>Import snapshot</button>
               <button id="btn-share" class="dropdown-item"><svg class="i"><use href="#i-share"/></svg>Export / Share</button>
+              <button id="btn-reset-all" class="dropdown-item dropdown-item-danger" title="Remove all content, branches, tabs and titles. Settings are kept."><svg class="i"><use href="#i-trash"/></svg>Reset everything…</button>
               <input type="file" id="file-open" multiple
                      accept=".json,.csv,.tsv,.txt,.ndjson,.log,.md,application/json,text/csv,text/plain"
                      style="display: none" />
@@ -6218,6 +6219,7 @@
         initializeFileOpen();
 
         btnShare.onclick = shareURL;
+        document.getElementById("btn-reset-all").onclick = resetEverything;
         
         // Import snapshot
         btnImport.onclick = () => fileImport.click();
@@ -8232,7 +8234,41 @@
 
       // Clear all content
       async function clearAll() {
-        if (!confirm("Clear all content?")) return;
+        if (!confirm("Clear the content of both panels?\n\nBranches, tabs and titles are kept.")) return;
+        await clearPanels();
+      }
+
+      /**
+       * Back to a first visit's workspace: empty panels, only the two default
+       * branches, no titles, nothing saved to restore. Settings are preferences,
+       * not workspace content, and stay.
+       */
+      async function resetEverything() {
+        closeMenus();
+        const extra = Math.max(0, window.BranchManager.count() - 2);
+        const ok = await confirmPopover(null, {
+          title: 'Reset entire workspace?',
+          message: 'This permanently clears both panels, '
+            + (extra ? `all ${extra + 2} branches` : 'both branches')
+            + ', tab names, titles and the saved comparison. Settings are kept. This cannot be undone.',
+          confirmLabel: 'Reset everything',
+          danger: true
+        });
+        if (!ok) return;
+        await clearPanels();
+        try {
+          await window.BranchManager.resetAll();
+          URLManager.clearURL();
+          SettingsManager.set('leftBranch', 'main-left');
+          SettingsManager.set('rightBranch', 'main-right');
+          await syncActiveBranches();
+          showNotice('ok', 'Workspace reset. Panels, branches and tabs are back to their defaults.');
+        } catch (err) {
+          showNotice('error', 'Could not reset the workspace: ' + (err && err.message ? err.message : err));
+        }
+      }
+
+      async function clearPanels() {
 
         // Stop anything still running first, or an in-flight ingest would write
         // its panes over the freshly-cleared editors a moment later.

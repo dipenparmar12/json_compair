@@ -274,6 +274,7 @@ window.BranchManager
   .createBranch()
   .renameBranch()
   .deleteBranch()       // refuses main-left / main-right
+  .resetAll()           // every branch + title gone, the two empty mains recreated
   .isMainBranch(id)
   .defaultName(id)      // 'Left' | 'Right' | 'Untitled' — what an emptied title falls back to
 
@@ -900,7 +901,11 @@ end of `app.css`):
   for nested keys) that value-sorts the **top-level array of objects in both panes** (ideal for
   aligning two arrays before diffing); empty spec falls back to "Sort keys A→Z". Pure logic in
   `utils.js` (`parseSortSpec` / `sortJSONByFields`); UI in `initializeSortPanel()` + `sortByFields()`.
-- Clear all (row 1, right)
+- Clear all (row 1, right) — empties both panels; branches, tabs and titles stay.
+- **More ▾ → Reset everything…** (`resetEverything`) — the whole workspace: asks first, then
+  empties the panels (`clearPanels`, shared with Clear all), removes every branch and title
+  (`BranchManager.resetAll()` → only empty `main-left` / `main-right`), clears the saved
+  comparison and the `?c=` link. Settings are kept. A reload then shows the first-visit demo.
 - Settings panel toggle (sliders icon)
 - More ▾ — Open file(s), Import snapshot, Export / Share, Examples, Theme, Help
 
@@ -1094,6 +1099,7 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     panel instead — the card goes, a notice offers **Restore it**. A small pair reloads with
     no card
 33. Ignore ▾ → Edit rules… → switch on: `[{"a":"NaN","s":1}]` vs `[{"a":null,"s":2}]` — only `s` is marked, the left pane still says `"NaN"`; untick the group — `a` is marked again
+34. Add two tabs and a title, then More ▾ → Reset everything… → Cancel changes nothing; confirm leaves two empty panels with only "Left" / "Right"; a reload brings none of it back and the theme is unchanged
 
 ## Common Tasks
 
