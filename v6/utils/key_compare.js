@@ -113,6 +113,7 @@
    * @param {object} [opts]
    *   ignore(key, aVal, bVal) → bool   key/pattern exclusion (DiffIgnore predicate)
    *   numTol                           max |a-b| treated as equal, or null
+   *   equiv(value) → string            canonical form (ValueEquiv.make), or null
    *   matchArray(a, b, tol) → {pairs}  element pairing (JSONAlign.matchArray)
    *   maxRows
    * @returns {{rows: object[], totals: object, rootArray: boolean, truncated: boolean}}
@@ -120,12 +121,15 @@
    *     status  'equal' | 'changed' | 'leftOnly' | 'rightOnly' | 'ignored'
    *     col     path with every array index replaced by [*] — the "column"
    *     li/ri   index of the top-level record the row belongs to (root arrays)
-   *     note    'type' (value changed type) | 'tolerance' (equal within numTol)
+   *     note    'type' (value changed type) | 'tolerance' (equal within numTol) | 'equivalent' (equal by a value rule)
    */
   function compare(left, right, opts) {
     opts = opts || {};
     var ignore = typeof opts.ignore === 'function' ? opts.ignore : null;
     var tol = (typeof opts.numTol === 'number' && isFinite(opts.numTol) && opts.numTol > 0) ? opts.numTol : null;
+    // Value-equivalence rules (ValueEquiv.make): "NaN" ~ null counts as equal.
+    var canon = typeof opts.equiv === 'function' ? opts.equiv : null;
+    var cmp = canon ? { tol: tol, canon: canon } : tol;   // what JSONAlign.matchArray takes
     var match = typeof opts.matchArray === 'function' ? opts.matchArray : positionalPairs;
     var maxRows = opts.maxRows || MAX_ROWS;
     var rows = [];
@@ -163,7 +167,7 @@
       if (Array.isArray(x) && Array.isArray(y)) {
         if (!x.length && !y.length) { emit(path, col, 'equal', x, y, li, ri); return; }
         var top = path === '' && rootArray;
-        var pairs = match(x, y, tol).pairs;
+        var pairs = match(x, y, cmp).pairs;
         for (var q = 0; q < pairs.length && !truncated; q++) {
           var i2 = pairs[q][0], j2 = pairs[q][1];
           var at = i2 !== null ? i2 : j2;
@@ -173,6 +177,11 @@
           else if (i2 !== null) emit(p2, c2, 'leftOnly', x[i2], undefined, rli, rri);
           else emit(p2, c2, 'rightOnly', undefined, y[j2], rli, rri);
         }
+        return;
+      }
+      var prim = function (v) { return v === null || typeof v !== 'object'; };
+      if (canon && x !== y && prim(x) && prim(y) && canon(x) === canon(y)) {
+        emit(path, col, 'equal', x, y, li, ri, 'equivalent');
         return;
       }
       var kind = equalKind(x, y, tol);

@@ -61,6 +61,7 @@
     <script defer src="./utils/viewport_diff.js"></script>
     <script defer src="./utils/progress.js"></script>
     <script defer src="./utils/json_align.js"></script>
+  <script defer src="./utils/value_equiv.js"></script>   <!-- "NaN" ~ null rules -->
     <script defer src="./utils/key_compare.js"></script>
     <script defer src="./utils/diff_view.js"></script>
     <script defer src="./utils/diff_ignore.js"></script>
@@ -463,6 +464,46 @@
                 <input type="number" id="numtol-value" class="settings-input-num"
                        value="0.001" min="0" step="0.001" inputmode="decimal" />
               </label>
+
+              <div class="settings-section-title settings-section-divided">Equivalent values</div>
+              <div class="ignore-desc">
+                Count different ways of writing the same value as equal — for example
+                <code>"NaN"</code> and <code>null</code> from two pipelines. Each panel
+                keeps showing its own value; the pair is just not marked or counted.
+                Groups: values separated by commas, <code>""</code> for an empty string.
+                Needs Block Diff (Settings).
+              </div>
+              <label class="setting-row">
+                <input type="checkbox" id="equiv-enabled" />
+                <div class="setting-text">
+                  <div class="setting-title">Treat specific values as equivalent</div>
+                  <div class="setting-desc">Off = exact comparison. The groups and rules below apply only while this is on.</div>
+                </div>
+              </label>
+              <div id="equiv-body" class="equiv-body">
+                <ul id="equiv-groups" class="equiv-groups" aria-label="Equivalence groups"></ul>
+                <button type="button" id="equiv-add-group" class="btn">+ Add group</button>
+                <label class="setting-row"><input type="checkbox" data-equiv="trim" />
+                  <div class="setting-text"><div class="setting-title">Ignore surrounding whitespace</div>
+                  <div class="setting-desc">" active " equals "active".</div></div></label>
+                <label class="setting-row"><input type="checkbox" data-equiv="ignoreCase" />
+                  <div class="setting-text"><div class="setting-title">Ignore text case</div>
+                  <div class="setting-desc">"Active" equals "active".</div></div></label>
+                <label class="setting-row"><input type="checkbox" data-equiv="na" />
+                  <div class="setting-text"><div class="setting-title">Missing values are equal</div>
+                  <div class="setting-desc">null, "" and the words listed below all mean "missing".</div></div></label>
+                <input type="text" id="equiv-na-values" class="ignore-input" aria-label="Missing-value words, comma separated" />
+                <label class="setting-row"><input type="checkbox" data-equiv="numeric" />
+                  <div class="setting-text"><div class="setting-title">Numbers written as text</div>
+                  <div class="setting-desc">"100", "100.00" and 100 are equal — exact decimals, no rounding. Also applies to ID-like text such as "01234".</div></div></label>
+                <label class="setting-row"><input type="checkbox" data-equiv="booleans" />
+                  <div class="setting-text"><div class="setting-title">Yes / no words</div>
+                  <div class="setting-desc">true, "true", "yes" are equal; so are false, "false", "no". Any case.</div></div></label>
+                <label class="setting-row"><input type="checkbox" data-equiv="dates" />
+                  <div class="setting-text"><div class="setting-title">Dates</div>
+                  <div class="setting-desc">ISO dates and times (2026-01-01, 2026-01-01T00:00:00Z) and MM/DD/YYYY compare by the date they mean.</div></div></label>
+                <button type="button" id="equiv-reset" class="btn">Reset to defaults</button>
+              </div>
             </div>
           </div>
         </div>
@@ -885,6 +926,31 @@
                 isFinite(numTolValue) && numTolValue > 0) ? numTolValue : null;
       }
 
+      // Value equivalence ("NaN" ~ null, "100" ~ 100 …): utils/value_equiv.js.
+      // Not a normalization — panes keep their own values; json_align counts
+      // such values equal (eqKind kind 3) and rowAlignedDiff leaves their rows
+      // unmarked. Needs Block Diff (row-aligned output).
+      let equivCfg = null;        // the stored `valueEquiv` setting
+      let equivCanonFn = null;    // ValueEquiv.make(equivCfg), or null when no rule is on
+      function loadEquivSettings() {
+        const d = window.ValueEquiv.DEFAULTS, s = SettingsManager.get('valueEquiv');
+        equivCfg = Object.assign({}, d, s && typeof s === 'object' ? s : {});
+        if (!Array.isArray(equivCfg.groups)) equivCfg.groups = d.groups;
+        equivCanonFn = window.ValueEquiv.make(equivCfg);
+      }
+      function equivActive() { return blockDiffEnabled() ? equivCanonFn : null; }
+      function applyValueEquiv() {
+        SettingsManager.set('valueEquiv', equivCfg);
+        equivCanonFn = window.ValueEquiv.make(equivCfg);
+        renderIgnoreList();
+        _lastAlignMemo = null;
+        if (transformActive()) applyBlockAlignment();
+        // The panes' text does not change with the rules, so CM6 would keep the
+        // old chunks: re-diff explicitly.
+        forceRediff();
+        updateDiffStatus();
+      }
+
       // Show JSON stored as text (a stringified object, a Python dict repr) as
       // structure. Display only — see json_align `expand` and
       // applyTransformResult, which keeps the original text for saving.
@@ -1133,6 +1199,8 @@
         numTolValue = (isFinite(t) && t > 0) ? t : 0.001;
         expandEmbeddedOn = SettingsManager.get('expandEmbedded') !== false;
 
+        loadEquivSettings();
+
         wordWrapEnabled = SettingsManager.get('wordWrap') !== false;
         scrollLocked = SettingsManager.get('scrollLock') !== false;
         currentTheme = SettingsManager.get('theme') || 'default';
@@ -1227,8 +1295,11 @@
         });
         if (empty) empty.style.display = ignorePatterns.length ? 'none' : 'block';
         if (badge) {
-          badge.textContent = String(ignorePatterns.length);
-          badge.style.display = ignorePatterns.length ? 'inline-flex' : 'none';
+          // "≈" = only value rules are on; they hide differences too, so say so.
+          const eq = !!equivActive();
+          badge.textContent = ignorePatterns.length ? String(ignorePatterns.length) : '≈';
+          badge.style.display = ignorePatterns.length || eq ? 'inline-flex' : 'none';
+          badge.title = eq ? 'Value rules are on: equivalent values are not marked' : '';
         }
       }
 
@@ -1344,7 +1415,61 @@
           });
         }
 
+        initializeEquivPanel();
         renderIgnoreList();
+      }
+
+      // "Equivalent values" section of the Ignore panel. Every control writes
+      // equivCfg and calls applyValueEquiv(); text inputs apply on 'change'.
+      function renderEquivPanel() {
+        const on = document.getElementById('equiv-enabled');
+        if (!on || !equivCfg) return;
+        on.checked = !!equivCfg.enabled;
+        document.getElementById('equiv-body').classList.toggle('is-off', !equivCfg.enabled);
+        document.querySelectorAll('[data-equiv]').forEach((c) => { c.checked = !!equivCfg[c.dataset.equiv]; });
+        document.getElementById('equiv-na-values').value = (equivCfg.naValues || []).join(', ');
+        const list = document.getElementById('equiv-groups');
+        list.innerHTML = '';
+        equivCfg.groups.forEach((g, i) => {
+          const li = document.createElement('li');
+          li.className = 'equiv-group';
+          li.innerHTML = '<input type="checkbox"><input type="text" class="ignore-input equiv-name">' +
+            '<input type="text" class="ignore-input equiv-values"><button type="button" class="ignore-remove">×</button>';
+          const [chk, name, vals, del] = li.children;
+          chk.checked = !!g.on; chk.setAttribute('aria-label', 'Use group ' + (g.name || i + 1));
+          name.value = g.name || ''; name.placeholder = 'Group name'; name.setAttribute('aria-label', 'Group name');
+          vals.value = (g.values || []).join(', '); vals.placeholder = 'NaN, null, None';
+          vals.setAttribute('aria-label', 'Values in ' + (g.name || 'this group') + ', comma separated');
+          del.setAttribute('aria-label', 'Remove group ' + (g.name || i + 1));
+          chk.addEventListener('change', () => { g.on = chk.checked; applyValueEquiv(); });
+          name.addEventListener('change', () => { g.name = name.value.trim(); applyValueEquiv(); });
+          vals.addEventListener('change', () => { g.values = splitList(vals.value); applyValueEquiv(); });
+          del.addEventListener('click', () => { equivCfg.groups.splice(i, 1); applyValueEquiv(); renderEquivPanel(); });
+          list.appendChild(li);
+        });
+      }
+      function splitList(s) { return s.split(',').map((t) => t.trim()).filter((t) => t !== ''); }
+      function initializeEquivPanel() {
+        const on = document.getElementById('equiv-enabled');
+        if (!on) return;
+        on.addEventListener('change', () => { equivCfg.enabled = on.checked; applyValueEquiv(); renderEquivPanel(); });
+        document.querySelectorAll('[data-equiv]').forEach((c) => c.addEventListener('change', () => {
+          equivCfg[c.dataset.equiv] = c.checked; applyValueEquiv();
+        }));
+        document.getElementById('equiv-na-values').addEventListener('change', (e) => {
+          equivCfg.naValues = splitList(e.target.value); applyValueEquiv();
+        });
+        document.getElementById('equiv-add-group').addEventListener('click', () => {
+          equivCfg.groups.push({ name: '', values: [], on: true });
+          renderEquivPanel();
+          const names = document.querySelectorAll('#equiv-groups .equiv-name');
+          if (names.length) names[names.length - 1].focus();
+        });
+        document.getElementById('equiv-reset').addEventListener('click', () => {
+          equivCfg = JSON.parse(JSON.stringify(Object.assign({}, window.ValueEquiv.DEFAULTS, { enabled: equivCfg.enabled })));
+          applyValueEquiv(); renderEquivPanel();
+        });
+        renderEquivPanel();
       }
 
       // Define theme extensions
@@ -2468,6 +2593,8 @@
         }
         expandEmbeddedOn = SettingsManager.get('expandEmbedded') !== false;
 
+        loadEquivSettings();
+
         const mergeSettings = loadMergeSettings();
 
         // Create merge view container
@@ -3386,6 +3513,14 @@
             // Both sides have this row and it differs: character diff of just
             // this row, so "10" -> "12" highlights the digits, not the line.
             flushGap();
+            // Equal under the user's value rules ("NaN" vs null): unchanged, and
+            // each pane still shows its own value.
+            if (equivCanonFn && window.ValueEquiv.rowsEquivalent(
+                  a.substring(pa, endA), b.substring(pb, endB), equivCanonFn)) {
+              if (ea === -1 || eb === -1) break;
+              pa = ea + 1; pb = eb + 1;
+              continue;
+            }
             const inner = cmDiff(a.substring(pa, endA), b.substring(pb, endB), { scanLimit: 2000 });
             for (const c of inner) out.push(new Change(c.fromA + pa, c.toA + pa, c.fromB + pb, c.toB + pb));
           }
@@ -3973,12 +4108,12 @@
             if (block) {
               // prepare() parses + matches + models once; the handle is kept so
               // paging only has to re-render (see gotoRecordPage).
-              const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol, expand });
+              const h = window.JSONAlign.prepare(L, R, { ignore: pred, numTol: tol, equiv: equivActive(), expand });
               if (h && h.ok) {
                 _alignHandle = h;
                 res = renderWindow(h);
               } else {
-                res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol, expand });
+                res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol, equiv: equivActive(), expand });
               }
             } else {
               res = window.JSONAlign.normalize(L, R, pred, tol, expand);
@@ -4011,7 +4146,7 @@
 
         let res = null;
         const h = await window.JSONAlign.prepareAsync(
-          L, R, { ignore: pred, numTol: tol, expand: expandActive() }, jobControl(job));
+          L, R, { ignore: pred, numTol: tol, equiv: equivActive(), expand: expandActive() }, jobControl(job));
 
         if (h && h.ok) {
           _alignHandle = h;
@@ -4025,7 +4160,7 @@
           // Not an array/collection pair (a plain object, say): the whole-value
           // alignment is not divisible, but it is also not the case that scales.
           try {
-            res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol, expand: expandActive() });
+            res = window.JSONAlign.align(L, R, { ignore: pred, numTol: tol, equiv: equivActive(), expand: expandActive() });
           } catch (e) { res = null; }
         }
         const out = applyTransformResult(res, L, R, block, pred, tol);
@@ -8657,7 +8792,7 @@
         const exp = expandActive();
         const k = kcState.key;
         if (kcState.result && k && k.left === pair.left && k.right === pair.right &&
-            k.gen === _ignoreGen && k.tol === tol && k.exp === exp) return;
+            k.gen === _ignoreGen && k.tol === tol && k.exp === exp && k.eq === equivActive()) return;
 
         let L, R;
         try { L = JSON.parse(pair.left); }
@@ -8673,7 +8808,7 @@
 
         const t0 = performance.now();
         const res = window.KeyCompare.compare(L, R, {
-          ignore: ignorePredicate, numTol: tol, matchArray: window.JSONAlign.matchArray
+          ignore: ignorePredicate, numTol: tol, equiv: equivActive(), matchArray: window.JSONAlign.matchArray
         });
         kcState.result = res;
         kcState.cols = window.KeyCompare.columns(res);
@@ -8682,7 +8817,7 @@
           rows: window.KeyCompare.counts(res.rows, false)
         };
         kcState.records = res.rootArray ? { left: L.length, right: R.length } : null;
-        kcState.key = { left: pair.left, right: pair.right, gen: _ignoreGen, tol, exp };
+        kcState.key = { left: pair.left, right: pair.right, gen: _ignoreGen, tol, exp, eq: equivActive() };
         kcState.ms = performance.now() - t0;
         kcState.drawn = null;
       }
@@ -8757,6 +8892,7 @@
         const foot = [`Values are compared after parsing — whitespace, indentation and key order never count.`];
         if (ignorePatterns.length) foot.push(`Ignoring ${ignorePatterns.map(p => `<code>${escapeHtml(p)}</code>`).join(', ')}.`);
         if (numToleranceActive() != null) foot.push(`Numbers within ±${numToleranceActive()} count as equal.`);
+        if (equivActive()) foot.push('Value rules are on (Ignore ▾ → Equivalent values).');
         if (kcState.result.truncated) foot.push('<strong>Stopped at 2,000,000 rows</strong> — narrow the documents to see the rest.');
         foot.push('Click a row to show it in the editors.');
         document.getElementById('kc-foot').innerHTML = foot.join(' ');

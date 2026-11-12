@@ -262,27 +262,34 @@
   // Kind 2 matters because emitting one side's value on both is then a real
   // normalization — the caller flips ctx.changed and snapshots the originals
   // (just like the ignore path) so storage/export keep the true values.
+  //   3 = equal ONLY because a value-equivalence rule matched ("NaN" ~ null).
+  //       NOT normalized: each side keeps its own value on screen, and the row
+  //       diff in index.html treats such rows as unchanged (ValueEquiv.rowsEquivalent).
+  // `tol` is a number, or {tol, canon} when equivalence rules are on (cmpOf).
   function eqKind(a, b, tol) {
     if (a === b) return 1;
+    var num = tol, canon = null;
+    if (tol && typeof tol === 'object') { num = tol.tol; canon = tol.canon; }
     var ta = typeof a, tb = typeof b;
-    if (ta === 'number' && tb === 'number') {
-      if (tol != null && isFinite(a) && isFinite(b) && Math.abs(a - b) <= tol) return 2;
-      return 0; // a === b already ruled out above
+    if (ta === 'number' && tb === 'number' &&
+        num != null && isFinite(a) && isFinite(b) && Math.abs(a - b) <= num) return 2;
+    if (canon && (a === null || ta !== 'object') && (b === null || tb !== 'object')) {
+      return canon(a) === canon(b) ? 3 : 0;
     }
     if (ta !== tb) return 0;
     if (a === null || b === null) return 0;
-    if (ta !== 'object') return 0; // unequal primitives (string/boolean)
+    if (ta !== 'object') return 0; // unequal primitives
     var aArr = Array.isArray(a), bArr = Array.isArray(b);
     if (aArr !== bArr) return 0;
-    var viaTol = false, r, i, k, key, ak, bk;
+    var viaTol = false, viaEq = false, r, i, k, key, ak, bk;
     if (aArr) {
       if (a.length !== b.length) return 0;
       for (i = 0; i < a.length; i++) {
         r = eqKind(a[i], b[i], tol);
         if (r === 0) return 0;
-        if (r === 2) viaTol = true;
+        if (r === 2) viaTol = true; else if (r === 3) viaEq = true;
       }
-      return viaTol ? 2 : 1;
+      return viaTol ? 2 : viaEq ? 3 : 1;
     }
     ak = Object.keys(a); bk = Object.keys(b);
     if (ak.length !== bk.length) return 0;
@@ -291,9 +298,9 @@
       if (!Object.prototype.hasOwnProperty.call(b, key)) return 0;
       r = eqKind(a[key], b[key], tol);
       if (r === 0) return 0;
-      if (r === 2) viaTol = true;
+      if (r === 2) viaTol = true; else if (r === 3) viaEq = true;
     }
-    return viaTol ? 2 : 1;
+    return viaTol ? 2 : viaEq ? 3 : 1;
   }
 
   // Exact structural equality (tolerance off) — used by the ignore path's
@@ -1436,6 +1443,8 @@
       // Tolerated (kind 2) → emitting a's value on both sides is a real
       // normalization; flag it so the caller snapshots the originals.
       if (kind === 2) ctx.changed = true;
+      // Equivalent by rule: same shape, so each side's own text stays row-aligned.
+      if (kind === 3) return { A: ser(a, pad), B: ser(b, pad) };
       var same = ser(a, pad);
       return { A: same.slice(), B: same.slice() };
     }
@@ -1642,12 +1651,19 @@
     return (typeof t === 'number' && isFinite(t) && t > 0) ? t : null;
   }
 
+  // What eqKind gets: the tolerance alone, or {tol, canon} when opts.equiv
+  // (a value -> canonical-string function, utils/value_equiv.js) is given.
+  function cmpOf(t, equiv) {
+    var n = coerceTol(t);
+    return typeof equiv === 'function' ? { tol: n, canon: equiv } : n;
+  }
+
   // Normalize opts into a { ignore, changed, numTol } ctx.
   function makeCtx(opts) {
     return {
       ignore: (opts && typeof opts.ignore === 'function') ? opts.ignore : null,
       changed: false,
-      numTol: coerceTol(opts && opts.numTol),
+      numTol: cmpOf(opts && opts.numTol, opts && opts.equiv),
       // Set by makeHandle for the pretty-envelope render; null everywhere else.
       collect: null
     };
