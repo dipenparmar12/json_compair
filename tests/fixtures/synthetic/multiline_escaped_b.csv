@@ -1,0 +1,429 @@
+id,col_001_text,col_002_int,col_003_float,col_004_bool,col_005_date,col_006_cat,col_007_code,col_008_text,col_009_int
+1,"november, xray",30616,5570.5,false,2020-06-21,green,X0DR6J47,"india, tango",89460
+2," alpha tango	",91713,4332.39,false,2022-08-31,amber,X1QW6JA7,quebec xray,45576
+3,"papa, xray",56164,6663.96,false,2024-03-09,white,X1S1NVJ6," charlie juliet	",93724
+4,"""charlie hotel""",1099,7971.61,false,2022-04-28,red,X10XOWN1," tango xray	",9096
+5,india golf,3696,2257.09,false,2022-03-29,blue,X0C0JA26,"charlie, mike",2122
+6," mike lima	",55779,3776.58,false,2021-03-13,grey,X19IWQYR,"zulu
+lima",24888
+7," delta bravo	",11708,6199.72,false,2023-06-06,red,X0TD7QC2,"""lima quebec""",97926
+8," juliet kilo	",76585,7997.65,true,2021-07-09,white,X05R4DT1,"""golf uniform""",15522
+9," golf india	",96206,9007.38,false,2024-02-01,grey,X1XDDTPS," india zulu	",88806
+10,quebec bravo,49055,7249.35,false,2021-11-19,teal,X11487IO,"""zulu november""",65730
+11,"zulu
+papa",46492,5208.25,false,2021-02-15,grey,X19FO370," quebec victor	",90728
+12," mike foxtrot	",80031,9010.37,false,2020-06-06,teal,X0JNVPYP,"echo
+yankee",97104
+13,"xray
+tango",13371,5119.41,true,2025-02-26,white,X0184G8T,"oscar
+quebec",80590
+14,"papa, xray",69626,2318.82,false,2020-09-09,red,X02DBHVF,charlie delta,52125
+15," india delta	",10791,8608.19,true,2023-03-10,green,X1JSS8RF,"""delta oscar""",76788
+16,"""kilo lima""",48940,4254.14,false,2021-05-11,amber,X1JHPZMP,"romeo, lima",25229
+17,"xray
+victor",4064,5740.4,true,2021-10-31,white,X0DPDP96,"zulu, golf",17757
+18,"sierra
+whiskey",77978,7832.99,false,2021-01-29,red,X0CRSAG2,mike zulu,92996
+19,"foxtrot, papa",76398,3567.16,true,2022-03-17,white,X1PIC4PN,"charlie, xray",12938
+20,"""zulu alpha""",62499,6999.85,false,2021-03-15,grey,X1XWU06P,victor echo,61868
+21,"""romeo xray""",72264,7702.61,true,2025-03-26,amber,X0SZA0ZO," alpha zulu	",69937
+22,"alpha
+quebec",53693,8753.07,false,2022-01-16,blue,X1WDNVY9,"sierra
+sierra",61371
+23,xray foxtrot,90660,9758.21,false,2020-05-21,blue,X1GC7W75,"""hotel bravo""",98671
+24,"uniform
+sierra",24391,3929.81,false,2021-11-29,green,X0U6KEDV,"romeo, xray",10779
+25," golf kilo	",21320,9253.21,false,2021-07-04,amber,X0K47PI1,"""sierra victor""",67701
+26,quebec victor,40295,4667.46,true,2025-02-16,amber,X0MMYQT3," kilo uniform	",84620
+27," uniform yankee	",90118,4535.34,false,2023-05-30,white,X0VXSVCD,"quebec
+oscar",71747
+28,"quebec
+charlie",306,8618.89,false,2023-09-24,green,X0FR5JSB,zulu yankee,76660
+29,"whiskey
+tango",20946,9572.8,true,2022-12-22,black,X0VYBFER,victor bravo,25231
+30,"lima
+uniform",70615,4976.58,false,2020-04-01,teal,X0UE4ZJT,oscar alpha,85536
+31," delta tango	",87453,4157.38,false,2025-01-30,green,X0G8PEYS,"delta, kilo",9286
+32,sierra lima,45126,57.39,false,2024-09-24,red,X0LVITP0,quebec papa,54801
+33,"oscar, sierra",58696,217.32,false,2020-08-08,teal,X1MTDHV8,"sierra
+golf",30143
+34,india papa,8887,9741.08,true,2023-06-22,blue,X1KXXJ1G,"""juliet xray""",12832
+35,charlie lima,51215,4535.34,true,2024-09-05,green,X1K493DO,"""mike alpha""",50290
+36,"yankee, echo",52374,423.57,true,2022-12-24,green,X0CFYQ5X,whiskey kilo,47150
+37,victor kilo,43206,2078.94,false,2021-07-02,amber,X1L3OQKP,romeo delta,38554
+38,juliet mike,59516,8440.93,true,2024-11-07,black,X0EZNMI2,"romeo
+delta",42903
+39,"delta, hotel",3263,6518.76,true,2020-11-20,amber,X1FPHPWB," romeo golf	",99901
+40,juliet lima,73593,1087.49,false,2023-02-22,blue,X0KAPTXP,sierra papa,19812
+41,sierra charlie,26715,4249.61,false,2023-01-13,white,X1QEYDS1,kilo oscar,69017
+42," oscar victor	",66082,7058.33,false,2022-12-06,grey,X01FD1R6," hotel alpha	",18248
+43," yankee whiskey	",7361,1600.12,false,2025-05-04,green,X0819RHH,sierra oscar,44293
+44,"sierra, tango",6403,509.7,false,2023-04-11,green,X1SQYGM6,"lima
+bravo",46950
+45,"kilo
+yankee",79414,9297.18,true,2020-01-13,blue,X0Y44J6A,"lima, echo",68522
+46,"india, hotel",25875,8879.82,false,2025-04-29,white,X054XXMU,"""yankee golf""",64376
+47,"whiskey, victor",54919,5973.58,true,2024-06-14,grey,X0SMY62G," golf tango	",13515
+48,"whiskey, india",93604,9716.6,false,2024-12-11,grey,X14RN6XL,"""yankee lima""",10332
+49,"romeo
+sierra",65825,4803.61,false,2023-10-24,red,X1R35FT1,"victor
+xray",28971
+50,"""charlie yankee""",39365,615.74,true,2020-11-16,grey,X1YFV0IL,bravo romeo,82583
+51," yankee alpha	",47492,6982.66,false,2022-09-14,grey,X1HBH3AR,"november
+xray",60947
+52,"alpha
+sierra",62417,6716.98,false,2020-04-26,teal,X1VO74YB,juliet delta,76924
+53,"""yankee oscar""",75904,8071.38,false,2020-12-21,teal,X15OK2A6,"yankee, quebec",52101
+54,"""mike zulu""",52379,5523.47,false,2023-12-20,red,X12AMOO2,"foxtrot, alpha",99724
+55,sierra yankee,92751,5957.66,false,2024-10-21,teal,X16UQE43,kilo november,91482
+56," whiskey uniform	",36106,6567.82,true,2020-07-25,white,X0TFYEI3,echo tango,32753
+57,"november
+lima",105,1182.77,true,2022-11-11,amber,X0JCVN2T,alpha uniform,80153
+58," tango india	",88049,9299.16,true,2024-11-15,red,X0IQOB74,xray sierra,61917
+59,"kilo
+papa",32435,466.66,true,2023-11-04,white,X1746EAG,"mike
+november",92784
+60,"zulu, whiskey",89079,2014.27,true,2020-12-27,amber,X1SZOJNR," quebec tango	",71126
+61,papa mike,94116,3623.28,false,2025-01-22,white,X0QS892B,"""charlie quebec""",49034
+62,echo november,60845,3997.81,true,2021-05-16,green,X0KQ9BLJ,"""mike oscar""",54466
+63,"golf, uniform",52369,5213.85,true,2021-06-26,blue,X1LFN46I," romeo mike	",72506
+64,"""charlie oscar""",51669,5753.23,true,2021-12-04,black,X0PYHGGE,"sierra
+juliet",60465
+65," delta charlie	",39408,4810.87,false,2023-08-20,teal,X0S1RL0G,zulu alpha,64688
+66,"juliet
+papa",84229,1946.67,true,2021-02-23,green,X0SS5NXL," lima delta	",73787
+67,"sierra, sierra",82040,9469.78,true,2023-10-14,blue,X19QVHUR,"whiskey
+papa",24914
+68,"foxtrot, whiskey",65682,7948.57,true,2024-02-11,green,X0NCUE16," charlie victor	",20723
+69,"""whiskey romeo""",38274,2287.87,true,2022-10-22,green,X01BTY0W,"echo
+xray",39491
+70,"foxtrot
+tango",50239,112.27,true,2025-02-01,amber,X0GU3KX6,juliet delta,83142
+71,"""bravo whiskey""",26846,2540.86,false,2024-03-30,black,X1I26BHW,"""delta golf""",26298
+72," charlie india	",72285,2897.52,true,2020-05-19,amber,X1W9JPAP,"whiskey
+hotel",30183
+73,"whiskey, bravo",28521,9425.21,false,2024-08-24,red,X1TFINJ3,"""india kilo""",83729
+74,mike xray,99285,727.21,false,2024-12-28,white,X1BPCG02," bravo oscar	",95235
+75,"""kilo tango""",78954,1067.1,true,2022-02-01,black,X01HXBRV,"""victor charlie""",45520
+76,"""hotel bravo""",44567,6010.31,true,2025-04-18,grey,X0HLZJQB,"alpha
+mike",7548
+77,"whiskey
+bravo",23703,6907.35,true,2020-09-03,amber,X0IVS2UX," victor delta	",27156
+78,"golf
+hotel",59087,4148.85,true,2020-12-11,black,X1IL2Z7O,golf oscar,49687
+79,juliet romeo,69309,5696.93,true,2020-03-09,grey,X10W6X0J,mike bravo,39149
+80,"india, echo",94751,7668.61,true,2024-09-26,grey,X0AKSEVN,"""echo november""",82837
+81," xray sierra	",90400,8894.37,false,2022-08-29,amber,X1TL1FJ8,"victor
+november",57235
+82,"""uniform foxtrot""",94466,7229.05,true,2024-10-18,red,X0IPXQJ7,lima charlie,15890
+83," kilo foxtrot	",55096,4826.34,true,2024-06-16,amber,X1W97R1B,"""echo bravo""",35275
+84,alpha echo,55477,2746.77,true,2025-03-15,teal,X0GLYW93,"sierra
+echo",67882
+85,"kilo, zulu",38028,4380.53,false,2021-03-25,red,X11WCAA7,"quebec, alpha",67911
+86,"sierra
+kilo",54654,94.9,true,2021-06-27,red,X02QAGCB," papa bravo	",14616
+87,"""golf india""",83191,3585.06,false,2021-08-04,amber,X14GGE4Y," lima oscar	",26459
+88,oscar whiskey,50805,7742.11,false,2022-09-12,blue,X0MJZ4CK," uniform foxtrot	",95099
+89,"""hotel papa""",14792,2449.99,true,2020-06-22,green,X1H32UYP," echo oscar	",49235
+90,"kilo, tango",10173,4349.18,false,2024-07-11,blue,X1DWNJIF,"golf
+foxtrot",52498
+91,"yankee, alpha",21565,8920.96,true,2023-09-01,red,X12GV1KF,"golf, zulu",8151
+92," victor romeo	",41741,4729.2,true,2022-04-09,black,X031QFBU,"xray
+india",96093
+93,"victor, papa",99426,9610.87,true,2025-02-07,black,X1LPVF1Q,"whiskey, victor",44073
+94," november india	",85948,732.3,false,2021-10-06,amber,X0O4V3QC,"golf
+sierra",22784
+95,"""whiskey alpha""",43677,5438.39,true,2024-12-15,teal,X0NA1BW2,golf golf,28039
+96,"""bravo november""",6491,3875.52,false,2022-06-07,white,X0LCWDEA,"mike, echo",54747
+97,"""kilo charlie""",82881,4264.4,true,2024-04-13,amber,X03HWC3Y,"echo
+bravo",84999
+98,"""alpha juliet""",72059,8913.9,true,2025-05-29,grey,X1WOW0LV,"""sierra november""",90427
+99,golf xray,99424,4898.32,false,2021-10-19,teal,X02YMAAC,"xray, alpha",43911
+100,"india
+india",87416,3759.91,true,2021-02-23,black,X0TXDWMK," mike romeo	",41802
+101,juliet hotel,26880,8978.49,false,2024-10-23,red,X0YEIQFU,"november
+tango",43685
+102," sierra oscar	",55843,4875.08,true,2024-08-01,white,X07E5GXO," victor lima	",34017
+103,"kilo, hotel",59663,2570.72,true,2021-01-14,black,X0EFOCMZ,"""kilo november""",70448
+104,"zulu
+uniform",46870,4884.02,true,2023-03-26,white,X0YKOMYJ,"echo, juliet",56989
+105," golf victor	",37027,3338.19,true,2023-12-24,white,X0I4PVP2," bravo charlie	",45561
+106,"oscar, uniform",27592,8658.16,false,2021-12-24,blue,X0U2R9QR,"sierra, delta",70171
+107,"uniform
+golf",52242,1906.15,false,2020-10-24,red,X0WA4FX2,"whiskey, sierra",12438
+108,"sierra
+romeo",85846,4634.5,true,2025-04-24,green,X0HFL9PA,"""kilo whiskey""",18279
+109,"""whiskey tango""",6673,4821.88,true,2020-03-15,amber,X1BD2LH1,"charlie, foxtrot",28150
+110,"""xray romeo""",87840,4086.35,false,2025-06-01,green,X0S0COJ4,"victor
+golf",49876
+111,golf uniform,49928,156.61,true,2024-12-03,blue,X18O6PLM," tango yankee	",33143
+112,"charlie, victor",88870,26.11,false,2022-04-12,teal,X1X5WJRM,"""juliet hotel""",65972
+113,"""alpha hotel""",81136,1120.57,true,2023-05-14,green,X08JFROY," echo whiskey	",28316
+114,hotel golf,70440,5287.76,true,2021-01-26,grey,X020C9PW,november delta,49066
+115,"juliet
+zulu",8534,9585.82,false,2025-03-27,amber,X1Q4ZTJK,"alpha
+victor",68202
+116,"alpha, yankee",44020,6101.76,true,2020-05-11,white,X1NS0JGW,whiskey oscar,41864
+117,"""mike victor""",24295,8325.75,true,2021-01-11,blue,X0IIW5XQ,"xray
+uniform",26300
+118,"sierra, quebec",470,2225.2,false,2023-02-25,blue,X1Y29XZC,"""yankee hotel""",30159
+119,lima whiskey,37838,1471.45,false,2020-06-24,green,X0UOFBYN,"""juliet papa""",75995
+120," victor papa	",86750,7874.55,false,2020-06-22,blue,X15NXLVF,"echo
+xray",73397
+121,"""victor november""",92291,4028.55,false,2023-11-12,red,X0391VD7,mike foxtrot,29909
+122,"bravo, sierra",13991,5449.63,true,2024-03-15,blue,X16YBXV8," papa uniform	",54361
+123,"""yankee delta""",96770,9185.96,true,2020-01-30,green,X0QSYL6C," romeo yankee	",56968
+124,"sierra, xray",30682,6949.61,false,2022-07-05,teal,X0R9QXV9," delta uniform	",37304
+125,"victor
+alpha",80505,7329.08,false,2023-10-09,amber,X0FBKXZ4,"""sierra mike""",85984
+126,november bravo,30533,7349.43,true,2024-11-27,amber,X1L87CPL,"""yankee foxtrot""",82141
+127,"""oscar charlie""",84766,618.24,true,2024-09-25,amber,X0NV21HH," india uniform	",33053
+128,"quebec, lima",69234,4959.77,true,2021-07-06,white,X1K82NQ1,"""oscar sierra""",20677
+129," india kilo	",27225,1066.13,false,2024-04-04,amber,X02REYLO,"charlie, zulu",55606
+130,"tango
+kilo",46660,4516.63,false,2024-04-09,red,X1KZ9A2W,"""oscar quebec""",73179
+131,romeo quebec,5347,8436.26,true,2020-07-07,black,X0UG2GKF,"""tango tango""",1990
+132,"zulu
+charlie",77545,2035.1,false,2020-05-05,blue,X01D5TU0,"charlie
+foxtrot",94464
+133,"""whiskey charlie""",66359,9171.86,true,2023-04-30,teal,X1SAEHXH," mike romeo	",13909
+134,"victor
+quebec",86562,69.78,true,2025-03-07,amber,X0FJX6QT," oscar kilo	",40720
+135,echo bravo,45030,5151.31,false,2024-12-16,red,X0N0YPMF,"""bravo xray""",94017
+136,echo charlie,70306,251.73,true,2021-07-07,green,X0LXSXGP,"""yankee golf""",47298
+137,"""golf alpha""",32321,102.36,false,2020-12-31,blue,X0K0MWHE,papa november,50110
+138,"india
+whiskey",76364,4930.29,false,2021-05-05,teal,X1NS5MHB," lima bravo	",50089
+139,quebec kilo,48630,1934.04,false,2022-05-18,teal,X0QT0UY8,foxtrot bravo,8452
+140,"""india quebec""",27654,4950.51,false,2023-04-15,amber,X1XUXPUG,"zulu
+quebec",14180
+141,"sierra, sierra",875,2464.89,true,2024-07-03,amber,X0DHIYO9,"oscar
+papa",61111
+142,"""oscar golf""",19115,196.86,false,2024-01-25,teal,X06TYY2L,"victor
+papa",27551
+143,"""lima alpha""",76962,1257.86,false,2024-07-04,red,X0JB65ZP,"uniform, papa",64913
+144," xray romeo	",27999,4290.63,false,2021-04-28,black,X1CEW6J0,"zulu
+victor",818
+145,"""juliet foxtrot""",91313,8354.08,false,2022-05-20,teal,X11WWN3B,"""zulu delta""",10176
+146," victor golf	",42649,9748.82,true,2023-11-20,grey,X1OXKFKQ,bravo victor,26293
+147,bravo whiskey,39214,2704.18,true,2024-04-16,black,X1PF5BNE," alpha victor	",44732
+148,"tango
+alpha",20140,9806.02,false,2021-07-01,teal,X1JAHSG8,quebec zulu,7848
+149,"uniform
+mike",9149,3854.76,true,2020-12-18,green,X0FZISBW,"sierra, lima",6635
+150,"""tango xray""",84617,7314.58,false,2022-08-07,blue,X1UEJ2YI,whiskey tango,38919
+151,"""golf zulu""",82757,4880.34,false,2023-11-17,green,X02YLDN2,"yankee, alpha",9986
+152,"oscar, foxtrot",28981,5870.05,true,2025-04-14,black,X0ZCGWFB,"november
+whiskey",17714
+153," bravo uniform	",31359,5492.26,true,2021-12-06,white,X1L1T7JA,"charlie
+whiskey",5097
+154,"""quebec alpha""",21266,3395.16,false,2021-10-01,green,X00N55CT,mike delta,76426
+155,"echo, foxtrot",14805,9914.17,true,2021-08-25,amber,X1S0Y6ZU,"victor, golf",20694
+156,"yankee
+uniform",64045,9646.46,false,2021-12-12,red,X0DNJVNN,"""november india""",65887
+157,"""bravo sierra""",19519,4275.25,false,2021-10-04,black,X05XVQR6,"victor
+lima",84526
+158,"papa, whiskey",30967,2979.13,true,2023-03-09,green,X12AKK8O,"kilo, hotel",84865
+159,"xray, victor",39908,9581.78,true,2022-12-12,blue,X0770URJ," yankee oscar	",42342
+160,bravo bravo,89255,6465.84,false,2021-08-17,red,X09YQVIS,"kilo, papa",78836
+161,"quebec, golf",98400,8303.24,true,2023-01-05,grey,X0STJZFV,"november, golf",29696
+162,whiskey golf,34755,5670.46,false,2023-08-14,amber,X0AEDS94,"oscar
+victor",89289
+163," quebec zulu	",31545,9827.01,false,2022-11-26,teal,X0HD8QJL,"kilo
+xray",72041
+164,"juliet
+india",19592,3293.81,true,2022-03-05,red,X0WJ8RX9,"charlie, uniform",59647
+165,"lima, golf",53054,2209.54,false,2024-10-29,amber,X03XVYZK,"yankee
+november",9353
+166," bravo papa	",98557,9004.82,false,2023-01-29,grey,X0SPNJCG,juliet kilo,12227
+167,delta kilo,54630,5977.46,false,2020-12-21,green,X0B11MER,"whiskey
+alpha",52091
+168,kilo november,82074,6102.29,true,2024-04-27,grey,X1LA7TOD,"charlie
+romeo",97175
+169,"""whiskey whiskey""",81105,7216.25,true,2022-02-02,white,X1BBXW8G,"""india charlie""",15443
+170,"kilo
+sierra",14964,1705.87,false,2021-10-14,black,X12P56S0,victor sierra,21862
+171,"papa, lima",462,9665.87,true,2022-09-21,white,X1EWCZXW,"""yankee quebec""",59714
+172,"""romeo tango""",96697,7912.08,true,2023-09-19,teal,X18Q8AXK," golf charlie	",67854
+173,"bravo
+tango",95660,8198.64,false,2021-09-12,teal,X1PK245K,"sierra
+mike",29274
+174," whiskey golf	",83022,9713.69,true,2020-09-11,blue,X1YJFSE5,"""oscar mike""",45168
+175,delta tango,24158,2072.03,true,2024-09-12,black,X0PGVXX1,zulu uniform,44703
+176,"papa, oscar",22297,1992.84,true,2021-12-14,black,X0JUR6DR," foxtrot whiskey	",10465
+177,"xray
+november",21879,6353.7,false,2024-04-12,teal,X0P77UOC,"papa
+xray",41616
+178,"golf, tango",12896,2578.06,true,2022-02-01,black,X0LG3IGB,"""oscar golf""",39813
+179,"tango, romeo",34043,7444.1,false,2021-08-18,teal,X1IY77SF,"""sierra whiskey""",13028
+180,"""hotel november""",3691,4040.91,true,2023-01-21,green,X14GQ3A8,"""kilo mike""",43876
+181,tango charlie,5516,8236.57,false,2025-06-19,red,X1LBSBMC,"alpha, golf",84702
+182,"echo
+november",79696,7656.72,true,2021-04-17,teal,X11RFUV1,"zulu, november",3310
+183,"golf
+xray",35164,3575.24,false,2024-01-16,red,X0KRTN4K,"mike
+india",66850
+184,yankee charlie,38239,9218.84,false,2021-11-06,blue,X0AIV2K0," romeo kilo	",6555
+185," oscar golf	",21979,1981.39,true,2024-02-05,blue,X1XZ237A,kilo tango,45512
+186," alpha hotel	",19855,1898.45,true,2025-02-20,amber,X00W8C8J,quebec quebec,2286
+187,romeo uniform,53559,4513.37,false,2025-04-24,amber,X0M9TACM," foxtrot juliet	",18624
+188,india xray,26646,8530.06,true,2024-09-01,green,X124Q82U,bravo juliet,62575
+189,"foxtrot
+romeo",23594,3436.06,true,2021-02-09,red,X15GZCDL,"lima, lima",5718
+190,"zulu, delta",32187,3690.76,true,2022-06-28,green,X07N3GCE,"kilo
+victor",20766
+191,"""november golf""",43801,2585.28,true,2020-08-10,green,X01XJ6NI,"lima
+golf",39210
+192," golf xray	",70373,3966.57,false,2021-10-17,blue,X0M20C8G,"bravo
+whiskey",5713
+193,kilo india,72735,3070.57,true,2024-12-19,black,X03O8YTP,"sierra, uniform",85167
+194,yankee uniform,1840,3565.16,true,2022-03-30,green,X09D45J7,echo foxtrot,4289
+195," tango hotel	",19167,3970.47,false,2020-05-10,black,X0CO0V7I," delta india	",75155
+196,india golf,54283,5772.05,true,2025-04-06,teal,X10W0O6N,zulu echo,36401
+197,"yankee, tango",83487,6653.36,true,2024-04-01,teal,X07WR2MY,foxtrot foxtrot,94713
+198,"""papa yankee""",62050,9938.89,true,2021-12-27,black,X1R33P7N,"""tango lima""",34255
+199,"delta
+papa",62360,4214.65,true,2023-04-30,red,X0T6RBOI," uniform tango	",48226
+200,"""kilo quebec""",45495,8721.3,false,2024-10-14,white,X1VPITPG," golf hotel	",63500
+201,juliet uniform,69348,6103.69,true,2025-03-16,green,X0J0GGV6,tango victor,86000
+202,"hotel
+hotel",57827,4539.34,false,2021-06-07,blue,X08EBAPM,zulu yankee,88860
+203,"alpha
+uniform",53875,1451.59,false,2021-10-22,grey,X1C65UQA," lima bravo	",93489
+204,"bravo, uniform",53434,4406.22,false,2024-07-16,red,X0B2KOV2," alpha xray	",72866
+205,"yankee
+whiskey",99160,7864.91,false,2021-10-20,white,X1R0GFHV,xray delta,58362
+206," charlie november	",43251,2123.01,true,2022-11-20,grey,X1TSHWHE,"yankee, charlie",76894
+207," india bravo	",21977,9954.24,true,2020-06-04,white,X1VD9YOS,"""mike mike""",24117
+208," romeo yankee	",30115,4044.41,false,2021-11-24,red,X1HJIPNZ,"victor
+juliet",92749
+209,"november, quebec",42288,6200.29,true,2020-09-08,grey,X117ADGR,"whiskey
+quebec",26380
+210," juliet echo	",59112,6064.62,false,2025-03-09,white,X19XLIYW,"bravo
+hotel",51974
+211,"""juliet xray""",25518,5391.6,false,2021-08-08,teal,X0JFJS7J,"golf
+alpha",63002
+212,"papa
+yankee",57393,506.52,false,2023-05-17,green,X0XINI5G,echo romeo,83191
+213,"zulu
+delta",26408,9661.32,false,2023-12-08,white,X0VJH0QY,bravo alpha,15819
+214,"papa
+quebec",92731,7382.86,true,2020-01-30,black,X12XWM31,"alpha
+hotel",97252
+215," papa charlie	",7892,9804.33,true,2023-02-17,teal,X1GIMF7E,"""juliet echo""",87113
+216," yankee sierra	",81067,6519.1,true,2024-02-13,white,X09VZV4Y,"mike, whiskey",69218
+217," whiskey delta	",40403,7062.71,true,2023-04-24,white,X0W33B4P,"tango
+bravo",45546
+218," uniform sierra	",43141,5863.75,false,2021-06-13,red,X12MTHP2,"charlie, zulu",96265
+219,"charlie
+victor",66220,8458.29,false,2020-08-21,grey,X0N02URU,"foxtrot
+india",68132
+220,sierra victor,59989,5824.16,false,2023-02-09,amber,X0MQ897H,"""delta yankee""",18976
+221,"""papa romeo""",18113,4791.74,false,2020-01-28,amber,X0INTUBV,india zulu,50157
+222,"mike, quebec",85341,4123.07,false,2020-03-25,red,X05NGIHU,xray bravo,88977
+223,"india
+hotel",83748,154.99,false,2021-02-14,black,X1I60U53," golf alpha	",93956
+224,"mike
+yankee",22258,8738.72,false,2024-07-12,red,X11I71M3,papa lima,65
+225,"golf, tango",66071,8786.66,true,2023-06-22,red,X086URN1,echo kilo,28309
+226," foxtrot juliet	",15624,9018.49,true,2020-09-20,white,X1BXG8CZ,"golf
+quebec",29699
+227,foxtrot zulu,85494,9693.13,true,2025-05-09,red,X09HKNL4,"""xray alpha""",82229
+228,"""hotel delta""",14445,3063.14,true,2021-07-13,black,X1OTLY2Y,"uniform
+yankee",32547
+229," foxtrot golf	",37851,5067.06,false,2022-10-18,white,X0B30CTC," alpha yankee	",23497
+230,"kilo, papa",50005,6634.14,true,2025-04-18,amber,X0YLQ83S,"victor, juliet",4807
+231,"echo, charlie",35463,2883.35,false,2025-05-22,red,X0P53FQU,"mike, hotel",77241
+232,"alpha, delta",70767,9696.92,false,2025-01-14,white,X0F4KQY2," juliet mike	",83664
+233,"echo, mike",49170,5532.85,true,2022-10-16,teal,X0GPGJAQ," lima zulu	",82797
+234,"tango, victor",42467,4399.36,false,2024-10-18,red,X0SZPJS7,"papa, lima",95964
+235,"""golf november""",6248,4909.02,false,2024-09-11,amber,X1LM82D2,kilo romeo,76800
+236,"""whiskey echo""",62319,425.63,false,2025-05-23,blue,X0GCTW56,"charlie, kilo",12254
+237,"zulu
+whiskey",79242,3469.83,false,2021-03-11,black,X1NV8Z7T,"zulu, hotel",33192
+238," zulu mike	",25198,4696.79,true,2020-06-28,black,X1SXOSPP,"hotel, delta",91112
+239,"""delta golf""",64267,9393.14,false,2023-10-28,black,X0DEJKRP,charlie tango,37702
+240,"bravo
+whiskey",23248,3444.8,false,2021-04-24,teal,X09RQU9W,"india, kilo",42691
+241,"romeo, india",13901,9399.49,false,2022-07-03,blue,X0A4JCMA,"victor, papa",90630
+242,golf romeo,91617,8555.48,true,2025-05-16,teal,X1IKKB4N,"romeo
+kilo",30418
+243,"bravo, charlie",70211,1771.62,false,2020-04-20,grey,X1H9W55Z,"november, sierra",38044
+244,"bravo, bravo",41792,4254.46,false,2020-04-17,teal,X0V3XDAK,"quebec, charlie",34784
+245,"""sierra tango""",27359,7217.8,false,2020-05-17,white,X1XLU9UW,"charlie
+golf",86100
+246,"kilo, whiskey",2345,5731.8,true,2024-10-20,grey,X0AM8NDP,"romeo
+juliet",93065
+247,"romeo, victor",64016,7310.79,true,2020-05-10,blue,X0BMXH6C,"charlie, victor",40369
+248,"""echo mike""",11234,845.6,false,2024-11-24,green,X0FJRCFD,"xray
+oscar",27089
+249,"""bravo mike""",98887,2478.44,false,2023-12-13,teal,X1C5M23M,quebec golf,57146
+250," romeo kilo	",37989,7588.69,true,2021-07-05,black,X015PL2S,"""kilo tango""",18548
+251,victor quebec,36911,2005.04,false,2020-11-03,blue,X00CHWAZ,foxtrot juliet,36868
+252,"november, delta",52659,8318,true,2022-08-14,green,X1DHY0C2,papa november,71808
+253,"""alpha victor""",649,984.45,false,2022-03-18,black,X1HAPLNO," foxtrot golf	",59171
+254," golf alpha	",6275,4454.71,true,2022-06-16,red,X1HF69CR,"""foxtrot foxtrot""",60943
+255," bravo mike	",88899,1437.76,true,2020-12-09,blue,X12KBVQS,"kilo, whiskey",5857
+256,"delta
+mike",10781,6796.27,false,2020-08-13,white,X1XXO3X6,"echo, quebec",16261
+257,"oscar, india",65158,8618.13,true,2022-02-21,black,X1W4EFX9," sierra romeo	",36757
+258,"""zulu xray""",77095,2309.27,true,2022-08-01,red,X0U7P86N,"""bravo lima""",89611
+259,"uniform, yankee",81376,4307.77,true,2025-01-09,grey,X1W00K8B,"whiskey
+india",51447
+260,"""alpha bravo""",34044,6936.35,false,2023-09-22,amber,X03YU9VF,"""alpha papa""",30197
+261,"delta, india",78273,2966.97,false,2024-04-27,red,X0M6S5EY,"zulu
+uniform",95747
+262," lima charlie	",95501,9339.6,false,2023-02-04,black,X0GPRMW5,xray uniform,64609
+263,india sierra,33325,9488.07,true,2022-01-28,blue,X0RD3OX8,mike oscar,93216
+264,yankee juliet,7887,1760.82,false,2023-06-19,grey,X07TB9PS," papa golf	",68024
+265," uniform golf	",90241,4047.14,false,2022-04-15,blue,X1N2P3BZ," delta zulu	",30556
+266,papa papa,74456,4072.5,true,2021-03-24,black,X1JX2W0Y,romeo november,97217
+267,"""tango yankee""",65682,6340.89,false,2022-12-11,black,X17AI2QL,"""kilo foxtrot""",42217
+268,"delta, lima",11469,8042.54,true,2023-10-20,blue,X0X0R0WI," foxtrot kilo	",89303
+269,oscar india,77657,530.71,true,2021-05-04,black,X0U396JP," november kilo	",89995
+270,"juliet, papa",29857,4415.32,true,2020-08-30,green,X0YSTOBW,"charlie, xray",57249
+271,charlie india,69693,3151.39,false,2024-10-09,teal,X0PCSI8P," whiskey november	",64663
+272,uniform kilo,87358,3934.64,true,2023-03-03,teal,X0AER5QK,"juliet
+xray",40474
+273,kilo romeo,59897,8350.27,true,2022-06-30,amber,X14OF8WI,"bravo
+golf",90395
+274,sierra quebec,55763,5024.43,true,2025-02-14,black,X1IILA2Q," lima sierra	",841
+275,"bravo
+bravo",42154,8689.35,false,2025-05-17,black,X0FU0VEN,victor india,25077
+276,"zulu
+alpha",57452,673.2,false,2020-01-18,white,X1USOPQB,"echo
+foxtrot",98947
+277,"""lima charlie""",78962,7022.15,true,2021-04-17,blue,X1S3BRT7,"""mike mike""",51527
+278,"india
+foxtrot",39386,9605.41,false,2020-02-23,black,X1PAMHXE,"romeo, kilo",51146
+279," november victor	",47440,608.27,true,2021-01-25,grey,X178OX4Y,"echo
+india",34612
+280," yankee foxtrot	",91878,5877.23,false,2025-01-18,green,X0XJ0MI1,"alpha
+mike",47097
+281," delta india	",13867,9233.2,true,2020-04-01,amber,X0M3M237,"whiskey, yankee",14064
+282," alpha romeo	",12395,18.72,true,2024-02-08,teal,X1C63J21,papa alpha,1
+283,"""victor echo""",68120,2734.83,false,2020-12-13,amber,X162K0BV," lima alpha	",97323
+284,"hotel, sierra",11134,5941.74,false,2020-02-12,amber,X16CYT60,romeo foxtrot,78726
+285,"echo
+juliet",4845,4211.07,false,2022-02-08,teal,X1NB86GL,"""oscar xray""",60781
+286,"""november uniform""",42401,1174.1,false,2024-05-17,teal,X0DH83G1,romeo victor,99837
+287,"oscar, zulu",4528,3528.18,true,2023-06-22,grey,X18YGII2,"uniform
+hotel",43771
+288,juliet yankee,24412,9606.76,false,2025-05-13,teal,X0EJZ26O,bravo oscar,68315
+289,"kilo, lima",73228,1340.23,true,2021-11-12,red,X0IZW5UY," tango kilo	",56921
+290,"papa
+lima",94666,533.33,false,2024-02-12,teal,X1L33F7F,"oscar, foxtrot",27675
+291,mike bravo,91298,515.64,true,2025-04-06,blue,X0GOSAU9,"romeo
+mike",66503
+292,"delta
+lima",94892,3042.13,true,2023-09-20,amber,X120TEH3,"""mike victor""",19273
+293,"kilo, india",60950,7126.86,false,2020-10-02,red,X1Y34D39,mike bravo,97683
+294," bravo echo	",77942,5760.02,false,2023-09-14,red,X052KWHW,"kilo
+lima",90002
+295,oscar golf,91079,6357.53,true,2022-09-17,teal,X08JNDO2,"""sierra lima""",49013
+296," xray bravo	",26035,3620.17,true,2021-03-16,red,X0OWXZIC," sierra juliet	",99447
+297,papa alpha,62575,2918.15,true,2020-08-07,green,X1M7D0LD,"bravo
+tango",16250
+298,"sierra, sierra",26030,7201.52,true,2020-02-25,red,X0T1R3TQ,"""india xray""",22737
+299," foxtrot echo	",12138,8649.22,false,2024-03-17,black,X144SU3E,golf golf,21995
+300,yankee xray,55331,4864.82,true,2021-01-06,black,X1WLCAU8,"""foxtrot uniform""",97657
