@@ -579,10 +579,13 @@
     /**
      * Import branches from snapshot
      * @param {Object} branches - Branch data object
-     * @param {string} mode - 'merge' or 'replace'
+     * @param {string} mode - 'replace': only the imported branches remain (the two
+     *   mains are overwritten). 'merge': existing branches stay; one with the same
+     *   id is skipped, or — with mergeContent — rewritten.
+     * @param {function} [mergeContent] - (existingText, importedText) → text
      * @returns {Promise<{imported: number, skipped: number}>}
      */
-    async importBranches(branches, mode = 'merge') {
+    async importBranches(branches, mode = 'merge', mergeContent) {
       let imported = 0;
       let skipped = 0;
 
@@ -599,16 +602,17 @@
       const index = loadBranchIndex();
 
       for (const [id, branchData] of Object.entries(branches)) {
+        let content = branchData.content || '';
         if (mode === 'merge' && index[id]) {
-          // Skip existing branches in merge mode
-          skipped++;
-          continue;
+          if (!mergeContent) { skipped++; continue; }
+          const existing = await this.getBranch(id);
+          content = mergeContent(existing ? existing.content || '' : '', content);
         }
 
         // Panel and creation order have to come across too: branches are listed
         // strictly per panel, so one imported without its panel was saved,
         // counted, and never shown anywhere.
-        await this.saveBranch(id, branchData.content || '', {
+        await this.saveBranch(id, content, {
           name: branchData.name || id,
           source: branchData.metadata?.source || 'import',
           notes: branchData.metadata?.notes || '',
@@ -620,6 +624,19 @@
       }
 
       return { imported, skipped };
+    },
+
+    /**
+     * Remove every branch and its content, then recreate the two empty
+     * per-panel defaults — the state of a first visit.
+     * @returns {Promise<void>}
+     */
+    async resetAll() {
+      for (const id of Object.keys(loadBranchIndex())) await deleteBranchFromIDB(id);
+      // Content can outlive its index entry; clear whatever is still stored.
+      for (const b of await getAllBranchesFromIDB()) await deleteBranchFromIDB(b.id);
+      saveBranchIndex({});
+      await this.init();
     },
 
     /**

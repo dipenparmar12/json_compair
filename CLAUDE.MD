@@ -165,6 +165,25 @@ const newBranch = await BranchManager.createBranch("API v3", content);
 - Included in ZIP snapshot exports
 
 ### 6. Snapshot Import/Export
+- **Export is every branch as it is now** (`branchesForExport`). Stored branches hold what was
+  last SAVED and saving is explicit, so the branch open in each panel is taken from the panel
+  (`getDocumentPair`); it used to be written with its older stored content. A link (`?c=`)
+  carries the two panels only, so with any other branch present Export downloads the ZIP and
+  says so — small content used to produce a link that left those branches out.
+- **Import asks Replace / Merge / Cancel** (`applyImportedSnapshot`, used by the Import
+  button and a dropped snapshot) whenever a panel has content or a user branch exists; an
+  empty workspace imports straight away. Accepts `.zip`, `.json.gz` and a plain `.json`
+  document (left panel only; `right: null` from `SnapshotHandler.importSnapshot`).
+  - **Replace:** the file's panels, branches (`importBranches(…, 'replace')`, the two mains
+    overwritten) and comparison settings take over.
+  - **Merge:** `mergeJSONValues` (utils.js) per panel and per same-id branch — objects merge
+    key by key recursively, the imported value wins, **arrays and mismatched kinds are replaced
+    whole**, keys only the current side has stay. Other branches and all settings are kept.
+    A blank side takes the other side's text.
+  - Nothing is written until the file has parsed and both panels have merged. An unreadable
+    file, or a panel that is not valid JSON in Merge, reports the reason and changes nothing.
+  - Before this, import always replaced the panels, and a branch whose id already existed —
+    always the two mains — was skipped, so its exported content never came back.
 - **ZIP format** - Standard ZIP file with JSON files
 - **Backward compatible** - Supports legacy .json.gz format
 - **Includes branches** - All branches exported in snapshots
@@ -254,6 +273,7 @@ window.TextTools
 window.sortJSONKeys()          // alphabetize keys recursively (crude value-sort of object arrays)
 window.parseSortSpec(str)      // "category ASC, amount DESC" → [{field,dir,path}] (dot-notation nesting)
 window.sortJSONByFields(data, specs) // stable value-sort of a top-level array of objects by field(s)
+window.mergeJSONValues(existing, incoming) // Import → Merge: objects recurse, imported wins, arrays replaced
 
 // utils_csv.js
 window.CSVUtils
@@ -274,6 +294,7 @@ window.BranchManager
   .createBranch()
   .renameBranch()
   .deleteBranch()       // refuses main-left / main-right
+  .resetAll()           // every branch + title gone, the two empty mains recreated
   .isMainBranch(id)
   .defaultName(id)      // 'Left' | 'Right' | 'Untitled' — what an emptied title falls back to
 
@@ -294,6 +315,11 @@ window.DiffView
                         //   kind: removed|added|changed; a/b: {first,last} lines or null
   .foldLabel(region, hidden)   // "1,249 removed lines hidden"
   .lineCoverage(text, ranges)  // 'full' | 'part' | null
+
+// json_context.js (v6) — what a line of pretty-printed JSON holds (right-click menu, §16)
+window.JSONContext
+  .at(getLine, lineNo)  // → {key, value, hasValue, opens, segs[]} | null (blank / closing line)
+  .parseLine(text) / .formatPath(segs) / .token(value)
 
 // diff_ignore.js (v6)
 window.DiffIgnore
@@ -351,6 +377,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/key_compare.js"></script>    <!-- v6 only: Keys table; AFTER json_align (uses matchArray) -->
 <script src="./utils/diff_view.js"></script>      <!-- v6 only: fold blocks + highlight-style coverage -->
 <script src="./utils/value_equiv.js"></script>    <!-- v6 only: "NaN" ~ null value rules (Diff Engine §15) -->
+<script src="./utils/json_context.js"></script>   <!-- v6 only: key / value / path of a pane line (Diff Engine §16) -->
 ```
 
 > v6 marks every `<head>` script (CDN and local) `defer`: same order, all run before the
@@ -747,6 +774,8 @@ node tests/embedded_json.test.js  #  16 checks: JSON / Python dicts inside strin
 node tests/storage.test.js        #   8 checks: saved comparison — newest copy wins, record shape
 node tests/viewport_diff.test.js  #   4 checks: status-bar count stays line-by-line and fast
 node tests/value_equiv.test.js    #  40 checks: equivalent-value rules, kind-3 alignment, row check
+node tests/import_merge.test.js   #  15 checks: Import → Merge rules (recursion, arrays, kinds, null)
+node tests/json_context.test.js   #  26 checks: line → key / value / path, for the right-click menu
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -900,7 +929,21 @@ end of `app.css`):
   for nested keys) that value-sorts the **top-level array of objects in both panes** (ideal for
   aligning two arrays before diffing); empty spec falls back to "Sort keys A→Z". Pure logic in
   `utils.js` (`parseSortSpec` / `sortJSONByFields`); UI in `initializeSortPanel()` + `sortByFields()`.
-- Clear all (row 1, right)
+- Clear all (row 1, right) — empties both panels; branches, tabs, titles and settings stay.
+- **More ▾ → Reset…** (`openResetDialog` / `applyReset`, `#reset-modal`) — everything beyond
+  Clear all, chosen part by part. Opens with the two data parts ticked:
+
+  | Part | Clears | How |
+  |---|---|---|
+  | Panel content ✓ | both panels, the saved comparison, the `?c=` link | `clearPanels()` (shared with Clear all) |
+  | Branches, tabs and titles ✓ | every branch; empty `main-left` / `main-right` remain | `BranchManager.resetAll()` |
+  | Comparison rules | ignore list + scope + styling, equivalence rules, numeric tolerance | `RESET_RULE_KEYS` → defaults, `applyComparisonSettings()` |
+  | App settings | every other preference | defaults, then the page reloads |
+
+  A line under the options names what is kept; the button is disabled with nothing ticked;
+  Escape / Cancel / the backdrop change nothing; Tab stays inside the dialog. It replaced the
+  single "Reset everything" action, which cleared data only but read as if it reset settings
+  too. Branches without content: the panels keep their text, unsaved, on the default tabs.
 - Settings panel toggle (sliders icon)
 - More ▾ — Open file(s), Import snapshot, Export / Share, Examples, Theme, Help
 
@@ -1014,6 +1057,18 @@ Located in `tests/`:
 - `test_case_array_objects/`
 - `test_case_objects/`
 
+### Synthetic data (`tools/gen_dataset.js`)
+Writes a pair of files row by row (hundreds of MB without holding them in memory). Values are a
+pure function of seed, row and column; names and values are generic. Use it for every large or
+performance test — never real exports.
+```bash
+node tools/gen_dataset.js --format csv --size 100MB --cols 20 --profile changed:5 --out .outputs/bench/p
+```
+- `--format` csv | json | nested · `--rows N` or `--size 50MB` · `--cols N` · `--seed N` · `--messy`
+- `--profile` identical | changed:N (N% of values) | schema | reordered | addremove:N | different | none
+- Output: `<out>_a.<ext>` and `<out>_b.<ext>`. `.outputs/` is git-ignored.
+- Small committed pairs made with it: `tests/fixtures/synthetic/` (see its README).
+
 ### Automated suites (run these first)
 ```bash
 node tests/json_repair.test.js    # 108 checks — data integrity, repair, perf, classification
@@ -1024,6 +1079,8 @@ node tests/embedded_json.test.js  #  16 checks — JSON / Python dicts inside st
 node tests/storage.test.js        #   8 checks — saved comparison: newest copy wins, record shape
 node tests/viewport_diff.test.js  #   4 checks — status-bar count stays line-by-line and fast
 node tests/value_equiv.test.js    #  40 checks — equivalent-value rules, kind-3 alignment, row check
+node tests/import_merge.test.js   #  15 checks — Import → Merge rules (recursion, arrays, kinds, null)
+node tests/json_context.test.js   #  26 checks — line → key / value / path, for the right-click menu
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1094,6 +1151,10 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     panel instead — the card goes, a notice offers **Restore it**. A small pair reloads with
     no card
 33. Ignore ▾ → Edit rules… → switch on: `[{"a":"NaN","s":1}]` vs `[{"a":null,"s":2}]` — only `s` is marked, the left pane still says `"NaN"`; untick the group — `a` is marked again
+34. Add two tabs, a title and an ignore pattern, set the dark theme, then More ▾ → Reset… — it opens with content and branches ticked and "Kept: comparison rules, app settings"; Cancel changes nothing; Clear selected leaves two empty panels with only "Left" / "Right", the pattern and theme still there, and a reload brings nothing back. Tick only Comparison rules — the pattern goes, content stays. Tick only App settings — the page reloads on the default theme with content and rules intact
+35. Edit a panel without saving its branch, add a third branch, Export — a ZIP downloads; Reset everything, Import it — panels and all three branches come back with the edited content
+36. With content in the panels, Import a `.json` holding `{"n":{"x":9},"b":2}` → Merge: `n.x` is 9, `b` is added, every other key stays, the right panel is untouched; Cancel and a file of broken JSON change nothing
+37. `{"user_registered":true}` vs `{"user_registered":1}`: right-click the value in EITHER panel → Treat true and 1 as equal — the line is no longer marked, both panes keep their text, Undo in the notice brings the difference back. Right-click a `}` line, a selection and the line-number gutter — always our menu, never the browser's. ↓ → opens "Add both to a group", ← closes it, Escape closes the menu
 
 ## Common Tasks
 
@@ -1481,6 +1542,28 @@ re-diffs anything.
 - **Where:** `equivActive()` is null unless Block Diff is on — the row skip needs row-aligned output. Changing a rule calls `applyValueEquiv()` → re-align + `forceRediff()` (pane text does not change, so CM6 would keep old chunks). The Ignore badge shows `≈` while rules are on.
 - **Limits:** Block Diff off → rules do nothing. Records rendered compact in `view: 'full'` compare as whole lines (handled by `rowsEquivalent` when the line is one value). Hash anchoring does not see equivalence; such records still pair through gap filling.
 - **Status:** `tests/value_equiv.test.js` 40 checks. Checked in the app: the NaN/null pair goes from "2 changed · 5 field changes" to "1 changed · 1 field change" with both panes unchanged; off / group off restore it. Dialog checked in the app at 1280 px (dark) and 375 px (light).
+
+### 16. Right-click menu — `json_context.js` + the "Right-click menu" block in index.html
+- **Why:** an unwanted difference had to be fixed by opening Ignore ▾ and typing the key or the two values. Now: right-click the line.
+- **Always ours inside a panel** — text, blank lines, a selection, the gutters. The listener runs in the capture phase and always `preventDefault`s; the browser's menu used to appear on the lines the first version skipped. Shift+right-click still gives the browser's.
+- **What:** a header with the path and each side's value (`LEFT true` / `RIGHT 1`, "not present" for a one-sided key), then only the actions that apply:
+
+| Action | Effect |
+|---|---|
+| Treat *a* and *b* as equal | `treatAsEqual([a, b])`: both tokens into the enabled group that holds either, else a new group `a = b`; rules switched on; `applyValueEquiv()`. "These values are equal by a rule" when they already are. |
+| Add both / Add *v* to a group ▸ | submenu of every group (an off one is turned on) + **New group** |
+| Ignore the key "k" everywhere / Stop ignoring "k" | `addIgnorePattern` / `removeIgnorePattern` |
+| Use the right (left) value here | `useOtherValue`: an edit of that line, Ctrl+Z undoes it. Hidden while the panes are a page of a collection or a normalized view (`_ignorePristine`, `diffStats.truncated`). |
+| Copy value (or selection) · Copy other ▸ | both values, property, key name, path (`a.b[3]["x y"]`) |
+| Find "k" in the Keys table | opens Keys with the key in its search box |
+| Show this row in both panels | `scrollPanesToLine` |
+| Equivalent values… · Ignore rules… | open the existing editors |
+
+- **How:** `JSONContext.at(getLine, lineNo)` reads the line and walks up by indentation for the path (indices counted from the text, gap lines skipped). `resolveLineContext` pairs it with the **same line of the other panel** — Block Diff's row alignment is the pairing (`_rowAligned`); nothing is matched by text. `contextActions()` returns plain data (`{label, icon, run, hint, disabled, items}` / `'-'`); `buildContextMenu()` draws any level. No new rule store: the menu only adds to `equivCfg` and `ignorePatterns`.
+- **Accessibility:** `role="menu"` / `menuitem` / `separator`, `aria-haspopup` + `aria-expanded` on submenu items, `aria-disabled` (still focusable, so it is read out). ↑ ↓ Home End, → opens a submenu, ← / Escape goes back one level, Escape / Tab closes and returns focus to the editor, a letter jumps to the next item starting with it. Menu key opens it for the caret's line. 32 px rows, visible focus ring, side labels in words (not colour alone). Submenus are closed explicitly, never from focus events — those do not fire when the window is not focused.
+- **Feedback:** every rule change shows a notice with **Undo** (and **Edit rules** for equivalence).
+- **Limits (not built):** rules scoped to one path or one property name — `ctx.ignore(key, a, b)` in json_align carries no path, and the ignored-line scan and Keys table would need it too; ignoring one value pair or one subtree. A group token matches by text, so `1` also covers the string `"1"`. Block Diff off → no pairing. In a windowed collection the record index shows as `[*]`.
+- **Status:** `tests/json_context.test.js` 26 checks. Checked in the app at 1200 px, both panels: treat-as-equal and add-to-group with Undo, use-other-value, Keys search, gutter / blank line / selection all get our menu, keyboard through a submenu and back, screenshot of menu + submenu.
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the

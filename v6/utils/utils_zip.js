@@ -184,20 +184,30 @@ window.LegacySnapshotManager = {
 window.SnapshotHandler = {
   /**
    * Import snapshot (auto-detects format)
-   * @param {File} file - Snapshot file (.zip or .json.gz)
-   * @returns {Promise<{left: string, right: string, settings: object, branches: object|null}>}
+   * @param {File} file - Snapshot file (.zip or .json.gz), or a plain .json document
+   * @returns {Promise<{left: string, right: string|null, settings: object, branches: object|null}>}
+   *   `right: null` = a single document, for one panel only
    */
   async importSnapshot(file) {
     const filename = file.name.toLowerCase();
     
-    if (filename.endsWith('.zip')) {
+    if (filename.endsWith('.json')) {
+      const text = await file.text();
+      let data;
+      try { data = JSON.parse(text); } catch (e) { throw new Error('not valid JSON (' + e.message + ')'); }
+      // An uncompressed legacy snapshot is {left, right, settings}.
+      if (data && (typeof data.left === 'string' || typeof data.right === 'string')) {
+        return { left: data.left || '', right: data.right || '', settings: data.settings || {}, branches: null };
+      }
+      return { left: text, right: null, settings: {}, branches: null };
+    } else if (filename.endsWith('.zip')) {
       return await ZipSnapshotManager.importSnapshot(file);
     } else if (filename.endsWith('.json.gz') || filename.endsWith('.gz')) {
       const result = await LegacySnapshotManager.importSnapshot(file);
       result.branches = null; // Legacy format doesn't support branches
       return result;
     } else {
-      throw new Error('Unsupported file format. Please use .zip or .json.gz files.');
+      throw new Error('Unsupported file format. Please use .zip, .json.gz or .json files.');
     }
   },
   
@@ -206,13 +216,16 @@ window.SnapshotHandler = {
    * @param {string} leftContent - Left panel content
    * @param {string} rightContent - Right panel content
    * @param {object} settings - Application settings
-   * @param {boolean} includeBranches - Whether to include all branches in export
+   * @param {boolean|object} includeBranches - true = every stored branch; an object =
+   *   exactly those branches (the caller has added content not saved yet)
    */
   async createAndDownload(leftContent, rightContent, settings, includeBranches = true) {
     let branches = null;
     
     // Export branches if requested and BranchManager is available
-    if (includeBranches && window.BranchManager) {
+    if (includeBranches && typeof includeBranches === 'object') {
+      branches = includeBranches;
+    } else if (includeBranches && window.BranchManager) {
       try {
         branches = await window.BranchManager.exportAll();
       } catch (err) {

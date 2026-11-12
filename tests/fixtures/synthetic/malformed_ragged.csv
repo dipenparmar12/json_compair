@@ -1,0 +1,6 @@
+id,name,qty
+1,alpha,3
+2,bravo
+3,charlie,5,extra
+4,"delta, unterminated,7
+5,echo,9

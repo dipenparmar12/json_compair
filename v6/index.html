@@ -62,6 +62,7 @@
     <script defer src="./utils/progress.js"></script>
     <script defer src="./utils/json_align.js"></script>
   <script defer src="./utils/value_equiv.js"></script>   <!-- "NaN" ~ null rules -->
+  <script defer src="./utils/json_context.js"></script>  <!-- key / value / path of a line (right-click menu) -->
     <script defer src="./utils/key_compare.js"></script>
     <script defer src="./utils/diff_view.js"></script>
     <script defer src="./utils/diff_ignore.js"></script>
@@ -481,7 +482,7 @@
         </div>
 
         <div class="intro-right">
-          <button id="btn-clear-all" class="btn btn-ghost btn-quiet-danger" style="display: none" title="Empty both panels">
+          <button id="btn-clear-all" class="btn btn-ghost btn-quiet-danger" style="display: none" title="Empty both panels. Branches, tabs and titles are kept.">
             <svg class="i"><use href="#i-trash"/></svg><span class="btn-label">Clear all</span>
           </button>
           <!-- More: files, sharing, examples, theme and help — everything that
@@ -498,6 +499,7 @@
               <button id="btn-open-file" class="dropdown-item"><svg class="i"><use href="#i-folder"/></svg>Open file(s)… <span class="dropdown-hint">1 or 2</span></button>
               <button id="btn-import" class="dropdown-item"><svg class="i"><use href="#i-import"/></svg>Import snapshot</button>
               <button id="btn-share" class="dropdown-item"><svg class="i"><use href="#i-share"/></svg>Export / Share</button>
+              <button id="btn-reset-all" class="dropdown-item dropdown-item-danger" title="Choose what to clear: panel content, branches, comparison rules, app settings"><svg class="i"><use href="#i-trash"/></svg>Reset…</button>
               <input type="file" id="file-open" multiple
                      accept=".json,.csv,.tsv,.txt,.ndjson,.log,.md,application/json,text/csv,text/plain"
                      style="display: none" />
@@ -615,6 +617,51 @@
             <span class="repair-modal-spacer"></span>
             <button class="btn" id="repair-modal-cancel">Cancel</button>
             <button class="btn btn-primary" id="repair-modal-apply">Apply fix</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reset: one place to clear things, with each part named and ticked
+           separately. Opens on "content + branches" — the data, not the setup. -->
+      <div id="reset-modal" class="repair-modal reset-modal" style="display: none" role="dialog"
+           aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-lead">
+        <div class="repair-modal-backdrop" data-reset-dismiss></div>
+        <div class="repair-modal-body reset-modal-body">
+          <div class="repair-modal-head">
+            <h2 id="reset-title">Reset</h2>
+            <button class="btn btn-icon" id="reset-close" title="Close (Esc)" aria-label="Close">✕</button>
+          </div>
+          <div class="reset-body">
+            <p id="reset-lead" class="reset-lead">Tick what to clear. Everything else is kept.</p>
+            <div class="reset-group-label">Your data</div>
+            <label class="reset-option">
+              <input type="checkbox" id="reset-content" />
+              <span><strong>Panel content</strong>
+                <span class="reset-desc">Empties both panels and forgets the comparison saved for next time.</span></span>
+            </label>
+            <label class="reset-option">
+              <input type="checkbox" id="reset-branches" />
+              <span><strong>Branches, tabs and titles</strong>
+                <span class="reset-desc" id="reset-branches-desc"></span></span>
+            </label>
+            <div class="reset-group-label">Your setup</div>
+            <label class="reset-option">
+              <input type="checkbox" id="reset-rules" />
+              <span><strong>Comparison rules</strong>
+                <span class="reset-desc">The ignore list, equivalent-value rules and numeric tolerance go back to their defaults.</span></span>
+            </label>
+            <label class="reset-option">
+              <input type="checkbox" id="reset-settings" />
+              <span><strong>App settings</strong>
+                <span class="reset-desc">Theme, layout, highlight style, indent and every other preference go back to their defaults. The page reloads.</span></span>
+            </label>
+            <p id="reset-summary" class="reset-summary" role="status" aria-live="polite"></p>
+          </div>
+          <div class="repair-modal-foot">
+            <span class="repair-hint">This cannot be undone.</span>
+            <span class="repair-modal-spacer"></span>
+            <button class="btn" id="reset-cancel">Cancel</button>
+            <button class="btn btn-danger" id="reset-apply">Clear selected</button>
           </div>
         </div>
       </div>
@@ -1451,6 +1498,7 @@
         }
 
         initializeEquivPanel();
+        initializeContextMenu();
         renderIgnoreList();
       }
 
@@ -5360,7 +5408,7 @@
       // Anchored to the tab rather than a browser confirm(): it stays next to
       // what is being deleted and does not block the page.
       let _confirmPop = null;
-      function confirmPopover(anchor, { title, message, confirmLabel = 'OK', danger = false }) {
+      function confirmPopover(anchor, { title, message, confirmLabel = 'OK', altLabel = '', danger = false }) {
         if (_confirmPop) _confirmPop.cancel();
         return new Promise((resolve) => {
           const pop = document.createElement('div');
@@ -5388,7 +5436,15 @@
           yes.type = 'button';
           yes.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
           yes.textContent = confirmLabel;
-          row.append(no, yes);
+          // An optional second answer (resolves 'alt'), e.g. Replace / Merge.
+          let alt = null;
+          if (altLabel) {
+            alt = document.createElement('button');
+            alt.type = 'button';
+            alt.className = 'btn';
+            alt.textContent = altLabel;
+          }
+          row.append(...(alt ? [no, alt, yes] : [no, yes]));
           pop.append(head, text, row);
           document.body.appendChild(pop);
 
@@ -5423,18 +5479,22 @@
               e.stopPropagation();
               finish(false);
             } else if (e.key === 'Tab') {
-              // Two buttons; keep focus between them while the question is open.
+              // Keep focus on the buttons while the question is open.
               e.preventDefault();
-              (document.activeElement === yes ? no : yes).focus();
+              const btns = [...row.children];
+              const at = btns.indexOf(document.activeElement);
+              btns[(at + (e.shiftKey ? btns.length - 1 : 1)) % btns.length].focus();
             }
           };
           no.onclick = () => finish(false);
           yes.onclick = () => finish(true);
+          if (alt) alt.onclick = () => finish('alt');
           document.addEventListener('mousedown', onDown, true);
           document.addEventListener('keydown', onKey, true);
           window.addEventListener('resize', onCancel);
           _confirmPop = { cancel: onCancel };
-          yes.focus();
+          // With two answers the safe one has the focus, so Enter never replaces.
+          (alt ? no : yes).focus();
         });
       }
 
@@ -6218,6 +6278,7 @@
         initializeFileOpen();
 
         btnShare.onclick = shareURL;
+        initializeResetDialog();
         
         // Import snapshot
         btnImport.onclick = () => fileImport.click();
@@ -7322,6 +7383,20 @@
         return JSON.stringify(content, null, currentIndent());
       }
 
+      /**
+       * Every branch, as it is NOW. Stored branches only hold what was last
+       * saved, and saving is explicit — so the branch open in each panel is
+       * taken from the panel instead, or an export wrote its older content.
+       */
+      async function branchesForExport(pair) {
+        const all = await window.BranchManager.exportAll();
+        for (const side of ['left', 'right']) {
+          const id = activeBranches[side];
+          if (all[id]) all[id] = Object.assign({}, all[id], { content: branchContentFrom(pair[side]) });
+        }
+        return all;
+      }
+
       // Share URL functionality
       async function shareURL() {
         // The panes are not the document — see getDocumentPair(). Reading them
@@ -7349,13 +7424,22 @@
           
           // Try to create compressed URL with settings
           const shareableURL = URLManager.generateShareableURL(leftContent, rightContent);
-          
+
+          // A link carries the two panels and nothing else. With any other
+          // branch around it would leave those out without saying so, so the
+          // export is then a snapshot file that holds all of them.
+          const branches = await branchesForExport(pair);
+          const others = Object.keys(branches)
+            .filter((id) => id !== activeBranches.left && id !== activeBranches.right).length;
+
           // Check URL length (browser limit ~2000 chars)
-          if (shareableURL.length > 2000) {
-            // Fall back to ZIP snapshot download with settings
-            await SnapshotHandler.createAndDownload(leftContent, rightContent, currentSettings);
-            
-            updateStatus("Content too large for URL - ZIP snapshot downloaded");
+          if (others || shareableURL.length > 2000) {
+            await SnapshotHandler.createAndDownload(leftContent, rightContent, currentSettings, branches);
+
+            const n = Object.keys(branches).length;
+            showNotice('ok', others
+              ? `Snapshot downloaded with all ${n} branches. A link can only carry the two open panels.`
+              : 'Too large for a link, so a snapshot file was downloaded instead.');
             btn.textContent = originalText;
             btn.disabled = false;
             return;
@@ -7377,6 +7461,505 @@
         }
       }
 
+      // ---- Right-click menu -----------------------------------------------
+      // Quick actions on the line under the pointer: make the two values equal
+      // by rule, ignore the key, copy, find the row. It only ADDS to the rules
+      // that Ignore ▾ already holds (ignorePatterns, equivCfg) — no second rule
+      // store, no second comparison. utils/json_context.js reads the line.
+      // Inside a panel it always replaces the browser's menu (Shift+right-click
+      // still gives that one).
+      let _ctxMenu = null;
+      /** What is on `lineNo` of one panel, and the matching row of the other. */
+      function resolveLineContext(side, lineNo) {
+        const J = window.JSONContext;
+        const view = side === 'left' ? mergeView.a : mergeView.b;
+        const other = side === 'left' ? mergeView.b : mergeView.a;
+        const lineOf = (v) => (n) => (n >= 1 && n <= v.state.doc.lines ? v.state.doc.line(n).text : '');
+        const ctx = J.at(lineOf(view), lineNo);
+        if (!ctx) return null;
+        // A windowed collection shows one page of it: the record's index on
+        // screen is not its index in the document, so it is not claimed.
+        if (diffStats && diffStats.view === 'window') {
+          const i = ctx.segs.findIndex((s) => typeof s === 'number');
+          if (i !== -1) ctx.segs[i] = '*';
+        }
+        ctx.side = side;
+        ctx.line = lineNo;
+        ctx.text = lineOf(view)(lineNo).trim().replace(/,$/, '');
+        ctx.path = J.formatPath(ctx.segs);
+        // Block Diff puts corresponding rows on the same line of both panels —
+        // that alignment IS the pairing; nothing is matched by text here.
+        ctx.paired = _rowAligned;
+        const o = _rowAligned ? J.parseLine(lineOf(other)(lineNo)) : null;
+        ctx.other = o && o.key === ctx.key ? o : null;
+        return ctx;
+      }
+
+      function copyFromMenu(text, what) {
+        navigator.clipboard.writeText(text).then(
+          () => showNotice('ok', what + ' copied.', { timeout: 2000, key: 'ctx-copy' }),
+          () => showNotice('error', 'Could not copy to the clipboard.', { key: 'ctx-copy' }));
+      }
+
+      /**
+       * Put values in one equivalence group and switch the rules on.
+       * `into`: a group to add to; 'new' for a fresh one; omitted = the enabled
+       * group that already holds one of them, else a fresh one.
+       */
+      function treatAsEqual(values, into) {
+        const tokens = values.map(window.JSONContext.token);
+        const before = JSON.parse(JSON.stringify(equivCfg));
+        let group = into && into !== 'new' ? into
+          : into === 'new' ? null
+          : equivCfg.groups.find((g) => g.on && tokens.some((t) => g.values.indexOf(t) !== -1));
+        const joined = !!group;
+        if (!group) {
+          group = { name: tokens.join(' = '), values: [], on: true };
+          equivCfg.groups.push(group);
+        }
+        for (const t of tokens) if (group.values.indexOf(t) === -1) group.values.push(t);
+        group.on = true;
+        equivCfg.enabled = true;
+        applyValueEquiv();
+        const what = tokens.join(' = ');
+        showNotice('ok', joined ? `Added ${tokens.join(' and ')} to the group “${group.name}”.` : `New rule: ${what}, everywhere in this comparison.`, {
+          key: 'ctx-rule',
+          actions: [
+            { label: 'Undo', run: () => { equivCfg = before; applyValueEquiv(); } },
+            { label: 'Edit rules', run: openEquivModal }
+          ]
+        });
+      }
+
+      /** Overwrite the clicked side's value with the other panel's. An edit: Ctrl+Z undoes it. */
+      function useOtherValue(ctx) {
+        const view = ctx.side === 'left' ? mergeView.a : mergeView.b;
+        const line = view.state.doc.line(ctx.line);
+        const m = /^(\s*(?:"(?:[^"\\]|\\.)*"\s*:\s*)?)([\s\S]*?)(,?\s*)$/.exec(line.text);
+        if (!m) return;
+        const from = line.from + m[1].length;
+        view.dispatch({ changes: { from, to: from + m[2].length, insert: JSON.stringify(ctx.other.value) } });
+        showNotice('ok', `The ${ctx.side} value now matches the other panel. Ctrl+Z in that panel undoes it.`, { key: 'ctx-rule' });
+      }
+
+      function ignoreKeyFromMenu(key) {
+        const err = addIgnorePattern(key);
+        if (err) { showNotice('error', err, { key: 'ctx-rule' }); return; }
+        showNotice('ok', `Ignoring the key “${key}” everywhere.`, {
+          key: 'ctx-rule',
+          actions: [{ label: 'Undo', run: () => removeIgnorePattern(key) }]
+        });
+      }
+
+      /**
+       * The menu for a right-click: [{label, icon, run, hint, disabled, items} | '-'].
+       * `ctx` is null on a line with no key or value (blank, closing bracket).
+       * Only what applies is listed; less common choices sit in submenus.
+       */
+      function contextActions(ctx, view, lineText) {
+        const J = window.JSONContext;
+        const short = (v) => {
+          const s = typeof v === 'string' ? JSON.stringify(v) : J.token(v);
+          return s.length > 22 ? s.slice(0, 21) + '…' : s;
+        };
+        const prim = (c) => !!c && c.hasValue && (c.value === null || typeof c.value !== 'object');
+        const asText = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, currentIndent()));
+        const items = [];
+        const sep = () => { if (items.length && items[items.length - 1] !== '-') items.push('-'); };
+        const sel = view.state.selection.main;
+        const selected = sel.empty ? '' : view.state.sliceDoc(sel.from, sel.to);
+
+        if (ctx) {
+          const o = ctx.other;
+          const left = ctx.side === 'left' ? ctx : o, right = ctx.side === 'left' ? o : ctx;
+          const differs = prim(ctx) && prim(o) && ctx.value !== o.value;
+          const canon = equivActive();
+          const already = differs && canon && canon(ctx.value) === canon(o.value);
+
+          // -- rules ---------------------------------------------------------
+          if (already) {
+            items.push({ label: 'These values are equal by a rule', icon: 'equal', disabled: true });
+          } else if (differs) {
+            items.push({
+              label: `Treat ${short(left.value)} and ${short(right.value)} as equal`, icon: 'equal',
+              hint: 'Adds an equivalence rule. It applies to these two values wherever they appear.',
+              run: () => treatAsEqual([left.value, right.value])
+            });
+          }
+          if (prim(ctx) && ctx.paired && !already) {
+            const vals = differs ? [left.value, right.value] : [ctx.value];
+            items.push({
+              label: differs ? 'Add both to a group' : `Add ${short(ctx.value)} to a group`,
+              hint: 'Values in the same group count as equal.',
+              items: equivCfg.groups.map((g) => ({
+                label: g.name + (g.on ? '' : ' (off — turns on)'),
+                hint: g.values.join(', '),
+                run: () => treatAsEqual(vals, g)
+              })).concat(differs ? ['-', { label: 'New group', run: () => treatAsEqual(vals, 'new') }] : [])
+            });
+          }
+          if (ctx.key !== undefined && ctx.key && ctx.key[0] !== '/') {
+            if (ignorePatterns.indexOf(ctx.key) !== -1) {
+              items.push({ label: `Stop ignoring “${ctx.key}”`, icon: 'eye-off', run: () => removeIgnorePattern(ctx.key) });
+            } else {
+              items.push({
+                label: `Ignore the key “${ctx.key}” everywhere`, icon: 'eye-off',
+                hint: 'Every property with this name is left out of the comparison, at any depth.',
+                run: () => ignoreKeyFromMenu(ctx.key)
+              });
+            }
+          }
+          // An edit, so only where the panes ARE the document (not a page of
+          // it, not a normalized view).
+          if (differs && !_ignorePristine && !(diffStats && diffStats.truncated)) {
+            sep();
+            items.push({
+              label: `Use the ${ctx.side === 'left' ? 'right' : 'left'} value here (${short(o.value)})`,
+              hint: 'Changes this panel’s text. Ctrl+Z undoes it.',
+              run: () => useOtherValue(ctx)
+            });
+          }
+
+          // -- copy ----------------------------------------------------------
+          sep();
+          if (selected) items.push({ label: 'Copy selection', icon: 'copy', run: () => copyFromMenu(selected, 'Selection') });
+          else if (ctx.hasValue) items.push({ label: 'Copy value', icon: 'copy', run: () => copyFromMenu(asText(ctx.value), 'Value') });
+          const more = [];
+          if (selected && ctx.hasValue) more.push({ label: 'Value', run: () => copyFromMenu(asText(ctx.value), 'Value') });
+          if (o && o.hasValue && ctx.hasValue && JSON.stringify(left.value) !== JSON.stringify(right.value)) {
+            more.push({
+              label: 'Both values',
+              run: () => copyFromMenu('Left:  ' + asText(left.value) + '\nRight: ' + asText(right.value), 'Both values')
+            });
+          }
+          if (ctx.key !== undefined && ctx.hasValue) more.push({ label: 'Property', hint: ctx.text, run: () => copyFromMenu(ctx.text, 'Property') });
+          if (ctx.key !== undefined) more.push({ label: 'Key name', run: () => copyFromMenu(ctx.key, 'Key') });
+          if (ctx.path) more.push({ label: 'Path', hint: ctx.path, run: () => copyFromMenu(ctx.path, 'Path') });
+          if (more.length) items.push({ label: selected || ctx.hasValue ? 'Copy other' : 'Copy', icon: selected || ctx.hasValue ? '' : 'copy', items: more });
+
+          // -- find ----------------------------------------------------------
+          sep();
+          if (ctx.key !== undefined && !docIsBlank(mergeView.a.state.doc) && !docIsBlank(mergeView.b.state.doc)) {
+            items.push({
+              label: `Find “${short(ctx.key).replace(/^"|"$/g, '')}” in the Keys table`, icon: 'table',
+              hint: 'Every place this key appears, with both sides’ values.',
+              run: () => {
+                openKeyCompare();
+                const box = document.getElementById('kc-search');
+                if (box) { box.value = ctx.key; box.dispatchEvent(new Event('input', { bubbles: true })); }
+              }
+            });
+          }
+          if (ctx.paired) items.push({ label: 'Show this row in both panels', icon: 'arrow-down', run: () => scrollPanesToLine(ctx.line) });
+        } else {
+          if (selected) items.push({ label: 'Copy selection', icon: 'copy', run: () => copyFromMenu(selected, 'Selection') });
+          else if (lineText.trim()) items.push({ label: 'Copy line', icon: 'copy', run: () => copyFromMenu(lineText.trim(), 'Line') });
+        }
+
+        sep();
+        items.push({ label: 'Equivalent values…', icon: 'sliders', run: openEquivModal });
+        items.push({ label: 'Ignore rules…', icon: 'sliders', run: () => document.getElementById('btn-ignore').click() });
+        return items;
+      }
+
+      const CTX_ICONS = {
+        equal: '<span aria-hidden="true">≈</span>',
+        copy: '<svg class="i" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>'
+      };
+      function ctxIcon(name) {
+        return CTX_ICONS[name] || (name ? `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>` : '');
+      }
+
+      /** One menu level. Items with `items` open a submenu to the side. */
+      function buildContextMenu(items, label, onBack) {
+        const menu = document.createElement('div');
+        menu.className = 'ctx-menu';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', label);
+        let sub = null, subTimer = 0;
+        const closeSub = () => {
+          clearTimeout(subTimer);
+          if (!sub) return;
+          sub.btn.setAttribute('aria-expanded', 'false');
+          sub.el.remove();
+          sub = null;
+        };
+        const openSub = (btn, it, focus) => {
+          if (sub && sub.btn === btn) { if (focus) sub.el.querySelector('.ctx-menu-item').focus(); return; }
+          closeSub();
+          const el = buildContextMenu(it.items, it.label, () => { closeSub(); btn.focus(); });
+          document.body.appendChild(el);
+          const r = btn.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+          let left = r.right - 2;
+          if (left + w > window.innerWidth - 8) left = r.left - w + 2;       // no room: open to the left
+          if (left < 8) left = Math.max(8, window.innerWidth - w - 8);       // nor there: over the menu
+          el.style.left = left + 'px';
+          el.style.top = Math.max(8, Math.min(r.top - 5, window.innerHeight - h - 8)) + 'px';
+          btn.setAttribute('aria-expanded', 'true');
+          sub = { btn, el };
+          if (focus) el.querySelector('.ctx-menu-item').focus();
+        };
+        menu._closeSub = closeSub;
+
+        for (const it of items) {
+          if (it === '-') {
+            const sepEl = document.createElement('div');
+            sepEl.className = 'ctx-menu-sep';
+            sepEl.setAttribute('role', 'separator');
+            menu.appendChild(sepEl);
+            continue;
+          }
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'ctx-menu-item';
+          b.setAttribute('role', 'menuitem');
+          b.innerHTML = `<span class="ctx-menu-icon">${ctxIcon(it.icon)}</span><span class="ctx-menu-label"></span>`;
+          b.querySelector('.ctx-menu-label').textContent = it.label;
+          if (it.hint) b.title = it.hint;
+          if (it.disabled) {
+            b.setAttribute('aria-disabled', 'true');
+          } else if (it.items) {
+            b.setAttribute('aria-haspopup', 'menu');
+            b.setAttribute('aria-expanded', 'false');
+            b.insertAdjacentHTML('beforeend', '<svg class="i ctx-menu-caret" aria-hidden="true"><use href="#i-chevron-right"/></svg>');
+            b.onclick = () => openSub(b, it, true);
+            b.onmouseenter = () => { clearTimeout(subTimer); subTimer = setTimeout(() => openSub(b, it, false), 160); };
+            b._open = () => openSub(b, it, true);
+          } else {
+            b.onclick = () => { closeContextMenu(); it.run(); };
+          }
+          if (!it.items) b.onmouseenter = () => { clearTimeout(subTimer); subTimer = setTimeout(closeSub, 220); };
+          menu.appendChild(b);
+        }
+
+        menu.addEventListener('keydown', (e) => {
+          const btns = [...menu.querySelectorAll('.ctx-menu-item')];
+          const at = btns.indexOf(document.activeElement);
+          const cur = btns[at];
+          let to = -1;
+          if (e.key === 'ArrowDown') to = (at + 1) % btns.length;
+          else if (e.key === 'ArrowUp') to = (at - 1 + btns.length) % btns.length;
+          else if (e.key === 'Home') to = 0;
+          else if (e.key === 'End') to = btns.length - 1;
+          else if (e.key === 'ArrowRight' && cur && cur._open) cur._open();
+          else if ((e.key === 'ArrowLeft' || e.key === 'Escape') && onBack) onBack();
+          else if (e.key === 'Escape' || e.key === 'Tab') closeContextMenu(true);
+          else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // Type a letter to jump to the next item starting with it.
+            const k = e.key.toLowerCase();
+            for (let i = 1; i <= btns.length && to === -1; i++) {
+              const c = btns[(at + i) % btns.length];
+              if (c.textContent.trim().toLowerCase().startsWith(k)) to = (at + i) % btns.length;
+            }
+            if (to === -1) return;
+          } else return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (to !== -1) { closeSub(); btns[to].focus(); }
+        });
+        menu.addEventListener('contextmenu', (e) => e.preventDefault());
+        return menu;
+      }
+
+      function closeContextMenu(refocus) {
+        if (!_ctxMenu) return;
+        const view = _ctxMenu.view;
+        document.querySelectorAll('.ctx-menu').forEach((m) => { if (m._closeSub) m._closeSub(); m.remove(); });
+        _ctxMenu = null;
+        if (refocus === true && view) view.focus();
+      }
+
+      function openContextMenu(ctx, view, lineText, x, y) {
+        closeContextMenu();
+        closeMenus(null);
+        const menu = buildContextMenu(contextActions(ctx, view, lineText), 'Actions for this line');
+
+        // What the actions are about: where it is, and each side's value.
+        if (ctx) {
+          const head = document.createElement('div');
+          head.className = 'ctx-menu-head';
+          const where = document.createElement('div');
+          where.className = 'ctx-menu-path';
+          where.textContent = ctx.path || '(root)';
+          where.title = ctx.path || '';
+          head.appendChild(where);
+          const show = (c) => (c.hasValue ? JSON.stringify(c.value) : c.opens + ' …');
+          const row = (side, text) => {
+            const d = document.createElement('div');
+            d.className = 'ctx-menu-side';
+            d.dataset.side = side;
+            const tag = document.createElement('span');
+            tag.className = 'ctx-menu-tag';
+            tag.textContent = side === 'left' ? 'Left' : 'Right';
+            const val = document.createElement('span');
+            val.className = 'ctx-menu-val';
+            val.textContent = text;
+            val.title = text;
+            d.append(tag, val);
+            head.appendChild(d);
+          };
+          const o = ctx.other, otherSide = ctx.side === 'left' ? 'right' : 'left';
+          const mine = [ctx.side, show(ctx)];
+          const theirs = [otherSide, o ? show(o) : ctx.paired ? 'not present' : 'not paired — turn on Block Diff'];
+          for (const r of (ctx.side === 'left' ? [mine, theirs] : [theirs, mine])) row(r[0], r[1]);
+          menu.prepend(head);
+        }
+
+        document.body.appendChild(menu);
+        const w = menu.offsetWidth, h = menu.offsetHeight;
+        menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+        menu.style.top = Math.max(8, y + h > window.innerHeight - 8 ? Math.min(y - h, window.innerHeight - h - 8) : y) + 'px';
+        menu.view = view;
+        _ctxMenu = menu;
+        const first = menu.querySelector('.ctx-menu-item:not([aria-disabled])') || menu.querySelector('.ctx-menu-item');
+        if (first) first.focus({ preventScroll: true });
+      }
+
+      function initializeContextMenu() {
+        // Capture phase, and always ours inside a panel: the browser's menu has
+        // nothing useful for a comparison and used to appear instead of this
+        // one on blank lines, selections and the gutters. Shift+right-click
+        // still gives the browser's.
+        document.addEventListener('contextmenu', (e) => {
+          if (e.target.closest && e.target.closest('.ctx-menu')) { e.preventDefault(); return; }
+          closeContextMenu();
+          if (e.shiftKey || !mergeView) return;
+          const side = mergeView.a.dom.contains(e.target) ? 'left' : mergeView.b.dom.contains(e.target) ? 'right' : null;
+          if (!side) return;
+          e.preventDefault();
+          const view = side === 'left' ? mergeView.a : mergeView.b;
+          // From the keyboard (Menu key) it is about the caret's line. A click
+          // in the gutter is about that row.
+          let x = e.clientX, y = e.clientY, pos = null;
+          if (e.button === 2) {
+            const c = view.contentDOM.getBoundingClientRect();
+            pos = view.posAtCoords({ x: Math.max(x, c.left + 2), y }, false);
+          }
+          if (pos == null) {
+            pos = view.state.selection.main.head;
+            const c = view.coordsAtPos(pos);
+            if (c) { x = c.left; y = c.bottom; }
+          }
+          const line = view.state.doc.lineAt(pos);
+          openContextMenu(resolveLineContext(side, line.number), view, line.text, x, y);
+        }, true);
+        document.addEventListener('mousedown', (e) => {
+          if (_ctxMenu && !(e.target.closest && e.target.closest('.ctx-menu'))) closeContextMenu();
+        }, true);
+        window.addEventListener('scroll', (e) => {
+          if (_ctxMenu && !(e.target.closest && e.target.closest('.ctx-menu'))) closeContextMenu();
+        }, true);
+        window.addEventListener('resize', () => closeContextMenu());
+        window.addEventListener('blur', () => closeContextMenu());
+      }
+
+      // ---- Import: Replace or Merge ---------------------------------------
+      // Everything is worked out before anything is written, so a file that
+      // cannot be read or merged leaves the workspace exactly as it was.
+
+      /** Imported JSON merged into the current text; either side blank = the other. */
+      function mergeJSONText(current, imported) {
+        if (!imported.trim()) return current;
+        if (!current.trim()) return imported;
+        let a, b;
+        try { a = JSON.parse(current); } catch (e) { throw new Error('the current content is not valid JSON.'); }
+        try { b = JSON.parse(imported); } catch (e) { throw new Error('the imported content is not valid JSON.'); }
+        return JSON.stringify(window.mergeJSONValues(a, b), null, currentIndent());
+      }
+
+      /**
+       * Apply an imported snapshot (or a single JSON document: `right === null`,
+       * left panel only). Asks Replace / Merge / Cancel whenever there is
+       * something to lose. Returns the mode used, or null when nothing changed.
+       */
+      async function applyImportedSnapshot(data, name) {
+        const pair = getDocumentPair();
+        if (!pair) return null;
+        const single = data.right == null;
+        const hasBranches = data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0;
+
+        let mode = 'replace';
+        if (pair.left.trim() || (!single && pair.right.trim()) || window.BranchManager.count() > 2) {
+          const answer = await confirmPopover(null, {
+            title: 'Import ' + name,
+            message: (single ? 'This file goes into the left panel. ' : '')
+              + 'Replace: the file takes the place of the current content'
+              + (single ? '.' : ', branches and comparison settings.')
+              + ' Merge: its values are added to the current JSON. Matching keys take the imported value, '
+              + 'arrays are replaced whole, and everything else is kept.',
+            confirmLabel: 'Replace',
+            altLabel: 'Merge'
+          });
+          if (!answer) return null;
+          if (answer === 'alt') mode = 'merge';
+        }
+
+        let L = data.left || '';
+        let R = single ? pair.right : (data.right || '');
+        if (mode === 'merge') {
+          try {
+            L = mergeJSONText(pair.left, data.left || '');
+            if (!single) R = mergeJSONText(pair.right, data.right || '');
+          } catch (err) {
+            showNotice('error', `Could not merge ${name}: ${err.message} Nothing was changed.`);
+            return null;
+          }
+        }
+
+        // Settings travel with a snapshot that REPLACES the workspace; a merge
+        // keeps the comparison set up the way it is. Written in one batch;
+        // applyComparisonSettings() below turns them into live state.
+        const withSettings = mode === 'replace' && data.settings
+          && typeof data.settings === 'object' && Object.keys(data.settings).length > 0;
+        if (withSettings) {
+          try { SettingsManager.saveAll(data.settings); }
+          catch (err) { console.warn('Failed to apply snapshot settings:', err); }
+        }
+
+        if (L !== pair.left) {
+          mergeView.a.dispatch({ changes: { from: 0, to: mergeView.a.state.doc.length, insert: L } });
+        }
+        if (R !== pair.right) {
+          mergeView.b.dispatch({ changes: { from: 0, to: mergeView.b.state.doc.length, insert: R } });
+        }
+        URLManager.clearURL();
+
+        if (hasBranches) {
+          try {
+            // A branch that cannot be merged (not JSON) takes the imported text.
+            const merge = (cur, inc) => { try { return mergeJSONText(cur, inc); } catch (e) { return inc; } };
+            await window.BranchManager.importBranches(data.branches, mode, mode === 'merge' ? merge : undefined);
+          } catch (err) {
+            console.warn('Failed to import branches:', err);
+          }
+        }
+        // Point each panel at the snapshot's active branch when it exists
+        // here, else at the panel's main branch, and refresh tabs + titles.
+        await syncActiveBranches();
+
+        if (withSettings) {
+          setTimeout(() => {
+            const currentSettings = {
+              highlightChanges: SettingsManager.get('highlightChanges'),
+              gutter: SettingsManager.get('gutter'),
+              collapseUnchanged: SettingsManager.get('collapseUnchanged'),
+              orientation: SettingsManager.get('orientation'),
+              revertControls: SettingsManager.get('revertControls'),
+              scanLimit: SettingsManager.get('scanLimit'),
+            };
+            recreateMergeView(currentSettings, wordWrapEnabled);
+            initializeSettingsPanel();
+            initializeThemeSelector();
+            // Ignore rules, numeric tolerance and block diff decide what the
+            // diff reports; without this an imported comparison did not reproduce.
+            applyComparisonSettings();
+            updateBranchSelectors();
+          }, 100);
+        }
+        showNotice('ok', mode === 'merge' ? `Merged ${name} into the current content.` : `Imported ${name}.`);
+        return mode;
+      }
+
       // Import snapshot file
       async function importSnapshot(e) {
         const file = e.target.files && e.target.files[0];
@@ -7385,69 +7968,9 @@
         try {
           // Use unified snapshot handler (supports both .zip and .json.gz)
           const data = await SnapshotHandler.importSnapshot(file);
-          
-          // Apply settings from snapshot if present. Written in one batch (not
-          // one localStorage round-trip per key); applyComparisonSettings()
-          // below turns them into live state so the reopened comparison is
-          // computed exactly the way it was exported.
-          if (data.settings && typeof data.settings === 'object') {
-            try {
-              SettingsManager.saveAll(data.settings);
-              console.log('Settings loaded from snapshot:', data.settings);
-            } catch (err) {
-              console.warn('Failed to apply snapshot settings:', err);
-            }
-          }
+          const mode = await applyImportedSnapshot(data, file.name);
+          if (!mode) { hideDropOverlay(); return; }
 
-          mergeView.a.dispatch({
-            changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
-          });
-
-          mergeView.b.dispatch({
-            changes: { from: 0, to: mergeView.b.state.doc.length, insert: data.right || "" }
-          });
-
-          URLManager.clearURL();
-          
-          // Import branches if present in snapshot
-          if (data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0) {
-            try {
-              const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
-              console.log('Branches imported:', importResult);
-            } catch (err) {
-              console.warn('Failed to import branches:', err);
-            }
-          }
-          // Point each panel at the snapshot's active branch when it exists
-          // here, else at the panel's main branch, and refresh tabs + titles.
-          // Runs with or without branches in the file: the snapshot's settings
-          // have already overwritten leftBranch / rightBranch either way.
-          await syncActiveBranches();
-          
-          // Recreate merge view with new settings if they were present
-          if (data.settings && typeof data.settings === 'object') {
-            setTimeout(() => {
-              const currentSettings = {
-                highlightChanges: SettingsManager.get('highlightChanges'),
-                gutter: SettingsManager.get('gutter'),
-                collapseUnchanged: SettingsManager.get('collapseUnchanged'),
-                orientation: SettingsManager.get('orientation'),
-                revertControls: SettingsManager.get('revertControls'),
-                scanLimit: SettingsManager.get('scanLimit'),
-              };
-              recreateMergeView(currentSettings, wordWrapEnabled);
-              initializeSettingsPanel();
-              initializeThemeSelector();
-              // Ignore rules, numeric tolerance and block diff decide what the
-              // diff reports; without this they were stored but never applied,
-              // so an imported comparison did not reproduce.
-              applyComparisonSettings();
-              
-              // Update branch selectors with imported values
-              updateBranchSelectors();
-            }, 100);
-          }
-          
           updateStatus("Snapshot imported successfully with settings");
           updateDiffStatus();
         } catch (err) {
@@ -7462,69 +7985,9 @@
         try {
           // Use unified snapshot handler (supports both .zip and .json.gz)
           const data = await SnapshotHandler.importSnapshot(file);
-          
-          // Apply settings from snapshot if present. Written in one batch (not
-          // one localStorage round-trip per key); applyComparisonSettings()
-          // below turns them into live state so the reopened comparison is
-          // computed exactly the way it was exported.
-          if (data.settings && typeof data.settings === 'object') {
-            try {
-              SettingsManager.saveAll(data.settings);
-              console.log('Settings loaded from snapshot:', data.settings);
-            } catch (err) {
-              console.warn('Failed to apply snapshot settings:', err);
-            }
-          }
+          const mode = await applyImportedSnapshot(data, file.name);
+          if (!mode) { hideDropOverlay(); return; }
 
-          mergeView.a.dispatch({
-            changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
-          });
-
-          mergeView.b.dispatch({
-            changes: { from: 0, to: mergeView.b.state.doc.length, insert: data.right || "" }
-          });
-
-          URLManager.clearURL();
-          
-          // Import branches if present in snapshot
-          if (data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0) {
-            try {
-              const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
-              console.log('Branches imported:', importResult);
-            } catch (err) {
-              console.warn('Failed to import branches:', err);
-            }
-          }
-          // Point each panel at the snapshot's active branch when it exists
-          // here, else at the panel's main branch, and refresh tabs + titles.
-          // Runs with or without branches in the file: the snapshot's settings
-          // have already overwritten leftBranch / rightBranch either way.
-          await syncActiveBranches();
-          
-          // Recreate merge view with new settings if they were present
-          if (data.settings && typeof data.settings === 'object') {
-            setTimeout(() => {
-              const currentSettings = {
-                highlightChanges: SettingsManager.get('highlightChanges'),
-                gutter: SettingsManager.get('gutter'),
-                collapseUnchanged: SettingsManager.get('collapseUnchanged'),
-                orientation: SettingsManager.get('orientation'),
-                revertControls: SettingsManager.get('revertControls'),
-                scanLimit: SettingsManager.get('scanLimit'),
-              };
-              recreateMergeView(currentSettings, wordWrapEnabled);
-              initializeSettingsPanel();
-              initializeThemeSelector();
-              // Ignore rules, numeric tolerance and block diff decide what the
-              // diff reports; without this they were stored but never applied,
-              // so an imported comparison did not reproduce.
-              applyComparisonSettings();
-              
-              // Update branch selectors with imported values
-              updateBranchSelectors();
-            }, 100);
-          }
-          
           updateStatus("Snapshot imported successfully");
           updateDiffStatus();
           hideDropOverlay();
@@ -8232,7 +8695,118 @@
 
       // Clear all content
       async function clearAll() {
-        if (!confirm("Clear all content?")) return;
+        if (!confirm("Clear the content of both panels?\n\nBranches, tabs, titles and settings are kept. To clear those too, use More > Reset.")) return;
+        await clearPanels();
+      }
+
+      /* ---- Reset… (More ▾) -------------------------------------------------
+         Clear all empties the two panels. Everything beyond that is chosen
+         here, part by part, so "clear my data" and "reset my setup" are never
+         the same button. The dialog opens on the data (content + branches). */
+      const RESET_RULE_KEYS = ['ignorePatterns', 'ignoreScope', 'ignoreStyled',
+                               'numToleranceEnabled', 'numTolerance', 'valueEquiv'];
+      const RESET_PARTS = [
+        ['content', 'reset-content', 'panel content'],
+        ['branches', 'reset-branches', 'branches'],
+        ['rules', 'reset-rules', 'comparison rules'],
+        ['settings', 'reset-settings', 'app settings']
+      ];
+      let _resetReturnFocus = null;
+
+      function resetSelection() {
+        const sel = {};
+        for (const [key, id] of RESET_PARTS) sel[key] = document.getElementById(id).checked;
+        return sel;
+      }
+
+      function updateResetSummary() {
+        const sel = resetSelection();
+        const kept = RESET_PARTS.filter((p) => !sel[p[0]]).map((p) => p[2]);
+        const any = kept.length < RESET_PARTS.length;
+        document.getElementById('reset-apply').disabled = !any;
+        document.getElementById('reset-summary').textContent = !any ? 'Nothing is ticked.'
+          : kept.length ? 'Kept: ' + kept.join(', ') + '.' : 'Nothing is kept: the app goes back to a first visit.';
+      }
+
+      function openResetDialog() {
+        closeMenus();
+        _resetReturnFocus = document.activeElement;
+        const extra = Math.max(0, window.BranchManager.count() - 2);
+        document.getElementById('reset-branches-desc').textContent = (extra
+          ? `Removes the ${extra} branch${extra === 1 ? '' : 'es'} you added and every saved branch’s content, tab name and title.`
+          : 'Removes saved branch content, tab names and titles.') + ' Only the default Left and Right tabs remain.';
+        for (const [key, id] of RESET_PARTS) document.getElementById(id).checked = key === 'content' || key === 'branches';
+        updateResetSummary();
+        document.getElementById('reset-modal').style.display = 'flex';
+        document.getElementById('reset-content').focus();
+      }
+
+      function closeResetDialog() {
+        const modal = document.getElementById('reset-modal');
+        if (modal.style.display === 'none') return;
+        modal.style.display = 'none';
+        if (_resetReturnFocus && _resetReturnFocus.isConnected) _resetReturnFocus.focus();
+      }
+
+      async function applyReset(sel) {
+        try {
+          if (sel.content) {
+            await clearPanels();
+            URLManager.clearURL();
+          }
+          if (sel.branches) {
+            // Without "panel content" the panels keep their text; it then sits
+            // on the default branches, not saved to them.
+            await window.BranchManager.resetAll();
+            SettingsManager.set('leftBranch', 'main-left');
+            SettingsManager.set('rightBranch', 'main-right');
+            await syncActiveBranches();
+          }
+          if (sel.rules || sel.settings) {
+            const D = SettingsManager.defaults, all = SettingsManager.loadAll();
+            const isRule = (k) => RESET_RULE_KEYS.indexOf(k) !== -1;
+            for (const k of Object.keys(all)) {
+              if (k === 'leftBranch' || k === 'rightBranch') continue;
+              if (!(isRule(k) ? sel.rules : sel.settings)) continue;
+              if (k in D) all[k] = D[k]; else delete all[k];
+            }
+            localStorage.setItem(SettingsManager.KEY, JSON.stringify(all));
+          }
+          // Preferences are read in many places at startup; a reload is the one
+          // way to be sure every one of them is back to its default.
+          if (sel.settings) { location.reload(); return; }
+          if (sel.rules) applyComparisonSettings();
+          const done = RESET_PARTS.filter((p) => sel[p[0]]).map((p) => p[2]);
+          showNotice('ok', 'Cleared: ' + done.join(', ') + '.');
+        } catch (err) {
+          showNotice('error', 'Could not finish the reset: ' + (err && err.message ? err.message : err));
+        }
+      }
+
+      function initializeResetDialog() {
+        const modal = document.getElementById('reset-modal');
+        document.getElementById('btn-reset-all').onclick = openResetDialog;
+        for (const p of RESET_PARTS) document.getElementById(p[1]).addEventListener('change', updateResetSummary);
+        document.getElementById('reset-cancel').onclick = closeResetDialog;
+        document.getElementById('reset-close').onclick = closeResetDialog;
+        modal.querySelector('[data-reset-dismiss]').onclick = closeResetDialog;
+        document.getElementById('reset-apply').onclick = () => {
+          const sel = resetSelection();
+          closeResetDialog();
+          applyReset(sel);
+        };
+        modal.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') { e.stopPropagation(); closeResetDialog(); return; }
+          if (e.key !== 'Tab') return;
+          // Keep Tab inside the dialog.
+          const f = [...modal.querySelectorAll('button, input')].filter((el) => !el.disabled);
+          const first = f[0], last = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        });
+      }
+
+      async function clearPanels() {
 
         // Stop anything still running first, or an in-flight ingest would write
         // its panes over the freshly-cleared editors a moment later.
