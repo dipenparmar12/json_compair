@@ -1040,6 +1040,18 @@ Located in `tests/`:
 - `test_case_array_objects/`
 - `test_case_objects/`
 
+### Synthetic data (`tools/gen_dataset.js`)
+Writes a pair of files row by row (hundreds of MB without holding them in memory). Values are a
+pure function of seed, row and column; names and values are generic. Use it for every large or
+performance test — never real exports.
+```bash
+node tools/gen_dataset.js --format csv --size 100MB --cols 20 --profile changed:5 --out .outputs/bench/p
+```
+- `--format` csv | json | nested · `--rows N` or `--size 50MB` · `--cols N` · `--seed N` · `--messy`
+- `--profile` identical | changed:N (N% of values) | schema | reordered | addremove:N | different | none
+- Output: `<out>_a.<ext>` and `<out>_b.<ext>`. `.outputs/` is git-ignored.
+- Small committed pairs made with it: `tests/fixtures/synthetic/` (see its README).
+
 ### Automated suites (run these first)
 ```bash
 node tests/json_repair.test.js    # 108 checks — data integrity, repair, perf, classification
