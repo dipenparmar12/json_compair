@@ -3999,3 +3999,36 @@ button:disabled,
 @media (forced-colors: active) {
     .ctx-menu-item:focus { outline: 2px solid Highlight; outline-offset: -2px; }
 }
+
+/* ==========================================================================
+   RESET DIALOG (More ▾ → Reset…) — reuses the repair-modal shell
+   ========================================================================== */
+.reset-modal-body { width: min(460px, calc(100vw - 24px)); }
+.reset-body { padding: 4px 16px 12px; overflow-y: auto; }
+.reset-lead { margin: 8px 0 4px; color: var(--text-muted); font-size: 13px; }
+.reset-group-label {
+    margin: 12px 0 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.reset-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13px;
+}
+.reset-option + .reset-option { margin-top: 6px; }
+.reset-option:hover { background: var(--bg-hover); }
+.reset-option:has(input:checked) { border-color: var(--diff-del-strong); }
+.reset-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.reset-option input { margin-top: 3px; flex: none; }
+.reset-desc { display: block; margin-top: 2px; color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+.reset-summary { margin: 12px 0 0; font-size: 12.5px; }
+#reset-apply:disabled { opacity: 0.5; cursor: not-allowed; }

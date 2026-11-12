@@ -929,11 +929,21 @@ end of `app.css`):
   for nested keys) that value-sorts the **top-level array of objects in both panes** (ideal for
   aligning two arrays before diffing); empty spec falls back to "Sort keys A→Z". Pure logic in
   `utils.js` (`parseSortSpec` / `sortJSONByFields`); UI in `initializeSortPanel()` + `sortByFields()`.
-- Clear all (row 1, right) — empties both panels; branches, tabs and titles stay.
-- **More ▾ → Reset everything…** (`resetEverything`) — the whole workspace: asks first, then
-  empties the panels (`clearPanels`, shared with Clear all), removes every branch and title
-  (`BranchManager.resetAll()` → only empty `main-left` / `main-right`), clears the saved
-  comparison and the `?c=` link. Settings are kept. A reload then shows the first-visit demo.
+- Clear all (row 1, right) — empties both panels; branches, tabs, titles and settings stay.
+- **More ▾ → Reset…** (`openResetDialog` / `applyReset`, `#reset-modal`) — everything beyond
+  Clear all, chosen part by part. Opens with the two data parts ticked:
+
+  | Part | Clears | How |
+  |---|---|---|
+  | Panel content ✓ | both panels, the saved comparison, the `?c=` link | `clearPanels()` (shared with Clear all) |
+  | Branches, tabs and titles ✓ | every branch; empty `main-left` / `main-right` remain | `BranchManager.resetAll()` |
+  | Comparison rules | ignore list + scope + styling, equivalence rules, numeric tolerance | `RESET_RULE_KEYS` → defaults, `applyComparisonSettings()` |
+  | App settings | every other preference | defaults, then the page reloads |
+
+  A line under the options names what is kept; the button is disabled with nothing ticked;
+  Escape / Cancel / the backdrop change nothing; Tab stays inside the dialog. It replaced the
+  single "Reset everything" action, which cleared data only but read as if it reset settings
+  too. Branches without content: the panels keep their text, unsaved, on the default tabs.
 - Settings panel toggle (sliders icon)
 - More ▾ — Open file(s), Import snapshot, Export / Share, Examples, Theme, Help
 
@@ -1141,7 +1151,7 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     panel instead — the card goes, a notice offers **Restore it**. A small pair reloads with
     no card
 33. Ignore ▾ → Edit rules… → switch on: `[{"a":"NaN","s":1}]` vs `[{"a":null,"s":2}]` — only `s` is marked, the left pane still says `"NaN"`; untick the group — `a` is marked again
-34. Add two tabs and a title, then More ▾ → Reset everything… → Cancel changes nothing; confirm leaves two empty panels with only "Left" / "Right"; a reload brings none of it back and the theme is unchanged
+34. Add two tabs, a title and an ignore pattern, set the dark theme, then More ▾ → Reset… — it opens with content and branches ticked and "Kept: comparison rules, app settings"; Cancel changes nothing; Clear selected leaves two empty panels with only "Left" / "Right", the pattern and theme still there, and a reload brings nothing back. Tick only Comparison rules — the pattern goes, content stays. Tick only App settings — the page reloads on the default theme with content and rules intact
 35. Edit a panel without saving its branch, add a third branch, Export — a ZIP downloads; Reset everything, Import it — panels and all three branches come back with the edited content
 36. With content in the panels, Import a `.json` holding `{"n":{"x":9},"b":2}` → Merge: `n.x` is 9, `b` is added, every other key stays, the right panel is untouched; Cancel and a file of broken JSON change nothing
 37. `{"user_registered":true}` vs `{"user_registered":1}`: right-click the value in EITHER panel → Treat true and 1 as equal — the line is no longer marked, both panes keep their text, Undo in the notice brings the difference back. Right-click a `}` line, a selection and the line-number gutter — always our menu, never the browser's. ↓ → opens "Add both to a group", ← closes it, Escape closes the menu

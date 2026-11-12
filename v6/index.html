@@ -499,7 +499,7 @@
               <button id="btn-open-file" class="dropdown-item"><svg class="i"><use href="#i-folder"/></svg>Open file(s)… <span class="dropdown-hint">1 or 2</span></button>
               <button id="btn-import" class="dropdown-item"><svg class="i"><use href="#i-import"/></svg>Import snapshot</button>
               <button id="btn-share" class="dropdown-item"><svg class="i"><use href="#i-share"/></svg>Export / Share</button>
-              <button id="btn-reset-all" class="dropdown-item dropdown-item-danger" title="Remove all content, branches, tabs and titles. Settings are kept."><svg class="i"><use href="#i-trash"/></svg>Reset everything…</button>
+              <button id="btn-reset-all" class="dropdown-item dropdown-item-danger" title="Choose what to clear: panel content, branches, comparison rules, app settings"><svg class="i"><use href="#i-trash"/></svg>Reset…</button>
               <input type="file" id="file-open" multiple
                      accept=".json,.csv,.tsv,.txt,.ndjson,.log,.md,application/json,text/csv,text/plain"
                      style="display: none" />
@@ -617,6 +617,51 @@
             <span class="repair-modal-spacer"></span>
             <button class="btn" id="repair-modal-cancel">Cancel</button>
             <button class="btn btn-primary" id="repair-modal-apply">Apply fix</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reset: one place to clear things, with each part named and ticked
+           separately. Opens on "content + branches" — the data, not the setup. -->
+      <div id="reset-modal" class="repair-modal reset-modal" style="display: none" role="dialog"
+           aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-lead">
+        <div class="repair-modal-backdrop" data-reset-dismiss></div>
+        <div class="repair-modal-body reset-modal-body">
+          <div class="repair-modal-head">
+            <h2 id="reset-title">Reset</h2>
+            <button class="btn btn-icon" id="reset-close" title="Close (Esc)" aria-label="Close">✕</button>
+          </div>
+          <div class="reset-body">
+            <p id="reset-lead" class="reset-lead">Tick what to clear. Everything else is kept.</p>
+            <div class="reset-group-label">Your data</div>
+            <label class="reset-option">
+              <input type="checkbox" id="reset-content" />
+              <span><strong>Panel content</strong>
+                <span class="reset-desc">Empties both panels and forgets the comparison saved for next time.</span></span>
+            </label>
+            <label class="reset-option">
+              <input type="checkbox" id="reset-branches" />
+              <span><strong>Branches, tabs and titles</strong>
+                <span class="reset-desc" id="reset-branches-desc"></span></span>
+            </label>
+            <div class="reset-group-label">Your setup</div>
+            <label class="reset-option">
+              <input type="checkbox" id="reset-rules" />
+              <span><strong>Comparison rules</strong>
+                <span class="reset-desc">The ignore list, equivalent-value rules and numeric tolerance go back to their defaults.</span></span>
+            </label>
+            <label class="reset-option">
+              <input type="checkbox" id="reset-settings" />
+              <span><strong>App settings</strong>
+                <span class="reset-desc">Theme, layout, highlight style, indent and every other preference go back to their defaults. The page reloads.</span></span>
+            </label>
+            <p id="reset-summary" class="reset-summary" role="status" aria-live="polite"></p>
+          </div>
+          <div class="repair-modal-foot">
+            <span class="repair-hint">This cannot be undone.</span>
+            <span class="repair-modal-spacer"></span>
+            <button class="btn" id="reset-cancel">Cancel</button>
+            <button class="btn btn-danger" id="reset-apply">Clear selected</button>
           </div>
         </div>
       </div>
@@ -6233,7 +6278,7 @@
         initializeFileOpen();
 
         btnShare.onclick = shareURL;
-        document.getElementById("btn-reset-all").onclick = resetEverything;
+        initializeResetDialog();
         
         // Import snapshot
         btnImport.onclick = () => fileImport.click();
@@ -8650,38 +8695,115 @@
 
       // Clear all content
       async function clearAll() {
-        if (!confirm("Clear the content of both panels?\n\nBranches, tabs and titles are kept.")) return;
+        if (!confirm("Clear the content of both panels?\n\nBranches, tabs, titles and settings are kept. To clear those too, use More > Reset.")) return;
         await clearPanels();
       }
 
-      /**
-       * Back to a first visit's workspace: empty panels, only the two default
-       * branches, no titles, nothing saved to restore. Settings are preferences,
-       * not workspace content, and stay.
-       */
-      async function resetEverything() {
+      /* ---- Reset… (More ▾) -------------------------------------------------
+         Clear all empties the two panels. Everything beyond that is chosen
+         here, part by part, so "clear my data" and "reset my setup" are never
+         the same button. The dialog opens on the data (content + branches). */
+      const RESET_RULE_KEYS = ['ignorePatterns', 'ignoreScope', 'ignoreStyled',
+                               'numToleranceEnabled', 'numTolerance', 'valueEquiv'];
+      const RESET_PARTS = [
+        ['content', 'reset-content', 'panel content'],
+        ['branches', 'reset-branches', 'branches'],
+        ['rules', 'reset-rules', 'comparison rules'],
+        ['settings', 'reset-settings', 'app settings']
+      ];
+      let _resetReturnFocus = null;
+
+      function resetSelection() {
+        const sel = {};
+        for (const [key, id] of RESET_PARTS) sel[key] = document.getElementById(id).checked;
+        return sel;
+      }
+
+      function updateResetSummary() {
+        const sel = resetSelection();
+        const kept = RESET_PARTS.filter((p) => !sel[p[0]]).map((p) => p[2]);
+        const any = kept.length < RESET_PARTS.length;
+        document.getElementById('reset-apply').disabled = !any;
+        document.getElementById('reset-summary').textContent = !any ? 'Nothing is ticked.'
+          : kept.length ? 'Kept: ' + kept.join(', ') + '.' : 'Nothing is kept: the app goes back to a first visit.';
+      }
+
+      function openResetDialog() {
         closeMenus();
+        _resetReturnFocus = document.activeElement;
         const extra = Math.max(0, window.BranchManager.count() - 2);
-        const ok = await confirmPopover(null, {
-          title: 'Reset entire workspace?',
-          message: 'This permanently clears both panels, '
-            + (extra ? `all ${extra + 2} branches` : 'both branches')
-            + ', tab names, titles and the saved comparison. Settings are kept. This cannot be undone.',
-          confirmLabel: 'Reset everything',
-          danger: true
-        });
-        if (!ok) return;
-        await clearPanels();
+        document.getElementById('reset-branches-desc').textContent = (extra
+          ? `Removes the ${extra} branch${extra === 1 ? '' : 'es'} you added and every saved branch’s content, tab name and title.`
+          : 'Removes saved branch content, tab names and titles.') + ' Only the default Left and Right tabs remain.';
+        for (const [key, id] of RESET_PARTS) document.getElementById(id).checked = key === 'content' || key === 'branches';
+        updateResetSummary();
+        document.getElementById('reset-modal').style.display = 'flex';
+        document.getElementById('reset-content').focus();
+      }
+
+      function closeResetDialog() {
+        const modal = document.getElementById('reset-modal');
+        if (modal.style.display === 'none') return;
+        modal.style.display = 'none';
+        if (_resetReturnFocus && _resetReturnFocus.isConnected) _resetReturnFocus.focus();
+      }
+
+      async function applyReset(sel) {
         try {
-          await window.BranchManager.resetAll();
-          URLManager.clearURL();
-          SettingsManager.set('leftBranch', 'main-left');
-          SettingsManager.set('rightBranch', 'main-right');
-          await syncActiveBranches();
-          showNotice('ok', 'Workspace reset. Panels, branches and tabs are back to their defaults.');
+          if (sel.content) {
+            await clearPanels();
+            URLManager.clearURL();
+          }
+          if (sel.branches) {
+            // Without "panel content" the panels keep their text; it then sits
+            // on the default branches, not saved to them.
+            await window.BranchManager.resetAll();
+            SettingsManager.set('leftBranch', 'main-left');
+            SettingsManager.set('rightBranch', 'main-right');
+            await syncActiveBranches();
+          }
+          if (sel.rules || sel.settings) {
+            const D = SettingsManager.defaults, all = SettingsManager.loadAll();
+            const isRule = (k) => RESET_RULE_KEYS.indexOf(k) !== -1;
+            for (const k of Object.keys(all)) {
+              if (k === 'leftBranch' || k === 'rightBranch') continue;
+              if (!(isRule(k) ? sel.rules : sel.settings)) continue;
+              if (k in D) all[k] = D[k]; else delete all[k];
+            }
+            localStorage.setItem(SettingsManager.KEY, JSON.stringify(all));
+          }
+          // Preferences are read in many places at startup; a reload is the one
+          // way to be sure every one of them is back to its default.
+          if (sel.settings) { location.reload(); return; }
+          if (sel.rules) applyComparisonSettings();
+          const done = RESET_PARTS.filter((p) => sel[p[0]]).map((p) => p[2]);
+          showNotice('ok', 'Cleared: ' + done.join(', ') + '.');
         } catch (err) {
-          showNotice('error', 'Could not reset the workspace: ' + (err && err.message ? err.message : err));
+          showNotice('error', 'Could not finish the reset: ' + (err && err.message ? err.message : err));
         }
+      }
+
+      function initializeResetDialog() {
+        const modal = document.getElementById('reset-modal');
+        document.getElementById('btn-reset-all').onclick = openResetDialog;
+        for (const p of RESET_PARTS) document.getElementById(p[1]).addEventListener('change', updateResetSummary);
+        document.getElementById('reset-cancel').onclick = closeResetDialog;
+        document.getElementById('reset-close').onclick = closeResetDialog;
+        modal.querySelector('[data-reset-dismiss]').onclick = closeResetDialog;
+        document.getElementById('reset-apply').onclick = () => {
+          const sel = resetSelection();
+          closeResetDialog();
+          applyReset(sel);
+        };
+        modal.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') { e.stopPropagation(); closeResetDialog(); return; }
+          if (e.key !== 'Tab') return;
+          // Keep Tab inside the dialog.
+          const f = [...modal.querySelectorAll('button, input')].filter((el) => !el.disabled);
+          const first = f[0], last = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        });
       }
 
       async function clearPanels() {
