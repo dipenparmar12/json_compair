@@ -316,6 +316,11 @@ window.DiffView
   .foldLabel(region, hidden)   // "1,249 removed lines hidden"
   .lineCoverage(text, ranges)  // 'full' | 'part' | null
 
+// json_context.js (v6) — what a line of pretty-printed JSON holds (right-click menu, §16)
+window.JSONContext
+  .at(getLine, lineNo)  // → {key, value, hasValue, opens, segs[]} | null (blank / closing line)
+  .parseLine(text) / .formatPath(segs) / .token(value)
+
 // diff_ignore.js (v6)
 window.DiffIgnore
   .parseOne()           // "/re/flags" → regex descriptor, else plain match
@@ -372,6 +377,7 @@ Both v5 and v6 load utilities in `<head>`:
 <script src="./utils/key_compare.js"></script>    <!-- v6 only: Keys table; AFTER json_align (uses matchArray) -->
 <script src="./utils/diff_view.js"></script>      <!-- v6 only: fold blocks + highlight-style coverage -->
 <script src="./utils/value_equiv.js"></script>    <!-- v6 only: "NaN" ~ null value rules (Diff Engine §15) -->
+<script src="./utils/json_context.js"></script>   <!-- v6 only: key / value / path of a pane line (Diff Engine §16) -->
 ```
 
 > v6 marks every `<head>` script (CDN and local) `defer`: same order, all run before the
@@ -769,6 +775,7 @@ node tests/storage.test.js        #   8 checks: saved comparison — newest copy
 node tests/viewport_diff.test.js  #   4 checks: status-bar count stays line-by-line and fast
 node tests/value_equiv.test.js    #  40 checks: equivalent-value rules, kind-3 alignment, row check
 node tests/import_merge.test.js   #  15 checks: Import → Merge rules (recursion, arrays, kinds, null)
+node tests/json_context.test.js   #  26 checks: line → key / value / path, for the right-click menu
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -1063,6 +1070,7 @@ node tests/storage.test.js        #   8 checks — saved comparison: newest copy
 node tests/viewport_diff.test.js  #   4 checks — status-bar count stays line-by-line and fast
 node tests/value_equiv.test.js    #  40 checks — equivalent-value rules, kind-3 alignment, row check
 node tests/import_merge.test.js   #  15 checks — Import → Merge rules (recursion, arrays, kinds, null)
+node tests/json_context.test.js   #  26 checks — line → key / value / path, for the right-click menu
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1136,6 +1144,7 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
 34. Add two tabs and a title, then More ▾ → Reset everything… → Cancel changes nothing; confirm leaves two empty panels with only "Left" / "Right"; a reload brings none of it back and the theme is unchanged
 35. Edit a panel without saving its branch, add a third branch, Export — a ZIP downloads; Reset everything, Import it — panels and all three branches come back with the edited content
 36. With content in the panels, Import a `.json` holding `{"n":{"x":9},"b":2}` → Merge: `n.x` is 9, `b` is added, every other key stays, the right panel is untouched; Cancel and a file of broken JSON change nothing
+37. `{"user_registered":true}` vs `{"user_registered":1}`: right-click the value in EITHER panel → Treat true and 1 as equal — the line is no longer marked, both panes keep their text, Undo in the notice brings the difference back; right-click a `}` line — the browser's own menu
 
 ## Common Tasks
 
@@ -1523,6 +1532,24 @@ re-diffs anything.
 - **Where:** `equivActive()` is null unless Block Diff is on — the row skip needs row-aligned output. Changing a rule calls `applyValueEquiv()` → re-align + `forceRediff()` (pane text does not change, so CM6 would keep old chunks). The Ignore badge shows `≈` while rules are on.
 - **Limits:** Block Diff off → rules do nothing. Records rendered compact in `view: 'full'` compare as whole lines (handled by `rowsEquivalent` when the line is one value). Hash anchoring does not see equivalence; such records still pair through gap filling.
 - **Status:** `tests/value_equiv.test.js` 40 checks. Checked in the app: the NaN/null pair goes from "2 changed · 5 field changes" to "1 changed · 1 field change" with both panes unchanged; off / group off restore it. Dialog checked in the app at 1280 px (dark) and 375 px (light).
+
+### 16. Right-click menu — `json_context.js` + the "Right-click menu" block in index.html
+- **Why:** an unwanted difference had to be fixed by opening Ignore ▾ and typing the key or the two values. Now: right-click the line.
+- **What:** right-click a line holding a key, a value or an opening bracket, in either panel. A header shows the path and both values (`Left true   Right 1`, or "Only in the right panel"). Actions, only the ones that apply:
+
+| Action | Effect |
+|---|---|
+| Treat *a* and *b* as equal | `treatAsEqual`: puts both tokens in one equivalence group (an enabled group that already holds either, else a new one named `a = b`), switches the rules on, `applyValueEquiv()`. Shown when both sides hold different primitives; reads "Equal by a rule already" when they do. |
+| Ignore the key "k" everywhere / Stop ignoring "k" | `addIgnorePattern` / `removeIgnorePattern` |
+| Copy value · both values · property · path | clipboard; path as `a.b[3]["x y"]` |
+| Show this row in both panels | `scrollPanesToLine` |
+| Equivalent values… · Ignore rules… | open the existing editors |
+
+- **How:** `JSONContext.at(getLine, lineNo)` reads the line (key, value or `{` / `[`) and walks up by indentation for the path; indices are counted from the text, gap lines skipped. `resolveLineContext` pairs it with the **same line of the other panel** — Block Diff's row alignment is the pairing (`_rowAligned`); nothing is matched by text. No new rule store: the menu only adds to `equivCfg` and `ignorePatterns`.
+- **Feedback:** every rule change shows a notice with **Undo** (and **Edit rules** for equivalence). The panes' text never changes.
+- **Native menu kept** for Shift+right-click, a text selection, the gutters, and blank or closing-bracket lines. Keyboard: Menu key opens it for the caret's line; ↑ ↓ Home End, Enter, Escape.
+- **Limits (not built):** rules scoped to one path or one property name, ignoring one value pair or one subtree, replace-from-other-side, find all occurrences, submenus. A group token matches by text, so `1` also covers the string `"1"`. Block Diff off → no pairing, so no *Treat as equal*. In a windowed collection the record index shows as `[*]`.
+- **Status:** `tests/json_context.test.js` 26 checks (every line of nested documents resolves to its real path at 2/3/4 spaces and tabs, with gap rows). Checked in the app from both panels: `true` / `1` goes 4 → 3 changed blocks and back with Undo; nested and array paths; ignore and stop ignoring; one-sided key; closing bracket keeps the native menu. The menu's look was not checked in a screenshot.
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the

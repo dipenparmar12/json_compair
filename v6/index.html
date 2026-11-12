@@ -62,6 +62,7 @@
     <script defer src="./utils/progress.js"></script>
     <script defer src="./utils/json_align.js"></script>
   <script defer src="./utils/value_equiv.js"></script>   <!-- "NaN" ~ null rules -->
+  <script defer src="./utils/json_context.js"></script>  <!-- key / value / path of a line (right-click menu) -->
     <script defer src="./utils/key_compare.js"></script>
     <script defer src="./utils/diff_view.js"></script>
     <script defer src="./utils/diff_ignore.js"></script>
@@ -1452,6 +1453,7 @@
         }
 
         initializeEquivPanel();
+        initializeContextMenu();
         renderIgnoreList();
       }
 
@@ -7412,6 +7414,245 @@
           btn.textContent = originalText;
           btn.disabled = false;
         }
+      }
+
+      // ---- Right-click menu -----------------------------------------------
+      // Quick actions on the line under the pointer: make the two values equal
+      // by rule, ignore the key, copy, find the row. It only ADDS to the rules
+      // that Ignore ▾ already holds (ignorePatterns, equivCfg) — no second rule
+      // store, no second comparison. utils/json_context.js reads the line.
+      // Shift+right-click, a text selection, the gutters and a line that holds
+      // no key or value keep the browser's own menu.
+      let _ctxMenu = null;
+      function closeContextMenu() {
+        if (!_ctxMenu) return;
+        _ctxMenu.remove();
+        _ctxMenu = null;
+      }
+
+      /** What is on `lineNo` of one panel, and the matching row of the other. */
+      function resolveLineContext(side, lineNo) {
+        const J = window.JSONContext;
+        const view = side === 'left' ? mergeView.a : mergeView.b;
+        const other = side === 'left' ? mergeView.b : mergeView.a;
+        const lineOf = (v) => (n) => (n >= 1 && n <= v.state.doc.lines ? v.state.doc.line(n).text : '');
+        const ctx = J.at(lineOf(view), lineNo);
+        if (!ctx) return null;
+        // A windowed collection shows one page of it: the record's index on
+        // screen is not its index in the document, so it is not claimed.
+        if (diffStats && diffStats.view === 'window') {
+          const i = ctx.segs.findIndex((s) => typeof s === 'number');
+          if (i !== -1) ctx.segs[i] = '*';
+        }
+        ctx.side = side;
+        ctx.line = lineNo;
+        ctx.text = lineOf(view)(lineNo).trim().replace(/,$/, '');
+        ctx.path = J.formatPath(ctx.segs);
+        // Block Diff puts corresponding rows on the same line of both panels —
+        // that alignment IS the pairing; nothing is matched by text here.
+        ctx.paired = _rowAligned;
+        const o = _rowAligned ? J.parseLine(lineOf(other)(lineNo)) : null;
+        ctx.other = o && o.key === ctx.key ? o : null;
+        return ctx;
+      }
+
+      function copyFromMenu(text, what) {
+        navigator.clipboard.writeText(text).then(
+          () => showNotice('ok', what + ' copied.', { timeout: 2000, key: 'ctx-copy' }),
+          () => showNotice('error', 'Could not copy to the clipboard.', { key: 'ctx-copy' }));
+      }
+
+      /** Put two values in one equivalence group (an existing one when either is in it). */
+      function treatAsEqual(a, b) {
+        const J = window.JSONContext, ta = J.token(a), tb = J.token(b);
+        const before = JSON.parse(JSON.stringify(equivCfg));
+        let group = equivCfg.groups.find((g) => g.on && (g.values.indexOf(ta) !== -1 || g.values.indexOf(tb) !== -1));
+        const joined = !!group;
+        if (!group) {
+          group = { name: ta + ' = ' + tb, values: [], on: true };
+          equivCfg.groups.push(group);
+        }
+        for (const t of [ta, tb]) if (group.values.indexOf(t) === -1) group.values.push(t);
+        equivCfg.enabled = true;
+        applyValueEquiv();
+        showNotice('ok', joined ? `Added to the group “${group.name}”: ${ta} = ${tb}.` : `New rule: ${ta} = ${tb}, everywhere in this comparison.`, {
+          key: 'ctx-rule',
+          actions: [
+            { label: 'Undo', run: () => { equivCfg = before; applyValueEquiv(); } },
+            { label: 'Edit rules', run: openEquivModal }
+          ]
+        });
+      }
+
+      function ignoreKeyFromMenu(key) {
+        const err = addIgnorePattern(key);
+        if (err) { showNotice('error', err, { key: 'ctx-rule' }); return; }
+        showNotice('ok', `Ignoring the key “${key}” everywhere.`, {
+          key: 'ctx-rule',
+          actions: [{ label: 'Undo', run: () => removeIgnorePattern(key) }]
+        });
+      }
+
+      /** The menu for one resolved line: [{label, run, disabled, hint} | '-']. */
+      function contextActions(ctx) {
+        const J = window.JSONContext;
+        const short = (v) => {
+          const s = typeof v === 'string' ? JSON.stringify(v) : J.token(v);
+          return s.length > 26 ? s.slice(0, 25) + '…' : s;
+        };
+        const prim = (c) => !!c && c.hasValue && (c.value === null || typeof c.value !== 'object');
+        const o = ctx.other;
+        const left = ctx.side === 'left' ? ctx : o, right = ctx.side === 'left' ? o : ctx;
+        const asText = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, currentIndent()));
+        const items = [];
+
+        if (prim(ctx) && prim(o) && ctx.value !== o.value) {
+          const canon = equivActive();
+          if (canon && canon(ctx.value) === canon(o.value)) {
+            items.push({ label: 'Equal by a rule already', disabled: true });
+          } else {
+            items.push({
+              label: `Treat ${short(left.value)} and ${short(right.value)} as equal`,
+              hint: 'Adds an equivalence rule. It applies to these two values wherever they appear.',
+              run: () => treatAsEqual(left.value, right.value)
+            });
+          }
+        }
+        if (ctx.key !== undefined && ctx.key && ctx.key[0] !== '/') {
+          if (ignorePatterns.indexOf(ctx.key) !== -1) {
+            items.push({ label: `Stop ignoring “${ctx.key}”`, run: () => removeIgnorePattern(ctx.key) });
+          } else {
+            items.push({
+              label: `Ignore the key “${ctx.key}” everywhere`,
+              hint: 'Every property with this name is left out of the comparison, at any depth.',
+              run: () => ignoreKeyFromMenu(ctx.key)
+            });
+          }
+        }
+        if (items.length) items.push('-');
+
+        if (ctx.hasValue) items.push({ label: 'Copy value', run: () => copyFromMenu(asText(ctx.value), 'Value') });
+        if (o && o.hasValue && ctx.hasValue && ctx.text !== undefined && JSON.stringify(left.value) !== JSON.stringify(right.value)) {
+          items.push({
+            label: 'Copy both values',
+            run: () => copyFromMenu('Left:  ' + asText(left.value) + '\nRight: ' + asText(right.value), 'Both values')
+          });
+        }
+        if (ctx.key !== undefined && ctx.hasValue) items.push({ label: 'Copy property', run: () => copyFromMenu(ctx.text, 'Property') });
+        if (ctx.path) items.push({ label: 'Copy path', run: () => copyFromMenu(ctx.path, 'Path') });
+        items.push('-');
+        if (ctx.paired) items.push({ label: 'Show this row in both panels', run: () => scrollPanesToLine(ctx.line) });
+        items.push({ label: 'Equivalent values…', run: openEquivModal });
+        items.push({ label: 'Ignore rules…', run: () => document.getElementById('btn-ignore').click() });
+        return items;
+      }
+
+      function openContextMenu(ctx, x, y) {
+        closeContextMenu();
+        closeMenus(null);
+        const view = ctx.side === 'left' ? mergeView.a : mergeView.b;
+        const menu = document.createElement('div');
+        menu.className = 'ctx-menu';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', 'Actions for this line');
+
+        // What the actions are about: where it is, and the pair when there is one.
+        const head = document.createElement('div');
+        head.className = 'ctx-menu-head';
+        const where = document.createElement('div');
+        where.className = 'ctx-menu-path';
+        where.textContent = ctx.path || '(root)';
+        where.title = ctx.path;
+        head.appendChild(where);
+        const o = ctx.other;
+        const show = (c) => (c.hasValue ? (typeof c.value === 'object' && c.value !== null
+          ? JSON.stringify(c.value) : JSON.stringify(c.value)) : c.opens + ' …');
+        const pair = document.createElement('div');
+        pair.className = 'ctx-menu-pair';
+        if (o) {
+          const l = ctx.side === 'left' ? ctx : o, r = ctx.side === 'left' ? o : ctx;
+          pair.textContent = 'Left ' + show(l) + '   Right ' + show(r);
+        } else if (ctx.paired) {
+          pair.textContent = 'Only in the ' + ctx.side + ' panel';
+        } else {
+          pair.textContent = 'Turn on Block Diff to pair it with the other panel';
+        }
+        head.appendChild(pair);
+        menu.appendChild(head);
+
+        const done = (fn) => () => { closeContextMenu(); fn(); };
+        for (const it of contextActions(ctx)) {
+          if (it === '-') {
+            const sep = document.createElement('div');
+            sep.className = 'ctx-menu-sep';
+            sep.setAttribute('role', 'separator');
+            menu.appendChild(sep);
+            continue;
+          }
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'ctx-menu-item';
+          b.setAttribute('role', 'menuitem');
+          b.textContent = it.label;
+          if (it.hint) b.title = it.hint;
+          if (it.disabled) b.disabled = true; else b.onclick = done(it.run);
+          menu.appendChild(b);
+        }
+
+        menu.addEventListener('keydown', (e) => {
+          const btns = [...menu.querySelectorAll('.ctx-menu-item:not(:disabled)')];
+          const at = btns.indexOf(document.activeElement);
+          let to = -1;
+          if (e.key === 'ArrowDown') to = (at + 1) % btns.length;
+          else if (e.key === 'ArrowUp') to = (at - 1 + btns.length) % btns.length;
+          else if (e.key === 'Home') to = 0;
+          else if (e.key === 'End') to = btns.length - 1;
+          else if (e.key === 'Escape' || e.key === 'Tab') { closeContextMenu(); view.focus(); }
+          else return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (to !== -1) btns[to].focus();
+        });
+        menu.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        document.body.appendChild(menu);
+        const w = menu.offsetWidth, h = menu.offsetHeight;
+        menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+        menu.style.top = Math.max(8, y + h > window.innerHeight - 8 ? y - h : y) + 'px';
+        _ctxMenu = menu;
+        const first = menu.querySelector('.ctx-menu-item:not(:disabled)');
+        if (first) first.focus({ preventScroll: true });
+      }
+
+      function initializeContextMenu() {
+        document.addEventListener('contextmenu', (e) => {
+          if (_ctxMenu && _ctxMenu.contains(e.target)) return;
+          closeContextMenu();
+          if (e.shiftKey || !mergeView) return;
+          const side = mergeView.a.dom.contains(e.target) ? 'left' : mergeView.b.dom.contains(e.target) ? 'right' : null;
+          if (!side) return;
+          const view = side === 'left' ? mergeView.a : mergeView.b;
+          if (!view.contentDOM.contains(e.target) || !view.state.selection.main.empty) return;
+          // From the keyboard (Menu key, Shift+F10 is the browser's) it is about the caret's line.
+          let x = e.clientX, y = e.clientY;
+          let pos = e.button === 2 ? view.posAtCoords({ x, y }) : null;
+          if (pos == null) {
+            pos = view.state.selection.main.head;
+            const c = view.coordsAtPos(pos);
+            if (!c) return;
+            x = c.left; y = c.bottom;
+          }
+          const ctx = resolveLineContext(side, view.state.doc.lineAt(pos).number);
+          if (!ctx) return;
+          e.preventDefault();
+          openContextMenu(ctx, x, y);
+        });
+        document.addEventListener('mousedown', (e) => {
+          if (_ctxMenu && !_ctxMenu.contains(e.target)) closeContextMenu();
+        }, true);
+        window.addEventListener('scroll', closeContextMenu, true);
+        window.addEventListener('resize', closeContextMenu);
+        window.addEventListener('blur', closeContextMenu);
       }
 
       // ---- Import: Replace or Merge ---------------------------------------
