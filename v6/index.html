@@ -466,43 +466,15 @@
               </label>
 
               <div class="settings-section-title settings-section-divided">Equivalent values</div>
-              <div class="ignore-desc">
-                Count different ways of writing the same value as equal — for example
-                <code>"NaN"</code> and <code>null</code> from two pipelines. Each panel
-                keeps showing its own value; the pair is just not marked or counted.
-                Groups: values separated by commas, <code>""</code> for an empty string.
-                Needs Block Diff (Settings).
-              </div>
-              <label class="setting-row">
-                <input type="checkbox" id="equiv-enabled" />
-                <div class="setting-text">
-                  <div class="setting-title">Treat specific values as equivalent</div>
-                  <div class="setting-desc">Off = exact comparison. The groups and rules below apply only while this is on.</div>
-                </div>
-              </label>
-              <div id="equiv-body" class="equiv-body">
-                <ul id="equiv-groups" class="equiv-groups" aria-label="Equivalence groups"></ul>
-                <button type="button" id="equiv-add-group" class="btn">+ Add group</button>
-                <label class="setting-row"><input type="checkbox" data-equiv="trim" />
-                  <div class="setting-text"><div class="setting-title">Ignore surrounding whitespace</div>
-                  <div class="setting-desc">" active " equals "active".</div></div></label>
-                <label class="setting-row"><input type="checkbox" data-equiv="ignoreCase" />
-                  <div class="setting-text"><div class="setting-title">Ignore text case</div>
-                  <div class="setting-desc">"Active" equals "active".</div></div></label>
-                <label class="setting-row"><input type="checkbox" data-equiv="na" />
-                  <div class="setting-text"><div class="setting-title">Missing values are equal</div>
-                  <div class="setting-desc">null, "" and the words listed below all mean "missing".</div></div></label>
-                <input type="text" id="equiv-na-values" class="ignore-input" aria-label="Missing-value words, comma separated" />
-                <label class="setting-row"><input type="checkbox" data-equiv="numeric" />
-                  <div class="setting-text"><div class="setting-title">Numbers written as text</div>
-                  <div class="setting-desc">"100", "100.00" and 100 are equal — exact decimals, no rounding. Also applies to ID-like text such as "01234".</div></div></label>
-                <label class="setting-row"><input type="checkbox" data-equiv="booleans" />
-                  <div class="setting-text"><div class="setting-title">Yes / no words</div>
-                  <div class="setting-desc">true, "true", "yes" are equal; so are false, "false", "no". Any case.</div></div></label>
-                <label class="setting-row"><input type="checkbox" data-equiv="dates" />
-                  <div class="setting-text"><div class="setting-title">Dates</div>
-                  <div class="setting-desc">ISO dates and times (2026-01-01, 2026-01-01T00:00:00Z) and MM/DD/YYYY compare by the date they mean.</div></div></label>
-                <button type="button" id="equiv-reset" class="btn">Reset to defaults</button>
+              <div class="equiv-summary">
+                <label class="setting-row">
+                  <input type="checkbox" id="equiv-enabled" />
+                  <div class="setting-text">
+                    <div class="setting-title">Treat equivalent values as equal</div>
+                    <div class="equiv-summary-line" id="equiv-summary-text">e.g. "NaN" and null. Each panel keeps showing its own value.</div>
+                  </div>
+                </label>
+                <button type="button" id="equiv-open" class="btn equiv-open">Edit rules…</button>
               </div>
             </div>
           </div>
@@ -643,6 +615,68 @@
             <span class="repair-modal-spacer"></span>
             <button class="btn" id="repair-modal-cancel">Cancel</button>
             <button class="btn btn-primary" id="repair-modal-apply">Apply fix</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Equivalent values: the rules behind Ignore ▾ → "Treat equivalent values
+           as equal" (utils/value_equiv.js, Diff Engine §15). Every change applies
+           to the comparison straight away; there is nothing to save. -->
+      <div id="equiv-modal" class="repair-modal equiv-modal" style="display: none" role="dialog"
+           aria-modal="true" aria-labelledby="equiv-title">
+        <div class="repair-modal-backdrop" data-equiv-dismiss></div>
+        <div class="repair-modal-body equiv-modal-body">
+          <div class="repair-modal-head">
+            <h2 id="equiv-title">Equivalent values</h2>
+            <label class="equiv-switch" title="Turn the rules on or off">
+              <input type="checkbox" id="equiv-modal-enabled" />
+              <span class="equiv-switch-track" aria-hidden="true"></span>
+              <span id="equiv-switch-label">Off</span>
+            </label>
+            <button class="btn btn-icon" id="equiv-close" title="Close (Esc)" aria-label="Close">✕</button>
+          </div>
+
+          <div class="equiv-scroll">
+            <p class="equiv-lead">Values that mean the same thing are not marked or counted as
+              differences. The panels keep the original text, and saving, Copy and Export are unaffected.</p>
+            <div id="equiv-banner" class="equiv-banner" role="status"></div>
+
+            <section class="equiv-section" aria-labelledby="equiv-groups-h">
+              <div class="equiv-section-head">
+                <h3 id="equiv-groups-h">Value groups</h3>
+                <span class="equiv-hint">Any two values in the same group are equal.</span>
+              </div>
+              <ul id="equiv-groups" class="equiv-groups"></ul>
+              <button type="button" id="equiv-add-group" class="btn equiv-add">+ New group</button>
+            </section>
+
+            <section class="equiv-section" aria-labelledby="equiv-rules-h">
+              <div class="equiv-section-head">
+                <h3 id="equiv-rules-h">Rules</h3>
+                <span class="equiv-hint">Each one applies to every value in both panels.</span>
+              </div>
+              <div class="equiv-rules" id="equiv-rules"></div>
+            </section>
+
+            <section class="equiv-section equiv-try" aria-labelledby="equiv-try-h">
+              <div class="equiv-section-head">
+                <h3 id="equiv-try-h">Try it</h3>
+                <span class="equiv-hint">Type a value from each side. JSON literals (null, 12, true) are read as JSON.</span>
+              </div>
+              <div class="equiv-try-row">
+                <input type="text" id="equiv-try-a" class="ignore-input" value="&quot;NaN&quot;" aria-label="Left value" spellcheck="false" />
+                <span id="equiv-try-verdict" class="equiv-verdict" aria-live="polite"></span>
+                <input type="text" id="equiv-try-b" class="ignore-input" value="null" aria-label="Right value" spellcheck="false" />
+              </div>
+              <div id="equiv-try-why" class="equiv-try-why"></div>
+            </section>
+          </div>
+
+          <div class="repair-modal-foot">
+            <button class="btn btn-quiet-danger" id="equiv-reset">Reset to defaults</button>
+            <span class="repair-modal-spacer"></span>
+            <span class="repair-hint">Changes apply immediately</span>
+            <button class="btn btn-primary" id="equiv-done">Done</button>
           </div>
         </div>
       </div>
@@ -934,7 +968,7 @@
       let equivCanonFn = null;    // ValueEquiv.make(equivCfg), or null when no rule is on
       function loadEquivSettings() {
         const d = window.ValueEquiv.DEFAULTS, s = SettingsManager.get('valueEquiv');
-        equivCfg = Object.assign({}, d, s && typeof s === 'object' ? s : {});
+        equivCfg = JSON.parse(JSON.stringify(Object.assign({}, d, s && typeof s === 'object' ? s : {})));   // never edit DEFAULTS
         if (!Array.isArray(equivCfg.groups)) equivCfg.groups = d.groups;
         equivCanonFn = window.ValueEquiv.make(equivCfg);
       }
@@ -943,6 +977,7 @@
         SettingsManager.set('valueEquiv', equivCfg);
         equivCanonFn = window.ValueEquiv.make(equivCfg);
         renderIgnoreList();
+        renderEquivSummary();
         _lastAlignMemo = null;
         if (transformActive()) applyBlockAlignment();
         // The panes' text does not change with the rules, so CM6 would keep the
@@ -1419,57 +1454,296 @@
         renderIgnoreList();
       }
 
-      // "Equivalent values" section of the Ignore panel. Every control writes
-      // equivCfg and calls applyValueEquiv(); text inputs apply on 'change'.
-      function renderEquivPanel() {
-        const on = document.getElementById('equiv-enabled');
-        if (!on || !equivCfg) return;
-        on.checked = !!equivCfg.enabled;
-        document.getElementById('equiv-body').classList.toggle('is-off', !equivCfg.enabled);
-        document.querySelectorAll('[data-equiv]').forEach((c) => { c.checked = !!equivCfg[c.dataset.equiv]; });
-        document.getElementById('equiv-na-values').value = (equivCfg.naValues || []).join(', ');
+      // Equivalent values — the summary row in the Ignore panel and the
+      // #equiv-modal editor. Every control writes equivCfg; scheduleEquivApply()
+      // re-runs the comparison once typing settles.
+      const EQUIV_RULES = [
+        { key: 'trim', title: 'Ignore surrounding spaces', ex: ['" active "', '"active"'] },
+        { key: 'ignoreCase', title: 'Ignore text case', ex: ['"Active"', '"active"'] },
+        { key: 'na', title: 'Missing values', ex: ['""', 'null'],
+          note: 'null, empty text and these words all mean "missing":', words: true },
+        { key: 'numeric', title: 'Numbers written as text', ex: ['"100.00"', '100'],
+          note: 'Exact decimals, no rounding. Also makes ID-like text such as "01234" equal 1234.' },
+        { key: 'booleans', title: 'Yes / no words', ex: ['"yes"', 'true'],
+          note: 'true / "true" / "yes" and false / "false" / "no", any case.' },
+        { key: 'dates', title: 'Dates', ex: ['"2026-01-01"', '"01/01/2026"'],
+          note: 'ISO dates and times (time zones converted) and MM/DD/YYYY.' }
+      ];
+      const EQUIV_TAG = { '\x00': 'missing', '\x01': 'text', '\x02': 'number', '\x03': 'yes/no', '\x04': 'date', '\x05': 'group' };
+      let _equivApplyTimer = null, _equivReturnFocus = null;
+
+      function scheduleEquivApply() {
+        renderEquivSummary();
+        updateEquivTry();
+        clearTimeout(_equivApplyTimer);
+        _equivApplyTimer = setTimeout(applyValueEquiv, 250);
+      }
+
+      // One line saying what is on, used by the Ignore panel and the dialog banner.
+      function equivSummaryText() {
+        if (!equivCfg.enabled) return 'Off — the comparison is exact.';
+        const on = equivCfg.groups.filter((g) => g.on && g.values.length).map((g) => g.name || 'Unnamed group')
+          .concat(EQUIV_RULES.filter((r) => equivCfg[r.key]).map((r) => r.title));
+        return on.length ? 'On: ' + on.join(' · ') : 'On, but nothing is selected yet.';
+      }
+
+      function renderEquivSummary() {
+        const chk = document.getElementById('equiv-enabled');
+        if (!chk || !equivCfg) return;
+        chk.checked = !!equivCfg.enabled;
+        document.getElementById('equiv-summary-text').textContent = equivSummaryText();
+        const sw = document.getElementById('equiv-modal-enabled');
+        sw.checked = !!equivCfg.enabled;
+        document.getElementById('equiv-switch-label').textContent = equivCfg.enabled ? 'On' : 'Off';
+        document.getElementById('equiv-modal').classList.toggle('is-off', !equivCfg.enabled);
+        const banner = document.getElementById('equiv-banner');
+        banner.innerHTML = '';
+        let msg = null, action = null;
+        if (!equivCfg.enabled) {
+          msg = 'Off — the comparison is exact. You can still edit the rules.';
+          action = { label: 'Turn on', run: () => setEquivEnabled(true) };
+        } else if (!blockDiffEnabled()) {
+          msg = 'These rules need Block Diff, which is off, so they are not applied.';
+          action = { label: 'Turn on Block Diff', run: () => { setBlockDiff(true); scheduleEquivApply(); } };
+        } else if (!window.ValueEquiv.make(equivCfg)) {
+          msg = 'Nothing is selected yet — tick a group or a rule below.';
+        }
+        banner.hidden = !msg;
+        if (!msg) return;
+        banner.appendChild(document.createTextNode(msg + ' '));
+        if (action) {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'btn'; b.textContent = action.label;
+          b.addEventListener('click', action.run);
+          banner.appendChild(b);
+        }
+      }
+
+      function setEquivEnabled(on) {
+        equivCfg.enabled = !!on;
+        clearTimeout(_equivApplyTimer);
+        applyValueEquiv();
+        renderEquivSummary();
+        updateEquivTry();
+      }
+
+      // Values as removable chips plus a text box: Enter or comma adds, Backspace
+      // in the empty box removes the last chip, a pasted list is split on commas.
+      function chipEditor(values, onChange, placeholder, label) {
+        const box = document.createElement('div');
+        box.className = 'equiv-chips';
+        const input = document.createElement('input');
+        input.type = 'text'; input.className = 'equiv-chip-input'; input.spellcheck = false;
+        input.placeholder = placeholder; input.setAttribute('aria-label', label);
+        const draw = () => {
+          box.querySelectorAll('.equiv-chip').forEach((c) => c.remove());
+          values.forEach((v, i) => {
+            if (v === '""') v = values[i] = '';   // stored rule token for the empty string
+            const chip = document.createElement('span');
+            chip.className = 'equiv-chip' + (v === '' ? ' is-empty' : '');
+            const text = document.createElement('span');
+            text.textContent = v === '' ? 'empty text' : v;
+            const x = document.createElement('button');
+            x.type = 'button'; x.textContent = '×';
+            x.setAttribute('aria-label', 'Remove ' + (v === '' ? 'empty text' : v));
+            x.addEventListener('click', () => { values.splice(i, 1); draw(); onChange(); input.focus(); });
+            chip.append(text, x);
+            box.insertBefore(chip, input);
+          });
+        };
+        const add = (raw) => {
+          let added = false;
+          raw.split(',').map((t) => t.trim()).forEach((t) => {
+            if (!t) return;
+            const v = t === '""' ? '' : t;
+            if (values.indexOf(v) === -1) { values.push(v); added = true; }
+          });
+          if (added) { draw(); onChange(); }
+        };
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            add(input.value); input.value = '';
+          } else if (e.key === 'Backspace' && !input.value && values.length) {
+            values.pop(); draw(); onChange();
+          }
+        });
+        input.addEventListener('paste', (e) => {
+          const t = e.clipboardData && e.clipboardData.getData('text/plain');
+          if (t && t.indexOf(',') !== -1) { e.preventDefault(); add(t); }
+        });
+        input.addEventListener('blur', () => { if (input.value.trim()) { add(input.value); input.value = ''; } });
+        box.addEventListener('click', (e) => { if (e.target === box) input.focus(); });
+        box.appendChild(input);
+        draw();
+        return box;
+      }
+
+      function renderEquivGroups() {
         const list = document.getElementById('equiv-groups');
         list.innerHTML = '';
         equivCfg.groups.forEach((g, i) => {
+          if (!Array.isArray(g.values)) g.values = [];
           const li = document.createElement('li');
-          li.className = 'equiv-group';
-          li.innerHTML = '<input type="checkbox"><input type="text" class="ignore-input equiv-name">' +
-            '<input type="text" class="ignore-input equiv-values"><button type="button" class="ignore-remove">×</button>';
-          const [chk, name, vals, del] = li.children;
-          chk.checked = !!g.on; chk.setAttribute('aria-label', 'Use group ' + (g.name || i + 1));
-          name.value = g.name || ''; name.placeholder = 'Group name'; name.setAttribute('aria-label', 'Group name');
-          vals.value = (g.values || []).join(', '); vals.placeholder = 'NaN, null, None';
-          vals.setAttribute('aria-label', 'Values in ' + (g.name || 'this group') + ', comma separated');
-          del.setAttribute('aria-label', 'Remove group ' + (g.name || i + 1));
-          chk.addEventListener('change', () => { g.on = chk.checked; applyValueEquiv(); });
-          name.addEventListener('change', () => { g.name = name.value.trim(); applyValueEquiv(); });
-          vals.addEventListener('change', () => { g.values = splitList(vals.value); applyValueEquiv(); });
-          del.addEventListener('click', () => { equivCfg.groups.splice(i, 1); applyValueEquiv(); renderEquivPanel(); });
+          li.className = 'equiv-group' + (g.on ? '' : ' is-unused');
+          const head = document.createElement('div');
+          head.className = 'equiv-group-head';
+          const chk = document.createElement('input');
+          chk.type = 'checkbox'; chk.checked = !!g.on;
+          chk.setAttribute('aria-label', 'Use this group');
+          chk.title = 'Use this group';
+          const name = document.createElement('input');
+          name.type = 'text'; name.className = 'equiv-group-name'; name.value = g.name || '';
+          name.placeholder = 'Group name'; name.setAttribute('aria-label', 'Group name');
+          const del = document.createElement('button');
+          del.type = 'button'; del.className = 'btn btn-icon btn-quiet-danger'; del.textContent = '✕';
+          del.title = 'Delete group'; del.setAttribute('aria-label', 'Delete group ' + (g.name || i + 1));
+          chk.addEventListener('change', () => { g.on = chk.checked; li.classList.toggle('is-unused', !g.on); scheduleEquivApply(); });
+          name.addEventListener('input', () => { g.name = name.value.trim(); renderEquivSummary(); updateEquivTry(); });
+          name.addEventListener('change', scheduleEquivApply);
+          del.addEventListener('click', () => {
+            const removed = equivCfg.groups.splice(i, 1)[0];
+            renderEquivGroups(); scheduleEquivApply();
+            showNotice('info', `Deleted the group "${removed.name || 'Unnamed group'}".`, {
+              key: 'equiv-group-deleted', timeout: 8000,
+              actions: [{ label: 'Undo', run: () => {
+                equivCfg.groups.splice(Math.min(i, equivCfg.groups.length), 0, removed);
+                renderEquivGroups(); scheduleEquivApply();
+              } }]
+            });
+          });
+          head.append(chk, name, del);
+          li.append(head, chipEditor(g.values, scheduleEquivApply, g.values.length ? 'Add a value…' : 'Type a value, press Enter', 'Add a value to ' + (g.name || 'this group')));
           list.appendChild(li);
         });
+        if (!equivCfg.groups.length) {
+          const li = document.createElement('li');
+          li.className = 'equiv-empty';
+          li.textContent = 'No groups. Add one to say which values mean the same thing.';
+          list.appendChild(li);
+        }
       }
-      function splitList(s) { return s.split(',').map((t) => t.trim()).filter((t) => t !== ''); }
+
+      function renderEquivRules() {
+        const box = document.getElementById('equiv-rules');
+        box.innerHTML = '';
+        EQUIV_RULES.forEach((r) => {
+          const card = document.createElement('div');
+          card.className = 'equiv-rule' + (equivCfg[r.key] ? ' is-on' : '');
+          const lab = document.createElement('label');
+          lab.className = 'equiv-rule-main';
+          const chk = document.createElement('input');
+          chk.type = 'checkbox'; chk.checked = !!equivCfg[r.key];
+          const txt = document.createElement('span');
+          txt.className = 'equiv-rule-text';
+          const t = document.createElement('span'); t.className = 'equiv-rule-title'; t.textContent = r.title;
+          const ex = document.createElement('span'); ex.className = 'equiv-rule-ex';
+          ex.innerHTML = `<code>${escapeHtml(r.ex[0])}</code> = <code>${escapeHtml(r.ex[1])}</code>`;
+          txt.append(t, ex);
+          lab.append(chk, txt);
+          card.appendChild(lab);
+          if (r.note) {
+            const n = document.createElement('div'); n.className = 'equiv-rule-note'; n.textContent = r.note;
+            card.appendChild(n);
+          }
+          if (r.words) {
+            if (!Array.isArray(equivCfg.naValues)) equivCfg.naValues = window.ValueEquiv.DEFAULT_NA.slice();
+            card.appendChild(chipEditor(equivCfg.naValues, scheduleEquivApply, 'Add a word…', 'Add a missing-value word'));
+          }
+          chk.addEventListener('change', () => {
+            equivCfg[r.key] = chk.checked; card.classList.toggle('is-on', chk.checked); scheduleEquivApply();
+          });
+          box.appendChild(card);
+        });
+      }
+
+      // "Try it": what the current rules say about two values, and why. Uses the
+      // rules as if switched on, so they can be tried before turning them on.
+      function updateEquivTry() {
+        const a = document.getElementById('equiv-try-a'), b = document.getElementById('equiv-try-b');
+        if (!a || !equivCfg) return;
+        const read = (s) => {
+          const t = s.trim();
+          try { const v = JSON.parse(t); if (v === null || typeof v !== 'object') return v; } catch (e) { /* text */ }
+          return s;
+        };
+        const va = read(a.value), vb = read(b.value);
+        const canon = window.ValueEquiv.make(Object.assign({}, equivCfg, { enabled: true }));
+        const ca = canon ? canon(va) : null, cb = canon ? canon(vb) : null;
+        const same = va === vb || (canon && ca === cb);
+        const verdict = document.getElementById('equiv-try-verdict');
+        verdict.textContent = same ? '= Equal' : '≠ Different';
+        verdict.className = 'equiv-verdict ' + (same ? 'is-equal' : 'is-diff');
+        const show = (v) => (typeof v === 'string' ? JSON.stringify(v) : String(v));
+        let why;
+        if (va === vb) why = 'Identical values.';
+        else if (!canon) why = 'No group or rule is selected, so only identical values are equal.';
+        else if (same) {
+          if (ca[0] === '\x05') {
+            const g = equivCfg.groups[+ca.slice(1)];
+            why = `Both are in the group "${(g && g.name) || 'Unnamed group'}".`;
+          } else if (ca[0] === '\x00') why = 'Both count as missing values.';
+          else why = `Both read as the same ${EQUIV_TAG[ca[0]]}.`;
+        } else {
+          why = `Left is read as ${EQUIV_TAG[ca[0]]} (${show(va)}), right as ${EQUIV_TAG[cb[0]]} (${show(vb)}).`;
+        }
+        if (!equivCfg.enabled) why += ' The rules are off, so the comparison does not use this yet.';
+        document.getElementById('equiv-try-why').textContent = why;
+      }
+
+      function renderEquivModal() {
+        renderEquivGroups();
+        renderEquivRules();
+        renderEquivSummary();
+        updateEquivTry();
+      }
+
+      function openEquivModal() {
+        _equivReturnFocus = document.activeElement;
+        closeMenus(null);
+        renderEquivModal();
+        document.getElementById('equiv-modal').style.display = 'flex';
+        document.getElementById('equiv-modal-enabled').focus();
+      }
+      function closeEquivModal() {
+        const m = document.getElementById('equiv-modal');
+        if (m.style.display === 'none') return;
+        m.style.display = 'none';
+        if (document.activeElement && m.contains(document.activeElement)) document.activeElement.blur();
+        clearTimeout(_equivApplyTimer);
+        applyValueEquiv();   // flush any change still waiting on the debounce
+        if (_equivReturnFocus && _equivReturnFocus.focus) _equivReturnFocus.focus();
+      }
+
       function initializeEquivPanel() {
         const on = document.getElementById('equiv-enabled');
         if (!on) return;
-        on.addEventListener('change', () => { equivCfg.enabled = on.checked; applyValueEquiv(); renderEquivPanel(); });
-        document.querySelectorAll('[data-equiv]').forEach((c) => c.addEventListener('change', () => {
-          equivCfg[c.dataset.equiv] = c.checked; applyValueEquiv();
-        }));
-        document.getElementById('equiv-na-values').addEventListener('change', (e) => {
-          equivCfg.naValues = splitList(e.target.value); applyValueEquiv();
+        on.addEventListener('change', () => setEquivEnabled(on.checked));
+        document.getElementById('equiv-open').addEventListener('click', openEquivModal);
+        document.getElementById('equiv-modal-enabled').addEventListener('change', (e) => setEquivEnabled(e.target.checked));
+        document.getElementById('equiv-close').addEventListener('click', closeEquivModal);
+        document.getElementById('equiv-done').addEventListener('click', closeEquivModal);
+        document.querySelector('[data-equiv-dismiss]').addEventListener('click', closeEquivModal);
+        document.getElementById('equiv-modal').addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') { e.stopPropagation(); closeEquivModal(); }
         });
         document.getElementById('equiv-add-group').addEventListener('click', () => {
           equivCfg.groups.push({ name: '', values: [], on: true });
-          renderEquivPanel();
-          const names = document.querySelectorAll('#equiv-groups .equiv-name');
+          renderEquivGroups();
+          const names = document.querySelectorAll('#equiv-groups .equiv-group-name');
           if (names.length) names[names.length - 1].focus();
         });
         document.getElementById('equiv-reset').addEventListener('click', () => {
+          const before = JSON.parse(JSON.stringify(equivCfg));
           equivCfg = JSON.parse(JSON.stringify(Object.assign({}, window.ValueEquiv.DEFAULTS, { enabled: equivCfg.enabled })));
-          applyValueEquiv(); renderEquivPanel();
+          renderEquivModal(); scheduleEquivApply();
+          showNotice('info', 'Equivalent-value rules reset to the defaults.', {
+            key: 'equiv-reset', timeout: 8000,
+            actions: [{ label: 'Undo', run: () => { equivCfg = before; renderEquivModal(); scheduleEquivApply(); } }]
+          });
         });
-        renderEquivPanel();
+        for (const id of ['equiv-try-a', 'equiv-try-b']) document.getElementById(id).addEventListener('input', updateEquivTry);
+        renderEquivSummary();
       }
 
       // Define theme extensions

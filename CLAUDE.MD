@@ -1093,7 +1093,7 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     Restore shows progress and lands on the same comparison. Reload again and paste into a
     panel instead — the card goes, a notice offers **Restore it**. A small pair reloads with
     no card
-33. Ignore ▾ → Equivalent values on: `[{"a":"NaN","s":1}]` vs `[{"a":null,"s":2}]` — only `s` is marked, the left pane still says `"NaN"`; untick the group — `a` is marked again
+33. Ignore ▾ → Edit rules… → switch on: `[{"a":"NaN","s":1}]` vs `[{"a":null,"s":2}]` — only `s` is marked, the left pane still says `"NaN"`; untick the group — `a` is marked again
 
 ## Common Tasks
 
@@ -1477,9 +1477,10 @@ re-diffs anything.
 - **Why:** two pipelines write the same missing/boolean/number differently (`"NaN"` vs `null`, `"100"` vs `100`); every such field was a difference.
 - **What:** a master switch, custom groups (name + comma-separated values, `""` = empty string; default "Missing values" = NaN, null, None, N/A, NA) and six rules: trim, ignore case, missing values (NA words list), numbers as text (exact decimals), yes/no words, dates (ISO incl. zones, MM/DD/YYYY). Ported from `make_canonicalizer` in `C:\xh\scripts\utils\csv_diff.py`: every canonical form is type-tagged, so `"100"` ≠ `100` unless *numbers* is on.
 - **How:** `ValueEquiv.make(cfg)` → `canon(value)`. json_align takes it as `opts.equiv` (`cmpOf` packs `{tol, canon}` into the `tol` every matcher already passes); `eqKind` returns **kind 3** for primitives equal only by canon. Unlike tolerance (kind 2) nothing is normalized: `alignValue` renders each side's own value, so `_ignorePristine` is not involved. `rowAlignedDiff` skips a differing row pair when `ValueEquiv.rowsEquivalent()` says they hold the same key and an equivalent value. Keys table: `KeyCompare.compare({equiv})` → note `equivalent`.
+- **UI:** Ignore ▾ holds only a summary row — switch, one line naming what is on ("On: Missing values · Dates"), **Edit rules…**. The editor is `#equiv-modal` (reuses the `repair-modal` shell): header switch; a banner when it is off, when Block Diff is off (with a Turn on button) or when nothing is ticked; groups as one-row cards (tick, name, values as chips — Enter/comma adds, Backspace removes, a pasted list splits; "empty text" chip for `""`); rules as toggle cards with an example each (`"100.00" = 100`), the missing-words chips shown only when that rule is on; **Try it** — two values, Equal / Different and why ("Both are in the group …", "Left is read as text, right as number"). Edits apply after 250 ms (`scheduleEquivApply`); delete group and Reset to defaults offer Undo. Code: `initializeEquivPanel`, `chipEditor`, `renderEquivGroups/Rules`, `updateEquivTry`; CSS "EQUIVALENT VALUES".
 - **Where:** `equivActive()` is null unless Block Diff is on — the row skip needs row-aligned output. Changing a rule calls `applyValueEquiv()` → re-align + `forceRediff()` (pane text does not change, so CM6 would keep old chunks). The Ignore badge shows `≈` while rules are on.
 - **Limits:** Block Diff off → rules do nothing. Records rendered compact in `view: 'full'` compare as whole lines (handled by `rowsEquivalent` when the line is one value). Hash anchoring does not see equivalence; such records still pair through gap filling.
-- **Status:** `tests/value_equiv.test.js` 40 checks. Checked in the app: the NaN/null pair goes from "2 changed · 5 field changes" to "1 changed · 1 field change" with both panes unchanged; off / group off restore it. Panel layout not visually checked.
+- **Status:** `tests/value_equiv.test.js` 40 checks. Checked in the app: the NaN/null pair goes from "2 changed · 5 field changes" to "1 changed · 1 field change" with both panes unchanged; off / group off restore it. Dialog checked in the app at 1280 px (dark) and 375 px (light).
 
 ### 9 / 10. Large collections — our own record matching + field model + windowed render
 - **Symptom (two separate reports, same root cause):** large CSV-derived JSON either froze the

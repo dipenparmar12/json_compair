@@ -3808,10 +3808,105 @@ button:disabled,
 .restore-card-rows dd { margin: 0; overflow-wrap: anywhere; }
 .restore-card-actions { display: flex; gap: var(--space-2); }
 
-/* ===== EQUIVALENT VALUES (Ignore panel) ===== */
-.equiv-body { display: flex; flex-direction: column; gap: 6px; }
-.equiv-body.is-off { opacity: .55; }
-.equiv-groups { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.equiv-group { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.6fr) auto; gap: 6px; align-items: center; }
-.equiv-group .ignore-input { min-width: 0; width: 100%; box-sizing: border-box; }
-.equiv-body > .btn { align-self: flex-start; }
+/* ===== EQUIVALENT VALUES — Ignore-panel summary + #equiv-modal ===== */
+.equiv-summary { display: flex; align-items: flex-start; gap: var(--space-2); }
+.equiv-summary .setting-row { flex: 1 1 auto; min-width: 0; }
+.equiv-open { flex: 0 0 auto; margin-top: 2px; }
+.equiv-summary-line { margin-top: 2px; font-size: 11.5px; line-height: 1.4; color: var(--text-muted); }
+
+.equiv-modal-body { width: min(760px, 100%); max-height: min(88vh, 820px); }
+.equiv-modal .repair-modal-head { gap: var(--space-3); }
+.equiv-scroll { flex: 1 1 auto; overflow: auto; padding: var(--space-3) var(--space-4) var(--space-4); }
+.equiv-lead { margin: 0 0 var(--space-3); font-size: 12.5px; line-height: 1.5; color: var(--text-muted); }
+
+/* On/off switch in the dialog header */
+.equiv-switch { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer;
+    font-size: 12.5px; font-weight: 600; color: var(--text); user-select: none; }
+.equiv-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.equiv-switch-track { position: relative; width: 34px; height: 20px; border-radius: 10px;
+    background: var(--border-strong); transition: background .15s; }
+.equiv-switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; box-shadow: var(--shadow-sm); transition: transform .15s; }
+.equiv-switch input:checked + .equiv-switch-track { background: var(--accent); }
+.equiv-switch input:checked + .equiv-switch-track::after { transform: translateX(14px); }
+.equiv-switch input:focus-visible + .equiv-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.equiv-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+    margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border); border-left: 3px solid var(--diff-gutter);
+    border-radius: var(--radius); background: var(--bg-muted); font-size: 12.5px; color: var(--text); }
+.equiv-banner[hidden] { display: none; }
+
+.equiv-section { margin-top: var(--space-4); }
+.equiv-section:first-of-type { margin-top: 0; }
+.equiv-section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2); }
+.equiv-section-head h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.equiv-hint { font-size: 11.5px; color: var(--text-muted); }
+.equiv-modal.is-off .equiv-section:not(.equiv-try) { opacity: .6; }
+
+/* Groups: a card per group, its values as chips */
+.equiv-groups { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.equiv-group { display: grid; grid-template-columns: auto minmax(110px, 170px) minmax(0, 1fr) auto; gap: var(--space-2);
+    align-items: center; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); padding: 6px var(--space-2); }
+.equiv-group.is-unused { background: var(--bg-muted); }
+.equiv-group.is-unused .equiv-chips { opacity: .6; }
+.equiv-group-head { display: contents; }
+.equiv-group-head .btn { grid-column: 4; grid-row: 1; }
+.equiv-group > .equiv-chips { grid-column: 3; grid-row: 1; }
+.equiv-group-head input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+.equiv-group-name { flex: 1 1 auto; min-width: 0; border: 1px solid transparent; border-radius: var(--radius-sm);
+    background: transparent; color: var(--text); font: 600 13px var(--font-ui); padding: 3px 6px; }
+.equiv-group-name:hover { border-color: var(--border); }
+.equiv-group-name:focus { outline: none; border-color: var(--accent); background: var(--bg); }
+.equiv-empty { padding: var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--radius);
+    font-size: 12.5px; color: var(--text-muted); text-align: center; }
+.equiv-add { margin-top: var(--space-2); }
+
+.equiv-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 30px; padding: 3px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); cursor: text; }
+.equiv-chips:focus-within { border-color: var(--accent); }
+.equiv-chip { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 1px 2px 1px 7px;
+    border-radius: 999px; background: var(--bg-hover); border: 1px solid var(--border);
+    font: 12px var(--font-mono); color: var(--text); }
+.equiv-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.equiv-chip.is-empty > span { font-family: var(--font-ui); font-style: italic; color: var(--text-muted); }
+.equiv-chip button { border: 0; background: transparent; color: var(--text-muted); cursor: pointer;
+    width: 18px; height: 18px; border-radius: 50%; line-height: 1; font-size: 13px; }
+.equiv-chip button:hover, .equiv-chip button:focus-visible { background: var(--border); color: var(--text); }
+.equiv-chip-input { flex: 1 1 120px; min-width: 100px; border: 0; outline: none; background: transparent;
+    color: var(--text); font: 12.5px var(--font-mono); padding: 3px 4px; }
+
+/* Rules: a toggle card each */
+.equiv-rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.equiv-rule { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3);
+    background: var(--bg); transition: border-color .15s, background .15s; }
+.equiv-rule.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.equiv-rule-main { display: flex; align-items: flex-start; gap: var(--space-2); cursor: pointer; }
+.equiv-rule-main input { margin-top: 2px; width: 16px; height: 16px; accent-color: var(--accent); flex: 0 0 auto; }
+.equiv-rule-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.equiv-rule-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.equiv-rule-ex { font-size: 12px; color: var(--text-muted); }
+.equiv-rule-ex code { font-family: var(--font-mono); color: var(--text); background: var(--bg-muted);
+    padding: 0 4px; border-radius: var(--radius-sm); }
+.equiv-rule-note { margin: 6px 0 0 24px; font-size: 11.5px; line-height: 1.45; color: var(--text-muted); }
+.equiv-rule .equiv-chips { margin: 6px 0 0 24px; }
+.equiv-rule.is-on:has(.equiv-chips) { grid-column: 1 / -1; }
+.equiv-rule:not(.is-on) .equiv-chips, .equiv-rule:not(.is-on) .equiv-rule-note:has(+ .equiv-chips) { display: none; }
+
+/* Try it */
+.equiv-try-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--space-2); align-items: center; }
+.equiv-try-row .ignore-input { font-family: var(--font-mono); width: 100%; box-sizing: border-box; }
+.equiv-verdict { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.equiv-verdict.is-equal { background: var(--diff-add-line); color: var(--diff-add-strong); }
+.equiv-verdict.is-diff  { background: var(--diff-del-line); color: var(--diff-del-strong); }
+.equiv-try-why { margin-top: 6px; font-size: 12px; color: var(--text-muted); min-height: 1.4em; }
+
+@media (max-width: 640px) {
+    .equiv-group { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .equiv-group-head .btn { grid-column: 3; }
+    .equiv-group > .equiv-chips { grid-column: 1 / -1; grid-row: 2; }
+    .equiv-rules { grid-template-columns: minmax(0, 1fr); }
+    .equiv-try-row { grid-template-columns: minmax(0, 1fr); }
+    .equiv-verdict { justify-self: start; }
+    .equiv-modal .repair-hint { display: none; }
+}
