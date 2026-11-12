@@ -5361,7 +5361,7 @@
       // Anchored to the tab rather than a browser confirm(): it stays next to
       // what is being deleted and does not block the page.
       let _confirmPop = null;
-      function confirmPopover(anchor, { title, message, confirmLabel = 'OK', danger = false }) {
+      function confirmPopover(anchor, { title, message, confirmLabel = 'OK', altLabel = '', danger = false }) {
         if (_confirmPop) _confirmPop.cancel();
         return new Promise((resolve) => {
           const pop = document.createElement('div');
@@ -5389,7 +5389,15 @@
           yes.type = 'button';
           yes.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
           yes.textContent = confirmLabel;
-          row.append(no, yes);
+          // An optional second answer (resolves 'alt'), e.g. Replace / Merge.
+          let alt = null;
+          if (altLabel) {
+            alt = document.createElement('button');
+            alt.type = 'button';
+            alt.className = 'btn';
+            alt.textContent = altLabel;
+          }
+          row.append(...(alt ? [no, alt, yes] : [no, yes]));
           pop.append(head, text, row);
           document.body.appendChild(pop);
 
@@ -5424,18 +5432,22 @@
               e.stopPropagation();
               finish(false);
             } else if (e.key === 'Tab') {
-              // Two buttons; keep focus between them while the question is open.
+              // Keep focus on the buttons while the question is open.
               e.preventDefault();
-              (document.activeElement === yes ? no : yes).focus();
+              const btns = [...row.children];
+              const at = btns.indexOf(document.activeElement);
+              btns[(at + (e.shiftKey ? btns.length - 1 : 1)) % btns.length].focus();
             }
           };
           no.onclick = () => finish(false);
           yes.onclick = () => finish(true);
+          if (alt) alt.onclick = () => finish('alt');
           document.addEventListener('mousedown', onDown, true);
           document.addEventListener('keydown', onKey, true);
           window.addEventListener('resize', onCancel);
           _confirmPop = { cancel: onCancel };
-          yes.focus();
+          // With two answers the safe one has the focus, so Enter never replaces.
+          (alt ? no : yes).focus();
         });
       }
 
@@ -7324,18 +7336,6 @@
         return JSON.stringify(content, null, currentIndent());
       }
 
-      // Share URL functionality
-      async function shareURL() {
-        // The panes are not the document — see getDocumentPair(). Reading them
-        // here shipped 60 of 2,000 records for a windowed collection, and
-        // shipped normalized (fabricated) values whenever ignore-patterns or
-        // numeric tolerance were active.
-        const pair = getDocumentPair();
-        if (!pair) return;
-        const leftContent = pair.left;
-        const rightContent = pair.right;
-
-        if (!leftContent.trim() && !rightContent.trim()) {
       /**
        * Every branch, as it is NOW. Stored branches only hold what was last
        * saved, and saving is explicit — so the branch open in each panel is
@@ -7350,6 +7350,18 @@
         return all;
       }
 
+      // Share URL functionality
+      async function shareURL() {
+        // The panes are not the document — see getDocumentPair(). Reading them
+        // here shipped 60 of 2,000 records for a windowed collection, and
+        // shipped normalized (fabricated) values whenever ignore-patterns or
+        // numeric tolerance were active.
+        const pair = getDocumentPair();
+        if (!pair) return;
+        const leftContent = pair.left;
+        const rightContent = pair.right;
+
+        if (!leftContent.trim() && !rightContent.trim()) {
           updateStatus("No content to share");
           return;
         }
@@ -7402,6 +7414,113 @@
         }
       }
 
+      // ---- Import: Replace or Merge ---------------------------------------
+      // Everything is worked out before anything is written, so a file that
+      // cannot be read or merged leaves the workspace exactly as it was.
+
+      /** Imported JSON merged into the current text; either side blank = the other. */
+      function mergeJSONText(current, imported) {
+        if (!imported.trim()) return current;
+        if (!current.trim()) return imported;
+        let a, b;
+        try { a = JSON.parse(current); } catch (e) { throw new Error('the current content is not valid JSON.'); }
+        try { b = JSON.parse(imported); } catch (e) { throw new Error('the imported content is not valid JSON.'); }
+        return JSON.stringify(window.mergeJSONValues(a, b), null, currentIndent());
+      }
+
+      /**
+       * Apply an imported snapshot (or a single JSON document: `right === null`,
+       * left panel only). Asks Replace / Merge / Cancel whenever there is
+       * something to lose. Returns the mode used, or null when nothing changed.
+       */
+      async function applyImportedSnapshot(data, name) {
+        const pair = getDocumentPair();
+        if (!pair) return null;
+        const single = data.right == null;
+        const hasBranches = data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0;
+
+        let mode = 'replace';
+        if (pair.left.trim() || (!single && pair.right.trim()) || window.BranchManager.count() > 2) {
+          const answer = await confirmPopover(null, {
+            title: 'Import ' + name,
+            message: (single ? 'This file goes into the left panel. ' : '')
+              + 'Replace: the file takes the place of the current content'
+              + (single ? '.' : ', branches and comparison settings.')
+              + ' Merge: its values are added to the current JSON. Matching keys take the imported value, '
+              + 'arrays are replaced whole, and everything else is kept.',
+            confirmLabel: 'Replace',
+            altLabel: 'Merge'
+          });
+          if (!answer) return null;
+          if (answer === 'alt') mode = 'merge';
+        }
+
+        let L = data.left || '';
+        let R = single ? pair.right : (data.right || '');
+        if (mode === 'merge') {
+          try {
+            L = mergeJSONText(pair.left, data.left || '');
+            if (!single) R = mergeJSONText(pair.right, data.right || '');
+          } catch (err) {
+            showNotice('error', `Could not merge ${name}: ${err.message} Nothing was changed.`);
+            return null;
+          }
+        }
+
+        // Settings travel with a snapshot that REPLACES the workspace; a merge
+        // keeps the comparison set up the way it is. Written in one batch;
+        // applyComparisonSettings() below turns them into live state.
+        const withSettings = mode === 'replace' && data.settings
+          && typeof data.settings === 'object' && Object.keys(data.settings).length > 0;
+        if (withSettings) {
+          try { SettingsManager.saveAll(data.settings); }
+          catch (err) { console.warn('Failed to apply snapshot settings:', err); }
+        }
+
+        if (L !== pair.left) {
+          mergeView.a.dispatch({ changes: { from: 0, to: mergeView.a.state.doc.length, insert: L } });
+        }
+        if (R !== pair.right) {
+          mergeView.b.dispatch({ changes: { from: 0, to: mergeView.b.state.doc.length, insert: R } });
+        }
+        URLManager.clearURL();
+
+        if (hasBranches) {
+          try {
+            // A branch that cannot be merged (not JSON) takes the imported text.
+            const merge = (cur, inc) => { try { return mergeJSONText(cur, inc); } catch (e) { return inc; } };
+            await window.BranchManager.importBranches(data.branches, mode, mode === 'merge' ? merge : undefined);
+          } catch (err) {
+            console.warn('Failed to import branches:', err);
+          }
+        }
+        // Point each panel at the snapshot's active branch when it exists
+        // here, else at the panel's main branch, and refresh tabs + titles.
+        await syncActiveBranches();
+
+        if (withSettings) {
+          setTimeout(() => {
+            const currentSettings = {
+              highlightChanges: SettingsManager.get('highlightChanges'),
+              gutter: SettingsManager.get('gutter'),
+              collapseUnchanged: SettingsManager.get('collapseUnchanged'),
+              orientation: SettingsManager.get('orientation'),
+              revertControls: SettingsManager.get('revertControls'),
+              scanLimit: SettingsManager.get('scanLimit'),
+            };
+            recreateMergeView(currentSettings, wordWrapEnabled);
+            initializeSettingsPanel();
+            initializeThemeSelector();
+            // Ignore rules, numeric tolerance and block diff decide what the
+            // diff reports; without this an imported comparison did not reproduce.
+            applyComparisonSettings();
+            updateBranchSelectors();
+          }, 100);
+        }
+        showNotice('ok', mode === 'merge' ? `Merged ${name} into the current content.` : `Imported ${name}.`);
+        return mode;
+      }
+
       // Import snapshot file
       async function importSnapshot(e) {
         const file = e.target.files && e.target.files[0];
@@ -7410,69 +7529,9 @@
         try {
           // Use unified snapshot handler (supports both .zip and .json.gz)
           const data = await SnapshotHandler.importSnapshot(file);
-          
-          // Apply settings from snapshot if present. Written in one batch (not
-          // one localStorage round-trip per key); applyComparisonSettings()
-          // below turns them into live state so the reopened comparison is
-          // computed exactly the way it was exported.
-          if (data.settings && typeof data.settings === 'object') {
-            try {
-              SettingsManager.saveAll(data.settings);
-              console.log('Settings loaded from snapshot:', data.settings);
-            } catch (err) {
-              console.warn('Failed to apply snapshot settings:', err);
-            }
-          }
+          const mode = await applyImportedSnapshot(data, file.name);
+          if (!mode) { hideDropOverlay(); return; }
 
-          mergeView.a.dispatch({
-            changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
-          });
-
-          mergeView.b.dispatch({
-            changes: { from: 0, to: mergeView.b.state.doc.length, insert: data.right || "" }
-          });
-
-          URLManager.clearURL();
-          
-          // Import branches if present in snapshot
-          if (data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0) {
-            try {
-              const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
-              console.log('Branches imported:', importResult);
-            } catch (err) {
-              console.warn('Failed to import branches:', err);
-            }
-          }
-          // Point each panel at the snapshot's active branch when it exists
-          // here, else at the panel's main branch, and refresh tabs + titles.
-          // Runs with or without branches in the file: the snapshot's settings
-          // have already overwritten leftBranch / rightBranch either way.
-          await syncActiveBranches();
-          
-          // Recreate merge view with new settings if they were present
-          if (data.settings && typeof data.settings === 'object') {
-            setTimeout(() => {
-              const currentSettings = {
-                highlightChanges: SettingsManager.get('highlightChanges'),
-                gutter: SettingsManager.get('gutter'),
-                collapseUnchanged: SettingsManager.get('collapseUnchanged'),
-                orientation: SettingsManager.get('orientation'),
-                revertControls: SettingsManager.get('revertControls'),
-                scanLimit: SettingsManager.get('scanLimit'),
-              };
-              recreateMergeView(currentSettings, wordWrapEnabled);
-              initializeSettingsPanel();
-              initializeThemeSelector();
-              // Ignore rules, numeric tolerance and block diff decide what the
-              // diff reports; without this they were stored but never applied,
-              // so an imported comparison did not reproduce.
-              applyComparisonSettings();
-              
-              // Update branch selectors with imported values
-              updateBranchSelectors();
-            }, 100);
-          }
-          
           updateStatus("Snapshot imported successfully with settings");
           updateDiffStatus();
         } catch (err) {
@@ -7487,69 +7546,9 @@
         try {
           // Use unified snapshot handler (supports both .zip and .json.gz)
           const data = await SnapshotHandler.importSnapshot(file);
-          
-          // Apply settings from snapshot if present. Written in one batch (not
-          // one localStorage round-trip per key); applyComparisonSettings()
-          // below turns them into live state so the reopened comparison is
-          // computed exactly the way it was exported.
-          if (data.settings && typeof data.settings === 'object') {
-            try {
-              SettingsManager.saveAll(data.settings);
-              console.log('Settings loaded from snapshot:', data.settings);
-            } catch (err) {
-              console.warn('Failed to apply snapshot settings:', err);
-            }
-          }
+          const mode = await applyImportedSnapshot(data, file.name);
+          if (!mode) { hideDropOverlay(); return; }
 
-          mergeView.a.dispatch({
-            changes: { from: 0, to: mergeView.a.state.doc.length, insert: data.left || "" }
-          });
-
-          mergeView.b.dispatch({
-            changes: { from: 0, to: mergeView.b.state.doc.length, insert: data.right || "" }
-          });
-
-          URLManager.clearURL();
-          
-          // Import branches if present in snapshot
-          if (data.branches && typeof data.branches === 'object' && Object.keys(data.branches).length > 0) {
-            try {
-              const importResult = await window.BranchManager.importBranches(data.branches, 'merge');
-              console.log('Branches imported:', importResult);
-            } catch (err) {
-              console.warn('Failed to import branches:', err);
-            }
-          }
-          // Point each panel at the snapshot's active branch when it exists
-          // here, else at the panel's main branch, and refresh tabs + titles.
-          // Runs with or without branches in the file: the snapshot's settings
-          // have already overwritten leftBranch / rightBranch either way.
-          await syncActiveBranches();
-          
-          // Recreate merge view with new settings if they were present
-          if (data.settings && typeof data.settings === 'object') {
-            setTimeout(() => {
-              const currentSettings = {
-                highlightChanges: SettingsManager.get('highlightChanges'),
-                gutter: SettingsManager.get('gutter'),
-                collapseUnchanged: SettingsManager.get('collapseUnchanged'),
-                orientation: SettingsManager.get('orientation'),
-                revertControls: SettingsManager.get('revertControls'),
-                scanLimit: SettingsManager.get('scanLimit'),
-              };
-              recreateMergeView(currentSettings, wordWrapEnabled);
-              initializeSettingsPanel();
-              initializeThemeSelector();
-              // Ignore rules, numeric tolerance and block diff decide what the
-              // diff reports; without this they were stored but never applied,
-              // so an imported comparison did not reproduce.
-              applyComparisonSettings();
-              
-              // Update branch selectors with imported values
-              updateBranchSelectors();
-            }, 100);
-          }
-          
           updateStatus("Snapshot imported successfully");
           updateDiffStatus();
           hideDropOverlay();

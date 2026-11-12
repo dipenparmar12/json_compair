@@ -888,5 +888,23 @@
   window.sortJSONArray = sortJSONArray;
   window.parseSortSpec = parseSortSpec;
   window.sortJSONByFields = sortJSONByFields;
+
+  /**
+   * Merge an imported JSON value into an existing one (Import → Merge).
+   * Objects merge key by key, recursively. Everything else — arrays, numbers,
+   * strings, null, or two values of different kinds — takes the imported value
+   * whole. Keys only the existing value has are kept. Neither input is changed.
+   */
+  function mergeJSONValues(existing, incoming) {
+    const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (!isObj(existing) || !isObj(incoming)) return incoming;
+    const out = Object.assign({}, existing);
+    for (const k of Object.keys(incoming)) {
+      out[k] = Object.prototype.hasOwnProperty.call(existing, k)
+        ? mergeJSONValues(existing[k], incoming[k]) : incoming[k];
+    }
+    return out;
+  }
+  window.mergeJSONValues = mergeJSONValues;
   window.SettingsManager = SettingsManager;
 })();

@@ -170,6 +170,20 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   (`getDocumentPair`); it used to be written with its older stored content. A link (`?c=`)
   carries the two panels only, so with any other branch present Export downloads the ZIP and
   says so — small content used to produce a link that left those branches out.
+- **Import asks Replace / Merge / Cancel** (`applyImportedSnapshot`, used by the Import
+  button and a dropped snapshot) whenever a panel has content or a user branch exists; an
+  empty workspace imports straight away. Accepts `.zip`, `.json.gz` and a plain `.json`
+  document (left panel only; `right: null` from `SnapshotHandler.importSnapshot`).
+  - **Replace:** the file's panels, branches (`importBranches(…, 'replace')`, the two mains
+    overwritten) and comparison settings take over.
+  - **Merge:** `mergeJSONValues` (utils.js) per panel and per same-id branch — objects merge
+    key by key recursively, the imported value wins, **arrays and mismatched kinds are replaced
+    whole**, keys only the current side has stay. Other branches and all settings are kept.
+    A blank side takes the other side's text.
+  - Nothing is written until the file has parsed and both panels have merged. An unreadable
+    file, or a panel that is not valid JSON in Merge, reports the reason and changes nothing.
+  - Before this, import always replaced the panels, and a branch whose id already existed —
+    always the two mains — was skipped, so its exported content never came back.
 - **ZIP format** - Standard ZIP file with JSON files
 - **Backward compatible** - Supports legacy .json.gz format
 - **Includes branches** - All branches exported in snapshots
@@ -259,6 +273,7 @@ window.TextTools
 window.sortJSONKeys()          // alphabetize keys recursively (crude value-sort of object arrays)
 window.parseSortSpec(str)      // "category ASC, amount DESC" → [{field,dir,path}] (dot-notation nesting)
 window.sortJSONByFields(data, specs) // stable value-sort of a top-level array of objects by field(s)
+window.mergeJSONValues(existing, incoming) // Import → Merge: objects recurse, imported wins, arrays replaced
 
 // utils_csv.js
 window.CSVUtils
@@ -753,6 +768,7 @@ node tests/embedded_json.test.js  #  16 checks: JSON / Python dicts inside strin
 node tests/storage.test.js        #   8 checks: saved comparison — newest copy wins, record shape
 node tests/viewport_diff.test.js  #   4 checks: status-bar count stays line-by-line and fast
 node tests/value_equiv.test.js    #  40 checks: equivalent-value rules, kind-3 alignment, row check
+node tests/import_merge.test.js   #  15 checks: Import → Merge rules (recursion, arrays, kinds, null)
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -1034,6 +1050,7 @@ node tests/embedded_json.test.js  #  16 checks — JSON / Python dicts inside st
 node tests/storage.test.js        #   8 checks — saved comparison: newest copy wins, record shape
 node tests/viewport_diff.test.js  #   4 checks — status-bar count stays line-by-line and fast
 node tests/value_equiv.test.js    #  40 checks — equivalent-value rules, kind-3 alignment, row check
+node tests/import_merge.test.js   #  15 checks — Import → Merge rules (recursion, arrays, kinds, null)
 ```
 Plus `tests/selftest.html` (78 checks) for the same assertions in a real browser.
 The **data-integrity corpus blocks**: valid data must survive the repair chain unchanged.
@@ -1105,6 +1122,8 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
     no card
 33. Ignore ▾ → Edit rules… → switch on: `[{"a":"NaN","s":1}]` vs `[{"a":null,"s":2}]` — only `s` is marked, the left pane still says `"NaN"`; untick the group — `a` is marked again
 34. Add two tabs and a title, then More ▾ → Reset everything… → Cancel changes nothing; confirm leaves two empty panels with only "Left" / "Right"; a reload brings none of it back and the theme is unchanged
+35. Edit a panel without saving its branch, add a third branch, Export — a ZIP downloads; Reset everything, Import it — panels and all three branches come back with the edited content
+36. With content in the panels, Import a `.json` holding `{"n":{"x":9},"b":2}` → Merge: `n.x` is 9, `b` is added, every other key stays, the right panel is untouched; Cancel and a file of broken JSON change nothing
 
 ## Common Tasks
 
