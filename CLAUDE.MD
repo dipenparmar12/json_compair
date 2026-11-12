@@ -165,6 +165,11 @@ const newBranch = await BranchManager.createBranch("API v3", content);
 - Included in ZIP snapshot exports
 
 ### 6. Snapshot Import/Export
+- **Export is every branch as it is now** (`branchesForExport`). Stored branches hold what was
+  last SAVED and saving is explicit, so the branch open in each panel is taken from the panel
+  (`getDocumentPair`); it used to be written with its older stored content. A link (`?c=`)
+  carries the two panels only, so with any other branch present Export downloads the ZIP and
+  says so — small content used to produce a link that left those branches out.
 - **ZIP format** - Standard ZIP file with JSON files
 - **Backward compatible** - Supports legacy .json.gz format
 - **Includes branches** - All branches exported in snapshots

@@ -206,13 +206,16 @@ window.SnapshotHandler = {
    * @param {string} leftContent - Left panel content
    * @param {string} rightContent - Right panel content
    * @param {object} settings - Application settings
-   * @param {boolean} includeBranches - Whether to include all branches in export
+   * @param {boolean|object} includeBranches - true = every stored branch; an object =
+   *   exactly those branches (the caller has added content not saved yet)
    */
   async createAndDownload(leftContent, rightContent, settings, includeBranches = true) {
     let branches = null;
     
     // Export branches if requested and BranchManager is available
-    if (includeBranches && window.BranchManager) {
+    if (includeBranches && typeof includeBranches === 'object') {
+      branches = includeBranches;
+    } else if (includeBranches && window.BranchManager) {
       try {
         branches = await window.BranchManager.exportAll();
       } catch (err) {

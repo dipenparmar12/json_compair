@@ -7336,6 +7336,20 @@
         const rightContent = pair.right;
 
         if (!leftContent.trim() && !rightContent.trim()) {
+      /**
+       * Every branch, as it is NOW. Stored branches only hold what was last
+       * saved, and saving is explicit — so the branch open in each panel is
+       * taken from the panel instead, or an export wrote its older content.
+       */
+      async function branchesForExport(pair) {
+        const all = await window.BranchManager.exportAll();
+        for (const side of ['left', 'right']) {
+          const id = activeBranches[side];
+          if (all[id]) all[id] = Object.assign({}, all[id], { content: branchContentFrom(pair[side]) });
+        }
+        return all;
+      }
+
           updateStatus("No content to share");
           return;
         }
@@ -7351,13 +7365,22 @@
           
           // Try to create compressed URL with settings
           const shareableURL = URLManager.generateShareableURL(leftContent, rightContent);
-          
+
+          // A link carries the two panels and nothing else. With any other
+          // branch around it would leave those out without saying so, so the
+          // export is then a snapshot file that holds all of them.
+          const branches = await branchesForExport(pair);
+          const others = Object.keys(branches)
+            .filter((id) => id !== activeBranches.left && id !== activeBranches.right).length;
+
           // Check URL length (browser limit ~2000 chars)
-          if (shareableURL.length > 2000) {
-            // Fall back to ZIP snapshot download with settings
-            await SnapshotHandler.createAndDownload(leftContent, rightContent, currentSettings);
-            
-            updateStatus("Content too large for URL - ZIP snapshot downloaded");
+          if (others || shareableURL.length > 2000) {
+            await SnapshotHandler.createAndDownload(leftContent, rightContent, currentSettings, branches);
+
+            const n = Object.keys(branches).length;
+            showNotice('ok', others
+              ? `Snapshot downloaded with all ${n} branches. A link can only carry the two open panels.`
+              : 'Too large for a link, so a snapshot file was downloaded instead.');
             btn.textContent = originalText;
             btn.disabled = false;
             return;
