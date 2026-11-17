@@ -223,6 +223,8 @@ const newBranch = await BranchManager.createBranch("API v3", content);
   "autoFormat": true,            // Auto-format on paste (honoured now — see Ingest §2)
   "autoFixJson": true,           // Repair broken JSON on paste (never silent)
   "indentWidth": 3,              // 2 | 3 | 4 | 'tab' — Format / Sort / Fix
+  "arrayFormat": "auto",          // auto (plain-value arrays on one line) | expanded
+  "lineWidth": 120,             // widest inline array line; 0 = no limit
   "cleanOptions": null,          // per-action overrides for the text Clean menu
   "autoSort": false,             // Auto-sort keys on paste
 
@@ -768,7 +770,7 @@ returns a **count**, so the report says "3 zero-width characters", not "cleaned"
 ```bash
 node tests/json_repair.test.js    # 108 checks: integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks: cleanup, universal sort
-node tests/key_compare.test.js    #  55 checks: record pairing, key table, filters, export
+node tests/key_compare.test.js    #  53 checks: record pairing, key table, filters, export
 node tests/diff_view.test.js      #  20 checks: change-block grouping, fold kinds, line coverage
 node tests/embedded_json.test.js  #  16 checks: JSON / Python dicts inside strings, strictness
 node tests/storage.test.js        #   8 checks: saved comparison — newest copy wins, record shape
@@ -776,6 +778,7 @@ node tests/viewport_diff.test.js  #   4 checks: status-bar count stays line-by-l
 node tests/value_equiv.test.js    #  40 checks: equivalent-value rules, kind-3 alignment, row check
 node tests/import_merge.test.js   #  15 checks: Import → Merge rules (recursion, arrays, kinds, null)
 node tests/json_context.test.js   #  26 checks: line → key / value / path, for the right-click menu
+node tests/format.test.js         #  33 checks: inline arrays (plain values on one line), alignment, line reader
 # and tests/selftest.html for the same assertions in a real browser (78 checks)
 ```
 
@@ -1073,7 +1076,7 @@ node tools/gen_dataset.js --format csv --size 100MB --cols 20 --profile changed:
 ```bash
 node tests/json_repair.test.js    # 108 checks — data integrity, repair, perf, classification
 node tests/text_tools.test.js     #  71 checks — cleanup, universal sort
-node tests/key_compare.test.js    #  55 checks — record pairing, key table, filters, export
+node tests/key_compare.test.js    #  53 checks — record pairing, key table, filters, export
 node tests/diff_view.test.js      #  20 checks — change-block grouping, fold kinds, line coverage
 node tests/embedded_json.test.js  #  16 checks — JSON / Python dicts inside strings, strictness
 node tests/storage.test.js        #   8 checks — saved comparison: newest copy wins, record shape
@@ -1251,7 +1254,7 @@ Understand the split before touching diff/perf code:
 - Everything else (objects, non-JSON, alignment unavailable) still falls back to
   `mergeView.chunks.length` → "N changed blocks".
 - `diffIsDegraded()` detects the case where CM6 gave up and returned one change spanning the
-  document, and says so ("Too large to compare precisely — use CSV→JSON…") instead of
+  document, and says so ("Too large to match records — compared as plain text…") instead of
   printing a meaningless "1 changed block".
 - **The model describes ONE collection, not the document.** For an envelope it is the array at
   `model.path`, and `findCollection()` will happily pick a small nested array (say `tags`) out of
@@ -1370,7 +1373,7 @@ Understand the split before touching diff/perf code:
   same-docs + same-mode + same-predicate ⇒ skip the whole parse/align/stringify, failures included).
 - **Setting:** `blockDiff` (default **true**, toggle in settings panel). Off → `removeBlockAlignment()`
   strips gaps (only when the result is valid JSON) and CM6's default diff returns.
-- **Fallback:** any parse failure / non-JSON / >`MAX_BYTES` (24 MB) combined → `align()` returns
+- **Fallback:** any parse failure / non-JSON / >`MAX_BYTES` (64,000,000 chars) combined → `align()` returns
   `{ok:false}` → no-op → raw text + CM6 default diff. See memory [[v6-block-diff-alignment]].
 
 ### 12. Nested JSON the way Proxyman shows it — pairing, key order, side-by-side, row diff
@@ -1888,7 +1891,7 @@ re-diffs anything.
 
 ## Future Enhancements
 
-Potential improvements (check `todo.md` for current priorities):
+Potential improvements (see `docs/HANDOVER_2026-11-17.md` for the current list):
 - Make Viewport Diff actually limit rendering (not just the count)
 - Memoize diff results by content hash
 - Virtualized rendering for very large files
@@ -1915,6 +1918,6 @@ Potential improvements (check `todo.md` for current priorities):
 
 ---
 
-**Last Updated**: 2026-08-28
+**Last Updated**: 2026-11-17
 **Current Version**: v6 (CodeMirror 6) is primary, v5 (CodeMirror 5) is legacy
 **Status**: Active development on `main` branch
