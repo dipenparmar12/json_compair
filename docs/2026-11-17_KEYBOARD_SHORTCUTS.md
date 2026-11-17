@@ -37,3 +37,7 @@ Browsers choose the download folder for the user, and a web page cannot pick it 
 2. **Export both panels as two `.json` files.** Simpler to open elsewhere, but loses branches and settings.
 
 Ctrl + S exports the current comparison in the chosen format. The app already saves the comparison automatically, so Ctrl + S is an explicit export, not a save.
+
+## Performance requirement
+
+Shortcuts must be O(1) to dispatch. Export (Ctrl + S) of a 100–200 MB comparison must not freeze the tab: build the file off the main thread or in chunks, show progress, and support Cancel, as the existing snapshot export is planned to do.

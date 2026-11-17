@@ -66,3 +66,12 @@ Planned keys are in [2026-11-17_KEYBOARD_SHORTCUTS.md](2026-11-17_KEYBOARD_SHORT
 - Read: `Json-view.vue` (props, state, toolbar, expand and depth functions), the search and expand logic in `JsonNode.vue`, and the structure of `useStickyScroll.js`.
 - Not read: the helpers `safeSerialize`, `filterJSONData`, `highlightSearchTerm`.
 - The viewer's shared storage keys (`_tjsn…`) are fixed, so two viewers on one page share state. We avoid this by keying per side.
+
+## Performance requirement
+
+Applies to every feature in this document. Panels can hold 100–200 MB per side (see CLAUDE.MD, "Performance and scale").
+
+- Search, depth fold and expand/collapse run on the window or on demand, never as a timer over the full text.
+- Search counts come from the pristine pair (`getPaneDocument`) and must be computed once per query, not per keystroke.
+- Depth folding is one pass over line indentation with linear cost, and must not re-diff.
+- Measure with the 100 MB generator before merging (`tools/gen_dataset.js`, `tools/bench_pipeline.js`).

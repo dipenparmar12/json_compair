@@ -123,3 +123,7 @@ Correct the five items in gap 7. For `README.md`, only a short v6 section and a 
 - Messages for large files are accurate, and Clear frees the raw CSV.
 - Docs match the code; issues 1 and 2 are closed, and issue 3 is closed or reduced to the deferred parts.
 - All existing tests plus the new format tests pass.
+
+## Performance requirement
+
+Every task in this note is subject to the standing rule in CLAUDE.MD ("Performance and scale"). Large-dataset phase 2 (section 4, item 12) exists because of that rule; no other task may make 100–200 MB comparisons slower.
