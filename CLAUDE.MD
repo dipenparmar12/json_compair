@@ -1891,7 +1891,7 @@ re-diffs anything.
 
 ## Future Enhancements
 
-Potential improvements (see `docs/HANDOVER_2026-11-17.md` for the current list):
+Potential improvements (see `docs/JSON_COMPARE_HANDOVER_2026-11-17.md` for the current list):
 - Make Viewport Diff actually limit rendering (not just the count)
 - Memoize diff results by content hash
 - Virtualized rendering for very large files
