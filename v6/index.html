@@ -9315,7 +9315,7 @@
           // "1 changed block" here reads as a result; it is the absence of one.
           setDiffSummary('warn', _renderDiffRatio > MYERS_MAX_DIFF_RATIO
             ? 'These records differ too much for line-by-line highlighting — open Details for the exact breakdown'
-            : 'Too large to compare precisely — use CSV→JSON so records can be matched individually');
+            : 'Too large to match records — compared as plain text, so the highlighting is not precise');
         } else {
           setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }
