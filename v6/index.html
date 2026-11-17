@@ -161,6 +161,24 @@
                 <option value="4">4 spaces</option>
                 <option value="tab">Tab</option>
               </select>
+              <div class="settings-section-title settings-section-divided">Arrays</div>
+              <div class="ignore-desc">
+                Auto puts an array of plain values (text, numbers, true/false, null)
+                on one line when it fits the line width. Arrays of objects always
+                keep one item per line.
+              </div>
+              <select id="array-format" class="settings-select dropdown-select" title="How arrays of plain values are laid out">
+                <option value="auto">Auto — one line when it fits</option>
+                <option value="expanded">Expanded — one item per line</option>
+              </select>
+              <div class="settings-section-title settings-section-divided">Line width</div>
+              <select id="line-width" class="settings-select dropdown-select" title="Widest line an inline array may make">
+                <option value="80">80 characters</option>
+                <option value="100">100 characters</option>
+                <option value="120">120 characters</option>
+                <option value="160">160 characters</option>
+                <option value="0">No limit</option>
+              </select>
             </div>
           </div>
 
@@ -6368,7 +6386,17 @@
       function syncAlignIndent() {
         if (window.JSONAlign && window.JSONAlign.setIndent) {
           window.JSONAlign.setIndent(indentString());
+          window.JSONAlign.setFormat({
+            arrays: SettingsManager.get('arrayFormat'),
+            lineWidth: SettingsManager.get('lineWidth')
+          });
         }
+      }
+
+      /** Pretty-print a value the way the panes show it (indent, inline arrays). */
+      function prettyJSON(value) {
+        syncAlignIndent();
+        return window.JSONAlign.stringify(value);
       }
 
       /** Indent used by Format, Sort and any other re-serialization. */
@@ -6494,10 +6522,9 @@
 
       // Format each pane independently.
       function formatJSON() {
-        const indent = currentIndent();
         transformPanes((text) => {
           const parsed = window.parseFlexibleJSON(text);
-          return { ok: true, text: JSON.stringify(parsed, null, indent) };
+          return { ok: true, text: prettyJSON(parsed) };
         }, 'Formatted');
       }
 
@@ -6541,10 +6568,9 @@
 
       // Sort keys A→Z at every level.
       function sortJSON() {
-        const indent = currentIndent();
         transformPanes((text) => {
           const parsed = window.parseFlexibleJSON(text);
-          return { ok: true, text: JSON.stringify(window.sortJSONKeys(parsed), null, indent) };
+          return { ok: true, text: prettyJSON(window.sortJSONKeys(parsed)) };
         }, 'Sorted keys');
       }
 
@@ -7292,11 +7318,14 @@
 
         renderCleanOptions();
 
-        const indentSel = document.getElementById('indent-width');
-        if (indentSel) {
-          indentSel.value = String(SettingsManager.get('indentWidth') ?? 3);
+        // Indent, array layout and line width: each re-renders straight away.
+        for (const [id, key, fallback] of [['indent-width', 'indentWidth', 3],
+          ['array-format', 'arrayFormat', 'auto'], ['line-width', 'lineWidth', 120]]) {
+          const indentSel = document.getElementById(id);
+          if (!indentSel) continue;
+          indentSel.value = String(SettingsManager.get(key) ?? fallback);
           indentSel.addEventListener('change', () => {
-            SettingsManager.set('indentWidth', indentSel.value);
+            SettingsManager.set(key, indentSel.value);
             // Re-render at the new width straight away. Storing a preference
             // that only shows up the next time you happen to press Format is
             // not a setting, it is a guess.
@@ -7380,7 +7409,7 @@
         if (!touched && options.autoFormat === false && typeof options.raw === 'string') {
           return options.raw;
         }
-        return JSON.stringify(content, null, currentIndent());
+        return prettyJSON(content);
       }
 
       /**
@@ -7563,7 +7592,7 @@
           return s.length > 22 ? s.slice(0, 21) + '…' : s;
         };
         const prim = (c) => !!c && c.hasValue && (c.value === null || typeof c.value !== 'object');
-        const asText = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, currentIndent()));
+        const asText = (v) => (typeof v === 'string' ? v : prettyJSON(v));
         const items = [];
         const sep = () => { if (items.length && items[items.length - 1] !== '-') items.push('-'); };
         const sel = view.state.selection.main;
@@ -7864,7 +7893,7 @@
         let a, b;
         try { a = JSON.parse(current); } catch (e) { throw new Error('the current content is not valid JSON.'); }
         try { b = JSON.parse(imported); } catch (e) { throw new Error('the imported content is not valid JSON.'); }
-        return JSON.stringify(window.mergeJSONValues(a, b), null, currentIndent());
+        return prettyJSON(window.mergeJSONValues(a, b));
       }
 
       /**
