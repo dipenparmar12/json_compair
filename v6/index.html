@@ -287,6 +287,16 @@
               </label>
 
               <label class="setting-row">
+                <input type="checkbox" id="sync-branches" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Automatically synchronize matching branches</div>
+                  <div class="setting-desc">
+                    When switching a branch on either panel, select the most relevant matching branch on the other panel. Unclear matches leave it alone.
+                  </div>
+                </div>
+              </label>
+
+              <label class="setting-row">
                 <input type="checkbox" id="auto-fix-json" checked />
                 <div class="setting-text">
                   <div class="setting-title">Auto Fix JSON</div>
@@ -5113,6 +5123,9 @@
                      side === 'left' ? pair.right : content);
           updateBranchSelectors();
           updateStatus(`✓ Switched to ${branchName(newBranchId)}`);
+          if (!opts.fromSync && !opts.skipSave && SettingsManager.get('syncBranches') !== false) {
+            await syncOtherPanel(side, newBranchId);
+          }
           return true;
         } catch (err) {
           console.error('Failed to switch branch:', err);
@@ -5122,6 +5135,13 @@
         } finally {
           branchBusy[side] = false;
         }
+      }
+
+      // Switch the opposite panel to the branch that matches this one by name.
+      async function syncOtherPanel(side, branchId) {
+        const other = side === 'left' ? 'right' : 'left';
+        const match = window.BranchMatch.best(branchName(branchId), window.BranchManager.listBranches(other));
+        if (match && match !== activeBranches[other]) await switchBranch(other, match, { fromSync: true });
       }
 
       function nextUntitledName(side) {
@@ -6345,6 +6365,14 @@
         // Auto Fix JSON. Every key the panel reads back must be listed in the
         // restore path or it silently reverts to the default on every reload
         // (see CLAUDE.md §2b rule 1 — `blockDiff` was exactly this bug).
+        const syncBranches = document.getElementById('sync-branches');
+        if (syncBranches) {
+          syncBranches.checked = SettingsManager.get('syncBranches') !== false;
+          syncBranches.addEventListener('change', (e) => {
+            SettingsManager.set('syncBranches', e.target.checked);
+          });
+        }
+
         const autoFixJSON = document.getElementById('auto-fix-json');
         if (autoFixJSON) {
           const savedAutoFix = SettingsManager.get('autoFixJson');

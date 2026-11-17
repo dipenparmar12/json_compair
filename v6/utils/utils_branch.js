@@ -649,6 +649,34 @@
     }
   };
 
+  // Cross-panel sync: which branch on the other panel belongs with this one.
+  // Compares name words only. A match needs word overlap >= 0.6 and a clear
+  // lead (0.15) over the runner-up, so ties and a shared generic word never switch.
+  const BranchMatch = {
+    tokens(name) {
+      return new Set(String(name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+    },
+    // candidates: [{id, name}] → matching id, or null when nothing is reliable
+    best(name, candidates) {
+      const a = this.tokens(name);
+      if (!a.size) return null;
+      const scored = [];
+      candidates.forEach((c) => {
+        const b = this.tokens(c.name);
+        if (!b.size) return;
+        let inter = 0;
+        a.forEach((t) => { if (b.has(t)) inter++; });
+        scored.push({ id: c.id, score: inter / (a.size + b.size - inter) });
+      });
+      scored.sort((x, y) => y.score - x.score);
+      const top = scored[0];
+      if (!top || top.score < 0.6) return null;
+      const second = scored[1] ? scored[1].score : 0;
+      return top.score - second >= 0.15 ? top.id : null;
+    }
+  };
+
   // Expose on window
   window.BranchManager = BranchManager;
+  window.BranchMatch = BranchMatch;
 })();
