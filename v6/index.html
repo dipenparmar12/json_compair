@@ -9305,6 +9305,8 @@
             if (!t.same && !t.changed && !t.moved && (t.added || t.removed)) {
               msg += ' · no records in common';
             }
+            // A row-capped CSV: the counts describe the rows loaded, not the file.
+            if (lastRawCsv.left || lastRawCsv.right) msg += ' · first rows of a large CSV only';
             setDiffSummary('diff', msg);
             updateRecordPager();
             renderDiffDetails();
