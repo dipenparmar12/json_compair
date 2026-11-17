@@ -7950,12 +7950,10 @@
           catch (err) { console.warn('Failed to apply snapshot settings:', err); }
         }
 
-        if (L !== pair.left) {
-          mergeView.a.dispatch({ changes: { from: 0, to: mergeView.a.state.doc.length, insert: L } });
-        }
-        if (R !== pair.right) {
-          mergeView.b.dispatch({ changes: { from: 0, to: mergeView.b.state.doc.length, insert: R } });
-        }
+        // Aligned before the first render, like a restored session. Writing the
+        // raw text first made CodeMirror diff two whole documents (5.9 s for a
+        // 20 MB pair that pastes in 0.2 s).
+        if (L !== pair.left || R !== pair.right) await restorePair(L, R);
         URLManager.clearURL();
 
         if (hasBranches) {
