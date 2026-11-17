@@ -423,7 +423,7 @@ await switchBranch("left", "api-v2");
 - ZIP exports include `branches.json` with all branches
 - Import merges branches (skips duplicates)
 
-**See:** `docs/BRANCHING_FEATURE.md` for full documentation
+**See:** `docs/2025-11-26_BRANCHING_FEATURE.md` for full documentation
 
 ---
 

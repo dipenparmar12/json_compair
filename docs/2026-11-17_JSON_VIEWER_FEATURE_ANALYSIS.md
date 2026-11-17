@@ -1,7 +1,7 @@
 # JSON viewer features for the comparison tool: current scope
 
 Source: `C:\xh\city-ui\src\components\JsonView\` (Vue tree viewer). Read in part; see §6.
-This document covers what we build now. The tree explorer is parked on the roadmap: [ROADMAP.md](ROADMAP.md).
+This document covers what we build now. The tree explorer is parked on the roadmap: [2026-11-17_ROADMAP.md](2026-11-17_ROADMAP.md).
 
 ## 1. Principles
 
@@ -41,7 +41,7 @@ This document covers what we build now. The tree explorer is parked on the roadm
 
 | Question | Decision |
 |---|---|
-| Tree explorer now? | No. Roadmap item, see [ROADMAP.md](ROADMAP.md). |
+| Tree explorer now? | No. Roadmap item, see [2026-11-17_ROADMAP.md](2026-11-17_ROADMAP.md). |
 | Search scope | Keys, values, or both, selected by a switch. Default both. |
 | Depth fold and changed lines | Changed lines are never hidden. |
 | Multi-term, match count, next / previous | Required now. |
@@ -59,7 +59,7 @@ This document covers what we build now. The tree explorer is parked on the roadm
 
 ## 5. Shortcuts
 
-Planned keys are in [KEYBOARD_SHORTCUTS.md](KEYBOARD_SHORTCUTS.md).
+Planned keys are in [2026-11-17_KEYBOARD_SHORTCUTS.md](2026-11-17_KEYBOARD_SHORTCUTS.md).
 
 ## 6. Limits of this analysis
 

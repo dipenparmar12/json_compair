@@ -1152,8 +1152,8 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
 - `README.md` - User documentation (currently references v5, may be outdated)
 - `.github/copilot-instructions.md` - AI agent instructions (authoritative)
 - `prd.md` - Product Requirements Document for JSON Toolbox
-- `docs/BRANCHING_FEATURE.md` - Branching feature documentation
-- `docs/LIBRARY_UPDATES_OCT_2025.md` - Library update history
+- `docs/2025-11-26_BRANCHING_FEATURE.md` - Branching feature documentation
+- `docs/2025-10-29_LIBRARY_UPDATES_OCT_2025.md` - Library update history
 
 ### Copilot Terminal Protocol
 The project uses a special terminal protocol for Copilot:

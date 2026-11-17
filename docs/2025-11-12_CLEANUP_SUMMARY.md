@@ -25,7 +25,7 @@
     ✓ Auto-generated README.txt in each snapshot
     ✓ Backward compatible with .json.gz format
     ✓ Added JSZip 3.10.1 library (CDN)
-    📄 Doc: docs/ZIP_SNAPSHOT_FORMAT.md
+    📄 Doc: docs/2025-11-12_ZIP_SNAPSHOT_FORMAT.md
 
 3️⃣  PROJECT RESTRUCTURING
     ✓ Created v6/ directory (CodeMirror 6 - Recommended)
@@ -34,7 +34,7 @@
     ✓ Beautiful version selector landing page
     ✓ Auto-redirect with URL parameter preservation
     ✓ User preference saved in localStorage
-    📄 Doc: docs/PROJECT_RESTRUCTURING.md
+    📄 Doc: docs/2025-11-12_PROJECT_RESTRUCTURING.md
 
 4️⃣  CLEANUP & OPTIMIZATION
     ✓ Archived 30+ duplicate files
@@ -42,7 +42,7 @@
     ✓ Saved ~2.7 MB of redundant files
     ✓ All archived in _archive/ (safe to delete later)
     ✓ Zero duplication in active codebase
-    📄 Doc: docs/CLEANUP_SUMMARY.md
+    📄 Doc: docs/2025-11-12_CLEANUP_SUMMARY.md
 
 ═══════════════════════════════════════════════════════════
                     FINAL STRUCTURE
@@ -87,9 +87,9 @@ Auto-redirect:
   • v5/index.html (1359 lines)
 
 📚 Documentation:
-  • docs/ZIP_SNAPSHOT_FORMAT.md
-  • docs/PROJECT_RESTRUCTURING.md
-  • docs/CLEANUP_SUMMARY.md
+  • docs/2025-11-12_ZIP_SNAPSHOT_FORMAT.md
+  • docs/2025-11-12_PROJECT_RESTRUCTURING.md
+  • docs/2025-11-12_CLEANUP_SUMMARY.md
   • docs/fixes/enhanced-diff-colors-fix.md
 
 ═══════════════════════════════════════════════════════════
@@ -301,7 +301,7 @@ The `_archive/` directory can be safely deleted after confirming:
 index.html          # Version selector (active)
 server.js           # Local development server
 README.md           # User documentation
-CODEMIRROR_6_MIGRATION.md  # Migration reference
+2025-11-12_CODEMIRROR_6_MIGRATION.md  # Migration reference
 ```
 
 ### Keep in v5/ and v6/
@@ -326,8 +326,8 @@ v6/
 index.html (version selector)
 
 # Documentation
-docs/PROJECT_RESTRUCTURING.md
-docs/ZIP_SNAPSHOT_FORMAT.md
+docs/2025-11-12_PROJECT_RESTRUCTURING.md
+docs/2025-11-12_ZIP_SNAPSHOT_FORMAT.md
 docs/fixes/enhanced-diff-colors-fix.md
 ```
 

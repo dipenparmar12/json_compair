@@ -1221,8 +1221,8 @@ The **data-integrity corpus blocks**: valid data must survive the repair chain u
 - `README.md` - User documentation (currently references v5, may be outdated)
 - `.github/copilot-instructions.md` - AI agent instructions (authoritative)
 - `prd.md` - Product Requirements Document for JSON Toolbox
-- `docs/BRANCHING_FEATURE.md` - Branching feature documentation
-- `docs/LIBRARY_UPDATES_OCT_2025.md` - Library update history
+- `docs/2025-11-26_BRANCHING_FEATURE.md` - Branching feature documentation
+- `docs/2025-10-29_LIBRARY_UPDATES_OCT_2025.md` - Library update history
 
 ### Copilot Terminal Protocol
 The project uses a special terminal protocol for Copilot:
@@ -1891,7 +1891,7 @@ re-diffs anything.
 
 ## Future Enhancements
 
-Potential improvements (see `docs/JSON_COMPARE_HANDOVER_2026-11-17.md` for the current list):
+Potential improvements (see `docs/2026-11-17_JSON_COMPARE_HANDOVER.md` for the current list):
 - Make Viewport Diff actually limit rendering (not just the count)
 - Memoize diff results by content hash
 - Virtualized rendering for very large files

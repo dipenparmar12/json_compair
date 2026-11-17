@@ -49,8 +49,8 @@ docs/
 │   ├── 02-feature-specifications.md
 │   ├── ...
 │   └── 14-csv-python-parsing.md
-├── LIBRARY_UPDATES_OCT_2025.md
-├── ZIP_SNAPSHOT_FORMAT.md  # NEW - ZIP export documentation
+├── 2025-10-29_LIBRARY_UPDATES_OCT_2025.md
+├── 2025-11-12_ZIP_SNAPSHOT_FORMAT.md  # NEW - ZIP export documentation
 ├── QUICK_REFERENCE_ZIP.md  # NEW - Quick reference
 └── ...
 

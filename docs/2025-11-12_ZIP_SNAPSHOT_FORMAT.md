@@ -255,8 +255,8 @@ await SnapshotHandler.createAndDownload(left, right, settings);
 
 ## Related Documentation
 - `docs/PRD/03-utility-specifications.md` - Original utility specs
-- `CODEMIRROR_6_MIGRATION.md` - CM6 migration notes
-- `docs/LIBRARY_UPDATES_OCT_2025.md` - Library update log
+- `2025-11-12_CODEMIRROR_6_MIGRATION.md` - CM6 migration notes
+- `docs/2025-10-29_LIBRARY_UPDATES_OCT_2025.md` - Library update log
 
 ## References
 - JSZip Documentation: https://stuk.github.io/jszip/

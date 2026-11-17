@@ -165,7 +165,7 @@ logic in the application service layer.
 
 ## 2.2 Existing JSON comparison tool: verified from supplied functional analysis
 
-**Evidence:** `injection_compare_functional_analysis.md` and screenshots
+**Evidence:** `2026-11-06_injection_compare_functional_analysis.md` and screenshots
 Figures 1--20.
 
 The analysis identifies the current tool as `json_compair` v6 using

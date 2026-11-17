@@ -267,7 +267,7 @@ Listed by path only; file contents were not copied into this document. "Evidence
 
 `docs/test-cases-example/not-working/` — four CSV files, 8.5–10.4 MB each. The header row contains property address, ZIP and home id columns.
 
-**Text that quotes real field names or paths** (not data files, but derived from them): `CLAUDE.MD`, `AGENTS.md`, `docs/LARGE-COLLECTION-DIFF-AND-SETTINGS.md`, `docs/injection_compare_functional_analysis.md`, `tests/embedded_json.test.js`, and comments in `v6/index.html`, `v6/utils/json_align.js`, `v6/utils/value_equiv.js`.
+**Text that quotes real field names or paths** (not data files, but derived from them): `CLAUDE.MD`, `AGENTS.md`, `docs/2026-07-29_LARGE-COLLECTION-DIFF-AND-SETTINGS.md`, `docs/2026-11-06_injection_compare_functional_analysis.md`, `tests/embedded_json.test.js`, and comments in `v6/index.html`, `v6/utils/json_align.js`, `v6/utils/value_equiv.js`.
 
 The six curated pairs `docs/test-cases-example/00-…` to `05-…` (`6d4bdf0`, `e40582a`) were written as public examples and look synthetic.
 
