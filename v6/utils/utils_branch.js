@@ -650,29 +650,39 @@
   };
 
   // Cross-panel sync: which branch on the other panel belongs with this one.
-  // Compares name words only. A match needs word overlap >= 0.6 and a clear
-  // lead (0.15) over the runner-up, so ties and a shared generic word never switch.
+  // A name matches when it equals the other ignoring separators and case, or
+  // when all of its words appear in the other name ("whatif" ~ "whatif-html").
+  // Two names that each have a word the other lacks never match ("Scenario A"
+  // vs "Scenario B"). Ties and near-ties are not switched either.
   const BranchMatch = {
     tokens(name) {
       return new Set(String(name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
     },
-    // candidates: [{id, name}] → matching id, or null when nothing is reliable
+    compact(name) {
+      return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    },
+    // 0 = no match; 1 = same name ignoring separators; otherwise 0.5..0.99 by
+    // how much of the longer name the shorter one covers.
+    score(a, b) {
+      const ca = this.compact(a);
+      if (!ca) return 0;
+      if (ca === this.compact(b)) return 1;
+      let short = this.tokens(a), long = this.tokens(b);
+      if (short.size > long.size) [short, long] = [long, short];
+      if (!short.size) return 0;
+      for (const t of short) if (!long.has(t)) return 0;
+      return 0.5 + 0.5 * (short.size / long.size);
+    },
+    // Best candidate {id, score} for `name`, or null when it is not reliable.
     best(name, candidates) {
-      const a = this.tokens(name);
-      if (!a.size) return null;
-      const scored = [];
-      candidates.forEach((c) => {
-        const b = this.tokens(c.name);
-        if (!b.size) return;
-        let inter = 0;
-        a.forEach((t) => { if (b.has(t)) inter++; });
-        scored.push({ id: c.id, score: inter / (a.size + b.size - inter) });
-      });
-      scored.sort((x, y) => y.score - x.score);
+      const scored = candidates
+        .map((c) => ({ id: c.id, score: this.score(name, c.name) }))
+        .filter((x) => x.score > 0)
+        .sort((x, y) => y.score - x.score);
       const top = scored[0];
-      if (!top || top.score < 0.6) return null;
+      if (!top || top.score < 0.7) return null;
       const second = scored[1] ? scored[1].score : 0;
-      return top.score - second >= 0.15 ? top.id : null;
+      return top.score - second >= 0.1 ? top : null;
     }
   };
 

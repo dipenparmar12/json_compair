@@ -5138,10 +5138,15 @@
       }
 
       // Switch the opposite panel to the branch that matches this one by name.
+      // One-to-one: the match must also find this branch as its own best match,
+      // so a branch that fits another one better is not pulled away.
       async function syncOtherPanel(side, branchId) {
         const other = side === 'left' ? 'right' : 'left';
-        const match = window.BranchMatch.best(branchName(branchId), window.BranchManager.listBranches(other));
-        if (match && match !== activeBranches[other]) await switchBranch(other, match, { fromSync: true });
+        const hit = window.BranchMatch.best(branchName(branchId), window.BranchManager.listBranches(other));
+        if (!hit) return;
+        const back = window.BranchMatch.best(branchName(hit.id), window.BranchManager.listBranches(side));
+        if (!back || back.id !== branchId) return;
+        if (hit.id !== activeBranches[other]) await switchBranch(other, hit.id, { fromSync: true });
       }
 
       function nextUntitledName(side) {
