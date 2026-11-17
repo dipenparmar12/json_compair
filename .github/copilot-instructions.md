@@ -1,23 +1,17 @@
 # JSON Compare Tool - AI Agent Instructions
 
-## Performance and scale — standing rule (read before any change)
-
-This tool must stay fast and responsive with **very large comparisons: 100–200 MB of CSV or JSON per side**, which become several hundred MB of pretty-printed JSON. Every feature, fix and refactor is judged on this, not only on its behaviour. A change that adds a feature but slows or freezes large inputs is not done.
-
-Rules:
-
-1. **Measure before and after.** Any change on a comparison path (ingest, parse, align, diff, render, fold, search, export, save) must be checked with the large generator and bench harness, e.g. `node tools/gen_dataset.js --format csv --size 100MB --cols 20 --profile changed:5 --out .outputs/bench/p` and `tools/bench_pipeline.js`. Report the numbers. Baselines are in `docs/PRD/16-large-dataset-phase1-findings.md`.
-2. **Never hand CodeMirror a whole large document.** Large content goes through the windowed path (`JSONAlign` window / pager). Writing a full multi-MB document into an editor is the main cause of past freezes.
-3. **Read whole panes only through `getDocumentPair()` / `getPaneDocument(side)`.** Do not call `doc.toString()` on a pane in a loop, on a timer, or on every keystroke. Use `docIsBlank()`-style O(1) checks.
-4. **No per-keystroke or per-scroll work over the full document.** Debounce it, cap it by size, or do it on demand. Search, fold and status updates must run on the visible window or on demand.
-5. **Keep work off the main thread when it scales with input.** Parsing, CSV conversion and matching already run in chunks or in `diff-worker.js`. New heavy loops must yield (`chunkedLoop` / `prepareAsync` style) and support Cancel.
-6. **Use linear algorithms.** No nested scans over records, no repeated `JSON.parse` / `JSON.stringify` of the same document, no copies of large strings or objects that are kept alive (see `lastRawCsv` lesson in the findings doc).
-7. **Respect existing size gates** (`MAX_BYTES`, `PRETTY_MAX_BYTES`, `FORMAT_MAX_BYTES`, `AUTOSAVE_MAX_BYTES`, `MAX_RENDER_CELLS_PER_PANEL`, …). A new feature that bypasses a gate needs a reason and a measurement.
-8. **Tell the user when a result is partial** (sampled rows, windowed records, over-cap content). Never show a partial result as complete.
-9. **Prefer the simplest change that keeps the cost bounded** (CLAUDE.MD minimal-change rule). A clever fast path that adds a second code path to maintain needs a measured gain.
-
-Before merging a change that touches the comparison path, state in the commit or PR: the sizes tested (at least one case of 100 MB or more, or the largest the change can reach), the before/after timings, and any new cap or limit.
-
+## Perf & scale (standing rule)
+Target: 100–200 MB CSV/JSON per side (pretty JSON ≈3.9× CSV). Judge every change on comparison paths (ingest, parse, align, diff, render, fold, search, export, save) by this, not only by behaviour.
+- Before/after: `node tools/gen_dataset.js --format csv --size 100MB --cols 20 --profile changed:5 --out .outputs/bench/p`; `tools/bench_pipeline.js`. Baselines: `docs/PRD/16-large-dataset-phase1-findings.md`.
+- Never write a whole large doc into CodeMirror; use the window/pager (`JSONAlign`).
+- Read panes via `getDocumentPair()`/`getPaneDocument(side)` only. No `doc.toString()` in loops, timers or per keystroke; use O(1) checks (`docIsBlank`).
+- No per-keystroke/per-scroll full-doc work: debounce, size-cap, or run on demand.
+- Heavy loops that scale with input: chunked/yielding (`chunkedLoop`, `prepareAsync`), worker if needed, Cancel-able.
+- Linear only. No nested record scans, no repeated parse/stringify of one doc, no long-lived big copies (see `lastRawCsv`).
+- Respect size gates (`MAX_BYTES`, `PRETTY_MAX_BYTES`, `FORMAT_MAX_BYTES`, `AUTOSAVE_MAX_BYTES`, `MAX_RENDER_CELLS_PER_PANEL`). Bypass only with a measurement.
+- Show partial results as partial (sampled rows, window, over-cap).
+- Simplest change that stays bounded; a second fast path needs measured gain.
+- Commit/PR must state: sizes tested (≥100 MB or largest reachable), before/after ms, new limits.
 ## 🎯 Project Overview
 
 A **client-side-only** web application for comparing, formatting, and merging JSON data. Two parallel implementations:
