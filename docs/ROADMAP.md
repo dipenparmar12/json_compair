@@ -1,0 +1,29 @@
+# Roadmap
+
+Items here are planned for a future release. They are not part of the current scope.
+
+## Tree explorer (future)
+
+**What:** a second view of a panel's JSON, shown as an interactive tree instead of text. The user switches a panel between **Text** (the current view, unchanged) and **Tree**.
+
+**Why:** large nested documents are easier to explore as a tree: collapsible nodes, a node path breadcrumb, and per-node actions.
+
+**Planned behaviour**
+
+- Text stays the default. Switching to Tree never changes the text, the diff or the saved data.
+- Tree nodes: expand and collapse, expand all and collapse all, depth control, search that highlights matching nodes, and a context menu (copy value, path or subtree).
+- Selecting a node moves the Text view of the same panel to that line, and back.
+- Changed nodes are marked, using the same diff the Text view uses.
+- Tree state is per panel, as in the current scope.
+
+**Reuse:** the component ideas and state model from the existing viewer, ported to plain JavaScript, plus the existing `JSONContext` and `KeyCompare` logic. The existing packages and libraries are reused where they fit; no new framework is added (the app has no build step).
+
+**Open questions for when this is scheduled**
+
+- Keep Tree and Text side by side, or switch one panel at a time?
+- Should Tree show diff markers for ignored or equivalent values?
+
+## Other parked ideas
+
+- Shareable links for a single panel (today's share link carries both panels).
+- Comparing a panel with a branch from the same tab, without switching the editor.
