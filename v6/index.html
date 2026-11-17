@@ -8526,9 +8526,12 @@
           }
         }
 
+        // Kept only while this side shows a row-capped sample (set below);
+        // it used to hold every pasted CSV until the page closed.
+        lastRawCsv[side] = null;
+
         // 2) CSV — convert off-thread, sampling very large inputs.
         if (!handled && !opts.noRepair && (opts.forceCsv || (autoCSV && cheapLooksLikeCSV(rawText)))) {
-          lastRawCsv[side] = rawText;
           setIngestBusy('Converting CSV…');
           if (job) { job.phase('csv'); job.update(0, rawText.length, 'Reading file'); }
           await nextPaint();
@@ -8546,7 +8549,10 @@
             } else {
             content = res.json;
             handled = true;
-            if (res.truncated) showSampleNotice(side, res.builtRows, res.approxTotalRows);
+            if (res.truncated) {
+              lastRawCsv[side] = rawText;      // for "Convert all anyway"
+              showSampleNotice(side, res.builtRows, res.approxTotalRows);
+            }
             showConversionMessage(res.truncated
               ? `CSV converted (first ${res.builtRows.toLocaleString()} of ~${res.approxTotalRows.toLocaleString()} rows)`
               : 'CSV converted to JSON');
@@ -8851,6 +8857,7 @@
         // (autosave, export) can persist the old content back, and release the
         // parsed pair / model / pager with it.
         _ignorePristine = null;
+        lastRawCsv.left = lastRawCsv.right = null;
         resetComparisonState();
 
         mergeView.a.dispatch({
