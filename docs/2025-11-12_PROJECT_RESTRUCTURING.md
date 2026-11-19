@@ -314,9 +314,9 @@ cp v6/utils/*.js ./
 ```
 
 ## Related Documents
-- `docs/ZIP_SNAPSHOT_FORMAT.md` - ZIP export (v6 only)
+- `docs/2025-11-12_ZIP_SNAPSHOT_FORMAT.md` - ZIP export (v6 only)
 - `docs/fixes/enhanced-diff-colors-fix.md` - Diff colors (both versions)
-- `CODEMIRROR_6_MIGRATION.md` - Migration notes
+- `2025-11-12_CODEMIRROR_6_MIGRATION.md` - Migration notes
 - `README.md` - User-facing documentation
 
 ## Summary

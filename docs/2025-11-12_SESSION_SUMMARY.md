@@ -56,7 +56,7 @@ window.LegacySnapshotManager   // Import old .json.gz files
 window.SnapshotHandler         // Unified interface (auto-detects format)
 ```
 
-**Documentation:** `docs/ZIP_SNAPSHOT_FORMAT.md`
+**Documentation:** `docs/2025-11-12_ZIP_SNAPSHOT_FORMAT.md`
 
 ---
 
@@ -111,7 +111,7 @@ json_compair/
 - Safe to modify one without affecting other
 - Clear deprecation path for v5
 
-**Documentation:** `docs/PROJECT_RESTRUCTURING.md`
+**Documentation:** `docs/2025-11-12_PROJECT_RESTRUCTURING.md`
 
 ---
 
@@ -127,7 +127,7 @@ json_compair/
 
 **Location:** All archived files in `_archive/` directory (safe to delete after 30 days)
 
-**Documentation:** `docs/CLEANUP_SUMMARY.md`
+**Documentation:** `docs/2025-11-12_CLEANUP_SUMMARY.md`
 
 ---
 
@@ -274,9 +274,9 @@ experimental-prototypes/
 
 ### Documentation
 ```
-docs/ZIP_SNAPSHOT_FORMAT.md
-docs/PROJECT_RESTRUCTURING.md
-docs/CLEANUP_SUMMARY.md
+docs/2025-11-12_ZIP_SNAPSHOT_FORMAT.md
+docs/2025-11-12_PROJECT_RESTRUCTURING.md
+docs/2025-11-12_CLEANUP_SUMMARY.md
 docs/fixes/enhanced-diff-colors-fix.md
 ```
 
@@ -349,9 +349,9 @@ git commit -m "feat: major restructuring - separated v5/v6, enhanced diff colors
 
 ## 📚 DOCUMENTATION INDEX
 
-1. **ZIP_SNAPSHOT_FORMAT.md** - ZIP export documentation
-2. **PROJECT_RESTRUCTURING.md** - Separation strategy & structure
-3. **CLEANUP_SUMMARY.md** - Archived files & recovery
+1. **2025-11-12_ZIP_SNAPSHOT_FORMAT.md** - ZIP export documentation
+2. **2025-11-12_PROJECT_RESTRUCTURING.md** - Separation strategy & structure
+3. **2025-11-12_CLEANUP_SUMMARY.md** - Archived files & recovery
 4. **enhanced-diff-colors-fix.md** - Diff visualization improvements
 
 ---
@@ -410,7 +410,7 @@ git commit -m "feat: major restructuring - separated v5/v6, enhanced diff colors
 
 If anything breaks:
 1. Check `_archive/` for original files
-2. Review `docs/PROJECT_RESTRUCTURING.md`
+2. Review `docs/2025-11-12_PROJECT_RESTRUCTURING.md`
 3. Rollback via git if needed
 4. All changes are documented
 

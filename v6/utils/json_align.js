@@ -89,6 +89,34 @@
     if (str === '\t' || (typeof str === 'string' && /^ {1,8}$/.test(str))) INDENT = str;
     return INDENT;
   }
+
+  // Arrays of plain values (strings, numbers, booleans, null) go on ONE line
+  // when indentation + array fit LINE_WIDTH: "months": [1, 2, 3]. Arrays that
+  // hold objects or arrays, and the root array, keep one item per line.
+  var LINE_WIDTH = 120;        // 0 = no limit
+  var ARRAY_MODE = 'auto';     // 'auto' | 'expanded' (never inline)
+
+  function setFormat(opts) {
+    opts = opts || {};
+    if (opts.arrays === 'auto' || opts.arrays === 'expanded') ARRAY_MODE = opts.arrays;
+    var w = Number(opts.lineWidth);
+    if (opts.lineWidth != null && isFinite(w) && w >= 0) LINE_WIDTH = w;
+    return { arrays: ARRAY_MODE, lineWidth: LINE_WIDTH };
+  }
+
+  // The one-line form of `v` at `pad`, or null when it must stay multi-line.
+  function inlineArray(v, pad) {
+    if (ARRAY_MODE !== 'auto' || pad === '' || !Array.isArray(v) || !v.length) return null;
+    var parts = [], len = pad.length + 2, i, t;
+    for (i = 0; i < v.length; i++) {
+      if (v[i] && typeof v[i] === 'object') return null;
+      t = JSON.stringify(v[i]);
+      len += t.length + (i ? 2 : 0);
+      if (LINE_WIDTH && len > LINE_WIDTH) return null;
+      parts.push(t);
+    }
+    return pad + '[' + parts.join(', ') + ']';
+  }
   // Hard ceiling on input we will parse at all. Everything below is linear or
   // n·log n, so this only guards against absurd pastes / memory pressure.
   var MAX_BYTES = 64000000;    // ~64MB combined
@@ -318,6 +346,8 @@
     var out, i, sub, l;
     if (Array.isArray(v)) {
       if (v.length === 0) return [pad + '[]'];
+      var one = inlineArray(v, pad);
+      if (one) return [one];
       out = [pad + '['];
       for (i = 0; i < v.length; i++) {
         sub = ser(v[i], pad + INDENT);
@@ -356,6 +386,16 @@
     var out, i, l, sub;
     if (Array.isArray(v)) {
       if (v.length === 0) return [pad + '[]'];
+      if (inlineArray(v, pad)) {
+        // Same per-item tolerance swap as the loop below, then one line.
+        var sw = ctx.numTol == null || !Array.isArray(cp) ? v : v.map(function (x, k) {
+          if (eqKind(x, cp[k], ctx.numTol) !== 2) return x;
+          ctx.changed = true;
+          return cp[k];
+        });
+        var one = inlineArray(sw, pad);
+        if (one) return [one];
+      }
       out = [pad + '['];
       for (i = 0; i < v.length; i++) {
         var cpi = Array.isArray(cp) ? cp[i] : undefined;
@@ -1444,11 +1484,22 @@
       // normalization; flag it so the caller snapshots the originals.
       if (kind === 2) ctx.changed = true;
       // Equivalent by rule: same shape, so each side's own text stays row-aligned.
-      if (kind === 3) return { A: ser(a, pad), B: ser(b, pad) };
-      var same = ser(a, pad);
-      return { A: same.slice(), B: same.slice() };
+      // An inline array can make the two sides differ in line count; then
+      // fall through and align them item by item instead.
+      if (kind === 3) {
+        var ea = ser(a, pad), eb = ser(b, pad);
+        if (ea.length === eb.length) return { A: ea, B: eb };
+      } else {
+        var same = ser(a, pad);
+        return { A: same.slice(), B: same.slice() };
+      }
     }
-    if (Array.isArray(a) && Array.isArray(b)) return alignArrayPretty(a, b, pad, ctx);
+    if (Array.isArray(a) && Array.isArray(b)) {
+      // Both fit on one line: one row each, so the panes stay row-aligned.
+      var ia = inlineArray(a, pad), ib = ia && inlineArray(b, pad);
+      if (ib) return { A: [ia], B: [ib] };
+      return alignArrayPretty(a, b, pad, ctx);
+    }
     if (isPlainObject(a) && isPlainObject(b)) return alignObject(a, b, pad, ctx);
     return padToEqual(ser(a, pad), ser(b, pad));
   }
@@ -1619,7 +1670,8 @@
           pushBoth(cA, cB);
         } else if (ctx.collect && ctx.collect.lines === null && ctx.collect.path === e.k &&
                    Array.isArray(a[e.k]) && Array.isArray(b[e.k]) &&
-                   eqKind(a[e.k], b[e.k], ctx.numTol) === 0) {
+                   eqKind(a[e.k], b[e.k], ctx.numTol) === 0 &&
+                   !(inlineArray(a[e.k], child) && inlineArray(b[e.k], child))) {
           // The collection, rendered exactly as the generic branch below would
           // (alignValue on two unequal arrays IS alignArrayPretty), but with the
           // per-item line offsets collected so Details can scroll to a record.
@@ -2015,6 +2067,9 @@
 
   window.JSONAlign = {
     setIndent: setIndent,
+    setFormat: setFormat,
+    // Pretty-print one value with the current indent and array rules.
+    stringify: function (value) { return ser(value, '').join('\n'); },
     align: align,
     prepare: prepare,
     prepareAsync: prepareAsync,

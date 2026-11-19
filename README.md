@@ -60,7 +60,7 @@ python -m http.server 8765 --bind 127.0.0.1 > /dev/null 2>&1 || py -m http.serve
 
 ## Recent Updates
 
-See [docs/LIBRARY_UPDATES_OCT_2025.md](docs/LIBRARY_UPDATES_OCT_2025.md) for details on the latest library updates.
+See [docs/2025-10-29_LIBRARY_UPDATES_OCT_2025.md](docs/2025-10-29_LIBRARY_UPDATES_OCT_2025.md) for details on the latest library updates.
 
 ## Contributing
 
@@ -98,12 +98,12 @@ ALL LIBRARY UPDATES COMPLETED SUCCESSFULLY
    ✓ All UI controls
 
 📚 Documentation Updated:
-   • docs/LIBRARY_UPDATES_OCT_2025.md
+   • docs/2025-10-29_LIBRARY_UPDATES_OCT_2025.md
    • README.md
    • .github/copilot-instructions.md
 
 📚 DOCUMENTATION:
-   - Created: docs/LIBRARY_UPDATES_OCT_2025.md
+   - Created: docs/2025-10-29_LIBRARY_UPDATES_OCT_2025.md
    - Updated: README.md
    - Updated: .github/copilot-instructions.md
 

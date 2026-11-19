@@ -118,7 +118,7 @@ Used `!important` to override:
 
 ## Related Files
 - `docs/PRD/02-feature-specifications.md` - Feature documentation
-- `CODEMIRROR_6_MIGRATION.md` - CM6 migration notes
+- `2025-11-12_CODEMIRROR_6_MIGRATION.md` - CM6 migration notes
 
 ## References
 - GitHub diff colors: https://github.com/primer/primitives

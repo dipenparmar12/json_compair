@@ -144,6 +144,8 @@
             <button id="btn-format-menu" class="btn btn-primary btn-caret" title="More formatting actions"
                     aria-haspopup="true" aria-expanded="false" aria-label="More formatting actions"><svg class="i"><use href="#i-chevron-down"/></svg></button>
             <div id="format-panel" class="dropdown-panel settings-panel settings-panel-left" style="display: none;">
+              <button id="btn-format-left" class="dropdown-item"><svg class="i"><use href="#i-braces"/></svg>Format left <span class="dropdown-hint">left panel only</span></button>
+              <button id="btn-format-right" class="dropdown-item"><svg class="i"><use href="#i-braces"/></svg>Format right <span class="dropdown-hint">right panel only</span></button>
               <button id="btn-fix-json" class="dropdown-item"><svg class="i"><use href="#i-wrench"/></svg>Fix JSON <span class="dropdown-hint">repair syntax</span></button>
               <button id="btn-minify" class="dropdown-item"><svg class="i"><use href="#i-minimize"/></svg>Minify <span class="dropdown-hint">one line</span></button>
               <div class="settings-section-title settings-section-divided">Plain text</div>
@@ -160,6 +162,24 @@
                 <option value="3">3 spaces</option>
                 <option value="4">4 spaces</option>
                 <option value="tab">Tab</option>
+              </select>
+              <div class="settings-section-title settings-section-divided">Arrays</div>
+              <div class="ignore-desc">
+                Auto puts an array of plain values (text, numbers, true/false, null)
+                on one line when it fits the line width. Arrays of objects always
+                keep one item per line.
+              </div>
+              <select id="array-format" class="settings-select dropdown-select" title="How arrays of plain values are laid out">
+                <option value="auto">Auto — one line when it fits</option>
+                <option value="expanded">Expanded — one item per line</option>
+              </select>
+              <div class="settings-section-title settings-section-divided">Line width</div>
+              <select id="line-width" class="settings-select dropdown-select" title="Widest line an inline array may make">
+                <option value="80">80 characters</option>
+                <option value="100">100 characters</option>
+                <option value="120">120 characters</option>
+                <option value="160">160 characters</option>
+                <option value="0">No limit</option>
               </select>
             </div>
           </div>
@@ -263,6 +283,16 @@
                 <div class="setting-text">
                   <div class="setting-title">Auto Sort Keys</div>
                   <div class="setting-desc">Automatically sort JSON keys on paste/drop</div>
+                </div>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" id="sync-branches" checked />
+                <div class="setting-text">
+                  <div class="setting-title">Automatically synchronize matching branches</div>
+                  <div class="setting-desc">
+                    When switching a branch on either panel, select the most relevant matching branch on the other panel. Unclear matches leave it alone.
+                  </div>
                 </div>
               </label>
 
@@ -5093,6 +5123,9 @@
                      side === 'left' ? pair.right : content);
           updateBranchSelectors();
           updateStatus(`✓ Switched to ${branchName(newBranchId)}`);
+          if (!opts.fromSync && !opts.skipSave && SettingsManager.get('syncBranches') !== false) {
+            await syncOtherPanel(side, newBranchId);
+          }
           return true;
         } catch (err) {
           console.error('Failed to switch branch:', err);
@@ -5102,6 +5135,18 @@
         } finally {
           branchBusy[side] = false;
         }
+      }
+
+      // Switch the opposite panel to the branch that matches this one by name.
+      // One-to-one: the match must also find this branch as its own best match,
+      // so a branch that fits another one better is not pulled away.
+      async function syncOtherPanel(side, branchId) {
+        const other = side === 'left' ? 'right' : 'left';
+        const hit = window.BranchMatch.best(branchName(branchId), window.BranchManager.listBranches(other));
+        if (!hit) return;
+        const back = window.BranchMatch.best(branchName(hit.id), window.BranchManager.listBranches(side));
+        if (!back || back.id !== branchId) return;
+        if (hit.id !== activeBranches[other]) await switchBranch(other, hit.id, { fromSync: true });
       }
 
       function nextUntitledName(side) {
@@ -6325,6 +6370,14 @@
         // Auto Fix JSON. Every key the panel reads back must be listed in the
         // restore path or it silently reverts to the default on every reload
         // (see CLAUDE.md §2b rule 1 — `blockDiff` was exactly this bug).
+        const syncBranches = document.getElementById('sync-branches');
+        if (syncBranches) {
+          syncBranches.checked = SettingsManager.get('syncBranches') !== false;
+          syncBranches.addEventListener('change', (e) => {
+            SettingsManager.set('syncBranches', e.target.checked);
+          });
+        }
+
         const autoFixJSON = document.getElementById('auto-fix-json');
         if (autoFixJSON) {
           const savedAutoFix = SettingsManager.get('autoFixJson');
@@ -6368,7 +6421,17 @@
       function syncAlignIndent() {
         if (window.JSONAlign && window.JSONAlign.setIndent) {
           window.JSONAlign.setIndent(indentString());
+          window.JSONAlign.setFormat({
+            arrays: SettingsManager.get('arrayFormat'),
+            lineWidth: SettingsManager.get('lineWidth')
+          });
         }
+      }
+
+      /** Pretty-print a value the way the panes show it (indent, inline arrays). */
+      function prettyJSON(value) {
+        syncAlignIndent();
+        return window.JSONAlign.stringify(value);
       }
 
       /** Indent used by Format, Sort and any other re-serialization. */
@@ -6437,7 +6500,7 @@
        * content in both panels", so you could not format a single pasted
        * document, and one broken pane blocked formatting of the good one.
        */
-      function transformPanes(fn, label) {
+      function transformPanes(fn, label, onlySide) {
         const pair = getDocumentPair();
         if (!pair) return;
         if (!pair.left.trim() && !pair.right.trim()) {
@@ -6450,7 +6513,7 @@
         const good = [], bad = [];
 
         for (const [side, text] of sides) {
-          if (!text.trim()) continue;
+          if (!text.trim() || (onlySide && side !== onlySide)) continue;
           let res;
           try { res = fn(text, side); }
           catch (err) { res = { ok: false, error: err && err.message ? err.message : String(err) }; }
@@ -6493,12 +6556,12 @@
       }
 
       // Format each pane independently.
-      function formatJSON() {
-        const indent = currentIndent();
+      // `side` ('left' | 'right') formats that panel only.
+      function formatJSON(side) {
         transformPanes((text) => {
           const parsed = window.parseFlexibleJSON(text);
-          return { ok: true, text: JSON.stringify(parsed, null, indent) };
-        }, 'Formatted');
+          return { ok: true, text: prettyJSON(parsed) };
+        }, 'Formatted', side === 'left' || side === 'right' ? side : null);
       }
 
       // Compact output — the natural companion to Format, and the thing you
@@ -6541,10 +6604,9 @@
 
       // Sort keys A→Z at every level.
       function sortJSON() {
-        const indent = currentIndent();
         transformPanes((text) => {
           const parsed = window.parseFlexibleJSON(text);
-          return { ok: true, text: JSON.stringify(window.sortJSONKeys(parsed), null, indent) };
+          return { ok: true, text: prettyJSON(window.sortJSONKeys(parsed)) };
         }, 'Sorted keys');
       }
 
@@ -7292,11 +7354,14 @@
 
         renderCleanOptions();
 
-        const indentSel = document.getElementById('indent-width');
-        if (indentSel) {
-          indentSel.value = String(SettingsManager.get('indentWidth') ?? 3);
+        // Indent, array layout and line width: each re-renders straight away.
+        for (const [id, key, fallback] of [['indent-width', 'indentWidth', 3],
+          ['array-format', 'arrayFormat', 'auto'], ['line-width', 'lineWidth', 120]]) {
+          const indentSel = document.getElementById(id);
+          if (!indentSel) continue;
+          indentSel.value = String(SettingsManager.get(key) ?? fallback);
           indentSel.addEventListener('change', () => {
-            SettingsManager.set('indentWidth', indentSel.value);
+            SettingsManager.set(key, indentSel.value);
             // Re-render at the new width straight away. Storing a preference
             // that only shows up the next time you happen to press Format is
             // not a setting, it is a guess.
@@ -7322,6 +7387,8 @@
           const el = document.getElementById(id);
           if (el) el.addEventListener('click', () => { close(); fn(); });
         };
+        wire('btn-format-left', () => formatJSON('left'));
+        wire('btn-format-right', () => formatJSON('right'));
         wire('btn-fix-json', fixBothPanes);
         wire('btn-minify', minifyJSON);
         wire('btn-clean-text', cleanText);
@@ -7380,7 +7447,7 @@
         if (!touched && options.autoFormat === false && typeof options.raw === 'string') {
           return options.raw;
         }
-        return JSON.stringify(content, null, currentIndent());
+        return prettyJSON(content);
       }
 
       /**
@@ -7563,7 +7630,7 @@
           return s.length > 22 ? s.slice(0, 21) + '…' : s;
         };
         const prim = (c) => !!c && c.hasValue && (c.value === null || typeof c.value !== 'object');
-        const asText = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, currentIndent()));
+        const asText = (v) => (typeof v === 'string' ? v : prettyJSON(v));
         const items = [];
         const sep = () => { if (items.length && items[items.length - 1] !== '-') items.push('-'); };
         const sel = view.state.selection.main;
@@ -7864,7 +7931,7 @@
         let a, b;
         try { a = JSON.parse(current); } catch (e) { throw new Error('the current content is not valid JSON.'); }
         try { b = JSON.parse(imported); } catch (e) { throw new Error('the imported content is not valid JSON.'); }
-        return JSON.stringify(window.mergeJSONValues(a, b), null, currentIndent());
+        return prettyJSON(window.mergeJSONValues(a, b));
       }
 
       /**
@@ -7916,12 +7983,10 @@
           catch (err) { console.warn('Failed to apply snapshot settings:', err); }
         }
 
-        if (L !== pair.left) {
-          mergeView.a.dispatch({ changes: { from: 0, to: mergeView.a.state.doc.length, insert: L } });
-        }
-        if (R !== pair.right) {
-          mergeView.b.dispatch({ changes: { from: 0, to: mergeView.b.state.doc.length, insert: R } });
-        }
+        // Aligned before the first render, like a restored session. Writing the
+        // raw text first made CodeMirror diff two whole documents (5.9 s for a
+        // 20 MB pair that pastes in 0.2 s).
+        if (L !== pair.left || R !== pair.right) await restorePair(L, R);
         URLManager.clearURL();
 
         if (hasBranches) {
@@ -8492,9 +8557,12 @@
           }
         }
 
+        // Kept only while this side shows a row-capped sample (set below);
+        // it used to hold every pasted CSV until the page closed.
+        lastRawCsv[side] = null;
+
         // 2) CSV — convert off-thread, sampling very large inputs.
         if (!handled && !opts.noRepair && (opts.forceCsv || (autoCSV && cheapLooksLikeCSV(rawText)))) {
-          lastRawCsv[side] = rawText;
           setIngestBusy('Converting CSV…');
           if (job) { job.phase('csv'); job.update(0, rawText.length, 'Reading file'); }
           await nextPaint();
@@ -8512,7 +8580,10 @@
             } else {
             content = res.json;
             handled = true;
-            if (res.truncated) showSampleNotice(side, res.builtRows, res.approxTotalRows);
+            if (res.truncated) {
+              lastRawCsv[side] = rawText;      // for "Convert all anyway"
+              showSampleNotice(side, res.builtRows, res.approxTotalRows);
+            }
             showConversionMessage(res.truncated
               ? `CSV converted (first ${res.builtRows.toLocaleString()} of ~${res.approxTotalRows.toLocaleString()} rows)`
               : 'CSV converted to JSON');
@@ -8817,6 +8888,7 @@
         // (autosave, export) can persist the old content back, and release the
         // parsed pair / model / pager with it.
         _ignorePristine = null;
+        lastRawCsv.left = lastRawCsv.right = null;
         resetComparisonState();
 
         mergeView.a.dispatch({
@@ -9264,6 +9336,8 @@
             if (!t.same && !t.changed && !t.moved && (t.added || t.removed)) {
               msg += ' · no records in common';
             }
+            // A row-capped CSV: the counts describe the rows loaded, not the file.
+            if (lastRawCsv.left || lastRawCsv.right) msg += ' · first rows of a large CSV only';
             setDiffSummary('diff', msg);
             updateRecordPager();
             renderDiffDetails();
@@ -9281,7 +9355,7 @@
           // "1 changed block" here reads as a result; it is the absence of one.
           setDiffSummary('warn', _renderDiffRatio > MYERS_MAX_DIFF_RATIO
             ? 'These records differ too much for line-by-line highlighting — open Details for the exact breakdown'
-            : 'Too large to compare precisely — use CSV→JSON so records can be matched individually');
+            : 'Too large to match records — compared as plain text, so the highlighting is not precise');
         } else {
           setDiffSummary('diff', `${chunkCount} changed block${chunkCount !== 1 ? 's' : ''}`);
         }

@@ -1,5 +1,17 @@
 # JSON Compare Tool - AI Agent Instructions
 
+## Perf & scale (standing rule)
+Target: 100–200 MB CSV/JSON per side (pretty JSON ≈3.9× CSV). Judge every change on comparison paths (ingest, parse, align, diff, render, fold, search, export, save) by this, not only by behaviour.
+- Before/after: `node tools/gen_dataset.js --format csv --size 100MB --cols 20 --profile changed:5 --out .outputs/bench/p`; `tools/bench_pipeline.js`. Baselines: `docs/PRD/16-large-dataset-phase1-findings.md`.
+- Never write a whole large doc into CodeMirror; use the window/pager (`JSONAlign`).
+- Read panes via `getDocumentPair()`/`getPaneDocument(side)` only. No `doc.toString()` in loops, timers or per keystroke; use O(1) checks (`docIsBlank`).
+- No per-keystroke/per-scroll full-doc work: debounce, size-cap, or run on demand.
+- Heavy loops that scale with input: chunked/yielding (`chunkedLoop`, `prepareAsync`), worker if needed, Cancel-able.
+- Linear only. No nested record scans, no repeated parse/stringify of one doc, no long-lived big copies (see `lastRawCsv`).
+- Respect size gates (`MAX_BYTES`, `PRETTY_MAX_BYTES`, `FORMAT_MAX_BYTES`, `AUTOSAVE_MAX_BYTES`, `MAX_RENDER_CELLS_PER_PANEL`). Bypass only with a measurement.
+- Show partial results as partial (sampled rows, window, over-cap).
+- Simplest change that stays bounded; a second fast path needs measured gain.
+- Commit/PR must state: sizes tested (≥100 MB or largest reachable), before/after ms, new limits.
 ## 🎯 Project Overview
 
 A **client-side-only** web application for comparing, formatting, and merging JSON data. Two parallel implementations:
@@ -423,7 +435,7 @@ await switchBranch("left", "api-v2");
 - ZIP exports include `branches.json` with all branches
 - Import merges branches (skips duplicates)
 
-**See:** `docs/BRANCHING_FEATURE.md` for full documentation
+**See:** `docs/2025-11-26_BRANCHING_FEATURE.md` for full documentation
 
 ---
 

@@ -243,22 +243,29 @@ button:disabled {
     width: 100% !important;
     max-width: 100% !important;
     overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 
-/* Scroller must respect parent constraints */
+/* Scroller must respect parent constraints. It fills the editor (flex child);
+   a percentage height was resolving to the content height, which left the
+   horizontal bar floating mid-pane under an empty editor. */
 .cm-mergeView .cm-scroller {
     overflow: auto !important;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    height: 100% !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
 }
 
-/* Prevent content from forcing panel expansion */
+/* Content sizes to its text. It used to be width: 100% of the scroller, which
+   sits beside the gutters, so with Word wrap off it always overflowed by the
+   gutter width and drew a horizontal bar under short lines. Wrapping still
+   fits the pane: CM6's .cm-lineWrapping lets the content shrink. */
 .cm-mergeView .cm-content {
     min-width: 0 !important;
-    max-width: 100% !important;
-    width: 100% !important;
 }
 
 /* Ensure lines don't stretch the container */
@@ -917,8 +924,70 @@ select.toggle-button {
     line-height: 1.6 !important;
     opacity: 0.7 !important;
     white-space: pre-wrap !important;
+    overflow-wrap: anywhere;
+    /* Padding must stay inside the pane width, or it creates a horizontal overflow */
+    box-sizing: border-box;
+    max-width: 100%;
     padding: 20px !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* Scrollbars: thin and quiet. The native horizontal bar only shows when a
+   line really overflows (overflow: auto), and it no longer sits under an
+   empty pane. */
+.cm-scroller,
+.cm-mergeView .cm-scroller,
+.branch-tabs {
+    scrollbar-width: thin;
+    scrollbar-color: #c4c4c4 transparent;
+    scrollbar-gutter: auto;
+}
+
+.cm-scroller::-webkit-scrollbar,
+.cm-mergeView .cm-scroller::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.cm-scroller::-webkit-scrollbar-track,
+.cm-mergeView .cm-scroller::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb,
+.cm-mergeView .cm-scroller::-webkit-scrollbar-thumb {
+    background: #c4c4c4;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb:hover,
+.cm-mergeView .cm-scroller::-webkit-scrollbar-thumb:hover {
+    background: #9a9a9a;
+    background-clip: padding-box;
+}
+
+.cm-scroller::-webkit-scrollbar-corner,
+.cm-mergeView .cm-scroller::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+[data-theme="dark"] .cm-scroller,
+[data-theme="dark"] .cm-mergeView .cm-scroller {
+    scrollbar-color: #555 transparent;
+}
+
+[data-theme="dark"] .cm-scroller::-webkit-scrollbar-thumb,
+[data-theme="dark"] .cm-mergeView .cm-scroller::-webkit-scrollbar-thumb {
+    background: #555;
+    background-clip: padding-box;
+}
+
+[data-theme="dark"] .cm-scroller::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .cm-mergeView .cm-scroller::-webkit-scrollbar-thumb:hover {
+    background: #777;
+    background-clip: padding-box;
 }
 
 /* Panel name input styling */

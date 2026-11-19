@@ -280,8 +280,11 @@
       // always leaves a notice saying what it did, with Undo. Off means "paste
       // exactly what I copied" and repair on demand from the panel chip.
       autoFixJson: true,
+      syncBranches: true,        // Switching a branch on one panel selects its match on the other
       indentWidth: 3,           // 2 | 3 | 4 | 'tab' — used by Format/Sort/Fix
-      cleanOptions: null,       // per-action overrides for the text Clean menu
+      arrayFormat: 'auto',      // 'auto' (plain-value arrays on one line) | 'expanded'
+      lineWidth: 120,           // widest line an inline array may make; 0 = no limit
+      cleanOptions: null,      // per-action overrides for the text Clean menu
       showOnlyDiffs: false,
       wordWrap: true,       // Default word wrap enabled
       scrollLock: true,     // Default scroll lock enabled
